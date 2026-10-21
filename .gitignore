@@ -19,6 +19,9 @@ target-fresh
 src-tauri/target
 coverage
 
+# Local research notes that are not published with the project
+docs/excluded/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

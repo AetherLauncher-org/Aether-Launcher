@@ -92,13 +92,9 @@ cargo test --workspace --exclude aether-desktop
 - [架构概览](docs/architecture.md)：crate 分层、前端结构、IPC 边界，以及各模块还缺什么
 - [模块文档](docs/modules/README.md)：账户、下载引擎与实例生命周期的实现边界
 
-## 下载源调研
-
-我们把 Mojang 官方上游、BMCLAPI、Fabric/Forge/NeoForge/Quilt、Modrinth、CurseForge 以及已核验的高校镜像站分开记录在 [Minecraft 下载源清单](docs/download-sources.md) 中。该清单包含覆盖范围、协议边界、实测状态和校验要求，不代表当前版本已经接入所有来源。
-
 ## 贡献
 
-开始编码前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请按照 [SECURITY.md](SECURITY.md) 报告。
+开始编码前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请按照 [SECURITY.md](SECURITY.md) 使用 GitHub 私密漏洞报告。
 
 ## 不接受赞助
 
