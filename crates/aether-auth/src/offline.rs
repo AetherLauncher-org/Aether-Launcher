@@ -216,12 +216,12 @@ mod md5 {
         let bit_len = (input.len() as u64).wrapping_mul(8);
         message.extend_from_slice(&bit_len.to_le_bytes());
 
-        for chunk in message.chunks_exact(64) {
+        for chunk in message.as_chunks::<64>().0 {
             compress(&mut state, chunk);
         }
 
         let mut out = [0_u8; 16];
-        for (word, slot) in state.iter().zip(out.chunks_exact_mut(4)) {
+        for (word, slot) in state.iter().zip(out.as_chunks_mut::<4>().0) {
             slot.copy_from_slice(&word.to_le_bytes());
         }
         out
@@ -230,13 +230,8 @@ mod md5 {
     /// Runs the 64 steps of one 512-bit block over `state`.
     fn compress(state: &mut [u32; 4], chunk: &[u8]) {
         let mut words = [0_u32; 16];
-        for (word, slot) in words.iter_mut().zip(chunk.chunks_exact(4)) {
-            // `chunks_exact(4)` guarantees four bytes, so the conversion is infallible.
-            let bytes: [u8; 4] = match slot.try_into() {
-                Ok(bytes) => bytes,
-                Err(_) => unreachable!("chunks_exact(4) yields four byte slices"),
-            };
-            *word = u32::from_le_bytes(bytes);
+        for (word, slot) in words.iter_mut().zip(chunk.as_chunks::<4>().0) {
+            *word = u32::from_le_bytes(*slot);
         }
 
         let [mut a, mut b, mut c, mut d] = *state;

@@ -274,10 +274,10 @@ impl CredentialStore for FileCredentialStore {
         // guarantees the refusal below cannot be bypassed with odd bytes; the decode then
         // runs on the scanned text. The scan is cheap relative to any I/O.
         let text = String::from_utf8_lossy(&bytes);
-        if let Ok(value) = serde_json::from_str::<Value>(&text) {
-            if !document_is_trusted(&value) {
-                return Err(StoreError::UntrustedContent);
-            }
+        if let Ok(value) = serde_json::from_str::<Value>(&text)
+            && !document_is_trusted(&value)
+        {
+            return Err(StoreError::UntrustedContent);
         }
         let wire: WireCredential = serde_json::from_str(&text).map_err(StoreError::Decode)?;
 
