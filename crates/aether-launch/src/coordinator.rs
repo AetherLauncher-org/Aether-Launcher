@@ -163,7 +163,13 @@ impl InstanceLaunchCoordinator {
             Err(RegistryError::UnknownInstance) | Ok(_) => {}
             Err(error) => return Err(CoordinatorError::Registry(error)),
         }
-        let plan = self.prepare(instance_id, memory_mib, runtimes, environment, account_variables)?;
+        let plan = self.prepare(
+            instance_id,
+            memory_mib,
+            runtimes,
+            environment,
+            account_variables,
+        )?;
         Ok(self.processes.start(instance_id, &plan, redactions)?)
     }
 
