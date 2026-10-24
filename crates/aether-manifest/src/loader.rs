@@ -300,22 +300,28 @@ mod tests {
     #[test]
     fn remembers_exact_ancestor_that_supplied_client_jar() {
         let fixture = Fixture::new();
-        fixture.write("base", r#"{
+        fixture.write(
+            "base",
+            r#"{
             "id":"base",
             "downloads":{"client":{"sha1":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "size":3,"url":"https://example.invalid/base.jar"}}
-        }"#);
+        }"#,
+        );
         fixture.write("middle", r#"{"id":"middle","inheritsFrom":"base"}"#);
         fixture.write("child", r#"{"id":"child","inheritsFrom":"middle"}"#);
         let resolved = super::load_resolved_version_manifest(fixture.root(), "child").unwrap();
         assert_eq!(resolved.manifest.id, "child");
         assert_eq!(resolved.client_jar_version.as_deref(), Some("base"));
 
-        fixture.write("child", r#"{
+        fixture.write(
+            "child",
+            r#"{
             "id":"child","inheritsFrom":"middle",
             "downloads":{"client":{"sha1":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                 "size":4,"url":"https://example.invalid/child.jar"}}
-        }"#);
+        }"#,
+        );
         let resolved = super::load_resolved_version_manifest(fixture.root(), "child").unwrap();
         assert_eq!(resolved.client_jar_version.as_deref(), Some("child"));
     }
