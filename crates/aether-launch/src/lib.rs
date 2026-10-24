@@ -1,5 +1,7 @@
 pub mod registry;
-pub use registry::{InstanceProcessRegistry, InstanceProcessStatus, InstanceRunState, RegistryError};
+pub use registry::{
+    InstanceProcessRegistry, InstanceProcessStatus, InstanceRunState, RegistryError,
+};
 
 pub mod process;
 pub use process::{GameProcess, LogRecord, LogStream, ProcessError};
