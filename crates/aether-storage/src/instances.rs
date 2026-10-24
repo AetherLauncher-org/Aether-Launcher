@@ -42,8 +42,8 @@ impl InstanceStore {
     pub fn open(base: &Path) -> Result<Self, InstanceLoadError> {
         let base = fs::canonicalize(base)?;
         let instances = base.join("instances");
-        let metadata = fs::symlink_metadata(&instances)
-            .map_err(|_| InstanceLoadError::InvalidStore)?;
+        let metadata =
+            fs::symlink_metadata(&instances).map_err(|_| InstanceLoadError::InvalidStore)?;
         if !metadata.is_dir() || metadata.file_type().is_symlink() {
             return Err(InstanceLoadError::InvalidStore);
         }
@@ -82,8 +82,9 @@ impl InstanceStore {
         if bytes.len() as u64 > MAX_INSTANCE_BYTES {
             return Err(InstanceLoadError::TooLarge);
         }
-        let input = std::str::from_utf8(&bytes)
-            .map_err(|error| InstanceLoadError::Io(io::Error::new(io::ErrorKind::InvalidData, error)))?;
+        let input = std::str::from_utf8(&bytes).map_err(|error| {
+            InstanceLoadError::Io(io::Error::new(io::ErrorKind::InvalidData, error))
+        })?;
         let instance = decode_instance(input)?;
         if instance.id != id {
             return Err(InstanceLoadError::IdMismatch);
