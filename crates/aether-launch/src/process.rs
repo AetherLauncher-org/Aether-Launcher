@@ -54,13 +54,7 @@ impl GameProcess {
     /// Callers must supply extra values to redact if credentials occur beyond
     /// standard --accessToken or --access-token arguments.
     pub fn spawn(plan: &LaunchPlan, extra_redactions: &[String]) -> Result<Self, ProcessError> {
-        let executable = &plan.runtime.executable;
-        if !executable.is_absolute() || !executable.is_file() {
-            return Err(ProcessError::InvalidExecutable);
-        }
-        if !plan.working_directory.is_dir() {
-            return Err(ProcessError::InvalidWorkingDirectory);
-        }
+        let executable = validate_launch_executable(plan)?;
 
         let redactions = collect_redactions(&plan.arguments, extra_redactions);
         let mut child = Command::new(executable)
