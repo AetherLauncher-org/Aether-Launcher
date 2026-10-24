@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 aether-core = { path = "../aether-core" }
+aether-manifest = { path = "../aether-manifest" }
 aether-runtime = { path = "../aether-runtime" }
 serde.workspace = true
 thiserror.workspace = true
