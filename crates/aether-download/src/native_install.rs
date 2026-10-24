@@ -2,7 +2,7 @@
 //! We deliberately never call ZipArchive::extract: entry names and output
 //! locations are validated before using streaming reads and create_new writes.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -238,6 +238,12 @@ pub fn verify_installed_native_archives(
             });
         }
         let selected = preflight_native_zip(&entries, archive.exclusions)?;
+        let member_indices: HashMap<_, _> = entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| !entry.is_directory)
+            .map(|(index, entry)| (PathBuf::from(entry.name.replace('\\', "/")), index))
+            .collect();
         for entry in selected {
             byte_budget = byte_budget
                 .checked_add(entry.expected_size)
@@ -263,13 +269,9 @@ pub fn verify_installed_native_archives(
             if !canonical.starts_with(&native_root) {
                 return Err(NativeInstallError::InvalidInstalledFile(output));
             }
-            // Find the already preflighted ZIP member, not a guessed output.
-            let index = entries
-                .iter()
-                .position(|candidate| {
-                    !candidate.is_directory
-                        && PathBuf::from(candidate.name.replace('\\', "/")) == relative
-                })
+            // Hash-based lookup avoids quadratic work on large native JARs.
+            let index = *member_indices
+                .get(&relative)
                 .ok_or_else(|| NativeInstallError::InvalidInstalledFile(output.clone()))?;
             let mut zipped = zip.by_index(index)?;
             let mut installed = File::open(&output)?;
