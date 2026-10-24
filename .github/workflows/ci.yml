@@ -56,5 +56,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: npm ci
       - run: cargo clippy -p aether-desktop --all-targets -- -D warnings
+      - run: cargo test -p aether-launch
       - run: cargo test -p aether-desktop --lib
       - run: npm run tauri -- build --debug --no-bundle
