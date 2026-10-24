@@ -83,14 +83,19 @@ fn rejects_duplicate_start_and_forgetting_running_process() {
     assert_eq!(stopped.state.instance_state(), InstanceState::Ready);
     assert_eq!(registry.stop(id).unwrap(), stopped);
     assert_eq!(registry.forget_finished(id).unwrap(), stopped);
-    assert!(matches!(registry.status(id), Err(RegistryError::UnknownInstance)));
+    assert!(matches!(
+        registry.status(id),
+        Err(RegistryError::UnknownInstance)
+    ));
 }
 
 #[test]
 fn natural_exit_updates_status_and_keeps_trailing_redacted_logs() {
     let id = InstanceId::new();
     let mut registry = InstanceProcessRegistry::new();
-    registry.start(id, &plan(), &["registry-secret".to_owned()]).unwrap();
+    registry
+        .start(id, &plan(), &["registry-secret".to_owned()])
+        .unwrap();
     let ended = await_exit(&mut registry, id);
     assert_eq!(ended.state, InstanceRunState::Exited);
     assert_eq!(ended.state.instance_state(), InstanceState::Ready);
@@ -100,8 +105,12 @@ fn natural_exit_updates_status_and_keeps_trailing_redacted_logs() {
     let deadline = Instant::now() + Duration::from_secs(3);
     while Instant::now() < deadline {
         collected.extend(registry.drain_logs(id).unwrap());
-        if collected.iter().any(|record| record.stream == LogStream::Stdout)
-            && collected.iter().any(|record| record.stream == LogStream::Stderr)
+        if collected
+            .iter()
+            .any(|record| record.stream == LogStream::Stdout)
+            && collected
+                .iter()
+                .any(|record| record.stream == LogStream::Stderr)
         {
             break;
         }
@@ -109,16 +118,21 @@ fn natural_exit_updates_status_and_keeps_trailing_redacted_logs() {
     }
 
     assert!(collected.iter().any(|record| {
-        record.stream == LogStream::Stdout
-            && record.line.contains("registry stdout [REDACTED]")
+        record.stream == LogStream::Stdout && record.line.contains("registry stdout [REDACTED]")
     }));
     assert!(collected.iter().any(|record| {
-        record.stream == LogStream::Stderr
-            && record.line.contains("registry stderr [REDACTED]")
+        record.stream == LogStream::Stderr && record.line.contains("registry stderr [REDACTED]")
     }));
-    assert!(collected.iter().all(|record| !record.line.contains("registry-secret")));
+    assert!(
+        collected
+            .iter()
+            .all(|record| !record.line.contains("registry-secret"))
+    );
     assert!(registry.drain_logs(id).unwrap().is_empty());
-    assert_eq!(registry.forget_finished(id).unwrap().state, InstanceRunState::Exited);
+    assert_eq!(
+        registry.forget_finished(id).unwrap().state,
+        InstanceRunState::Exited
+    );
 }
 
 #[test]
@@ -131,12 +145,19 @@ fn supports_independent_instances_and_restart_after_stop() {
 
     let statuses = registry.list().unwrap();
     assert_eq!(statuses.len(), 2);
-    assert!(statuses.iter().all(|entry| entry.state == InstanceRunState::Running));
+    assert!(
+        statuses
+            .iter()
+            .all(|entry| entry.state == InstanceRunState::Running)
+    );
     assert_ne!(statuses[0].pid, statuses[1].pid);
 
     let first_stop = registry.stop(first).unwrap();
     assert_eq!(first_stop.state, InstanceRunState::Stopped);
-    assert_eq!(registry.status(second).unwrap().state, InstanceRunState::Running);
+    assert_eq!(
+        registry.status(second).unwrap().state,
+        InstanceRunState::Running
+    );
 
     let restart = registry.start(first, &plan(), &[]).unwrap();
     assert_eq!(restart.state, InstanceRunState::Running);
@@ -182,6 +203,12 @@ fn failed_start_does_not_leave_a_phantom_running_entry() {
 fn unknown_instances_cannot_be_stopped_or_drained() {
     let id = InstanceId::new();
     let mut registry = InstanceProcessRegistry::new();
-    assert!(matches!(registry.stop(id), Err(RegistryError::UnknownInstance)));
-    assert!(matches!(registry.drain_logs(id), Err(RegistryError::UnknownInstance)));
+    assert!(matches!(
+        registry.stop(id),
+        Err(RegistryError::UnknownInstance)
+    ));
+    assert!(matches!(
+        registry.drain_logs(id),
+        Err(RegistryError::UnknownInstance)
+    ));
 }
