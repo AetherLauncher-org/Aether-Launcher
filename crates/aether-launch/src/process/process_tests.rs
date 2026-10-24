@@ -7,8 +7,8 @@ use std::time::Duration;
 use aether_runtime::JavaRuntime;
 
 use super::{
-    GameProcess, LogStream, ProcessError, collect_redactions, spawn_reader, LOG_QUEUE_CAPACITY,
-    MAX_LOG_BYTES,
+    GameProcess, LOG_QUEUE_CAPACITY, LogStream, MAX_LOG_BYTES, ProcessError, collect_redactions,
+    spawn_reader,
 };
 use crate::LaunchPlan;
 
@@ -50,12 +50,18 @@ fn captures_both_streams_redacts_secrets_and_records_exit() {
     assert_eq!(process.try_wait().unwrap(), Some(status));
 
     let logs = process.drain_logs();
-    assert!(logs.iter().any(|entry| {
-        entry.stream == LogStream::Stdout && entry.line.contains("game stdout [REDACTED]")
-    }), "expected redacted stdout log");
-    assert!(logs.iter().any(|entry| {
-        entry.stream == LogStream::Stderr && entry.line.contains("game stderr [REDACTED]")
-    }), "expected redacted stderr log");
+    assert!(
+        logs.iter().any(|entry| {
+            entry.stream == LogStream::Stdout && entry.line.contains("game stdout [REDACTED]")
+        }),
+        "expected redacted stdout log"
+    );
+    assert!(
+        logs.iter().any(|entry| {
+            entry.stream == LogStream::Stderr && entry.line.contains("game stderr [REDACTED]")
+        }),
+        "expected redacted stderr log"
+    );
     assert!(logs.iter().all(|entry| !entry.line.contains("s3cr3t")));
 }
 
@@ -78,7 +84,8 @@ fn rejects_relative_executable_and_nonexistent_working_directory() {
         Err(ProcessError::InvalidExecutable)
     ));
     plan = test_plan();
-    plan.working_directory.push("no-such-directory-for-aether-test");
+    plan.working_directory
+        .push("no-such-directory-for-aether-test");
     assert!(matches!(
         GameProcess::spawn(&plan, &[]),
         Err(ProcessError::InvalidWorkingDirectory)
