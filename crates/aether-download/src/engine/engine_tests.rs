@@ -955,7 +955,12 @@ fn symlinked_destination_parent_is_rejected_before_network() {
         &sleeps,
     )
     .download_artifact(
-        &artifact("libraries/client.jar", body.len() as u64, &sha1_of(&body), &["a"]),
+        &artifact(
+            "libraries/client.jar",
+            body.len() as u64,
+            &sha1_of(&body),
+            &["a"],
+        ),
         &CancellationToken::new(),
         &CollectProgress::default(),
     );
