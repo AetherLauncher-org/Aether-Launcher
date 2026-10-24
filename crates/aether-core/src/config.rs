@@ -535,7 +535,9 @@ mod tests {
     #[test]
     fn absolute_java_executable_is_accepted() {
         let config = InstanceConfig {
-            java_executable: Some(std::env::current_exe().expect("current executable has an absolute path")),
+            java_executable: Some(
+                std::env::current_exe().expect("current executable has an absolute path"),
+            ),
             ..InstanceConfig::default()
         };
         assert!(config.validate().is_ok());
