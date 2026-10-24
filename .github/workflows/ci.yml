@@ -38,9 +38,8 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --exclude aether-desktop --all-targets -- -D warnings
       - run: cargo test --workspace --exclude aether-desktop
-      - name: Show Cargo.lock changes for review
-        if: always()
-        run: git diff -- Cargo.lock
+      - name: Verify dependency lockfile is current
+        run: git diff --exit-code -- Cargo.lock
 
   desktop:
     name: Desktop shell (Windows)
