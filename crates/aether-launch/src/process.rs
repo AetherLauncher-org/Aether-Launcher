@@ -6,9 +6,9 @@ use std::fs;
 use std::io::{self, BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
-use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
 use thiserror::Error;
@@ -240,11 +240,17 @@ fn publish(
     truncated: bool,
     redactions: &[String],
 ) {
-    let mut line = String::from_utf8_lossy(bytes).trim_end_matches('\r').to_owned();
+    let mut line = String::from_utf8_lossy(bytes)
+        .trim_end_matches('\r')
+        .to_owned();
     for secret in redactions {
         line = line.replace(secret, "[REDACTED]");
     }
-    let record = LogRecord { stream, line, truncated };
+    let record = LogRecord {
+        stream,
+        line,
+        truncated,
+    };
     if let Err(TrySendError::Full(_)) = sender.try_send(record) {
         discarded.fetch_add(1, Ordering::Relaxed);
     }
@@ -256,8 +262,8 @@ pub fn validate_launch_executable(plan: &LaunchPlan) -> Result<PathBuf, ProcessE
     if !plan.runtime.executable.is_absolute() {
         return Err(ProcessError::InvalidExecutable);
     }
-    let path = fs::canonicalize(&plan.runtime.executable)
-        .map_err(|_| ProcessError::InvalidExecutable)?;
+    let path =
+        fs::canonicalize(&plan.runtime.executable).map_err(|_| ProcessError::InvalidExecutable)?;
     if !path.is_file() {
         return Err(ProcessError::InvalidExecutable);
     }
