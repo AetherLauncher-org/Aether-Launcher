@@ -23,7 +23,8 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let n = NEXT.fetch_add(1, Ordering::Relaxed);
-        let base = std::env::temp_dir().join(format!("aether-coordinator-{}-{n}", std::process::id()));
+        let base =
+            std::env::temp_dir().join(format!("aether-coordinator-{}-{n}", std::process::id()));
         let game = base.join("minecraft");
         let id = InstanceId::new();
         let instance_dir = base.join("instances").join(id.to_string());
@@ -46,7 +47,12 @@ impl Fixture {
             game.join("versions/fabric/fabric.json"),
             r#"{"id":"fabric","inheritsFrom":"1.21.1","mainClass":"net.fabricmc.loader.impl.launch.knot.KnotClient"}"#,
         ).unwrap();
-        let fixture = Self { base, game, id, instance_dir };
+        let fixture = Self {
+            base,
+            game,
+            id,
+            instance_dir,
+        };
         fixture.write_instance("fabric", InstanceState::Ready);
         fixture
     }
@@ -59,7 +65,11 @@ impl Fixture {
             root: self.instance_dir.clone(),
             state,
         };
-        fs::write(self.instance_dir.join("instance.json"), encode_instance(&instance).unwrap()).unwrap();
+        fs::write(
+            self.instance_dir.join("instance.json"),
+            encode_instance(&instance).unwrap(),
+        )
+        .unwrap();
     }
 
     fn coordinator(&self) -> InstanceLaunchCoordinator {
@@ -88,7 +98,8 @@ impl Fixture {
     }
 
     fn prepare(&self) -> Result<crate::LaunchPlan, CoordinatorError> {
-        self.coordinator().prepare(self.id, 4096, &self.runtimes(), &Self::env(), &Self::vars())
+        self.coordinator()
+            .prepare(self.id, 4096, &self.runtimes(), &Self::env(), &Self::vars())
     }
 }
 
@@ -105,10 +116,27 @@ fn prepares_fabric_instance_using_parent_client_jar() {
     assert_eq!(prepared.runtime.major_version, 21);
     assert_eq!(prepared.working_directory, f.instance_dir);
     assert_eq!(prepared.arguments[0], "-Xmx4096m");
-    assert!(prepared.arguments.contains(&"net.fabricmc.loader.impl.launch.knot.KnotClient".to_owned()));
-    assert!(prepared.arguments.iter().any(|value| value.contains("1.21.1.jar")));
-    assert!(prepared.arguments.iter().all(|value| !value.contains("fabric.jar")));
-    assert_eq!(&prepared.arguments[prepared.arguments.len() - 2..], ["--username", "Alex"]);
+    assert!(
+        prepared
+            .arguments
+            .contains(&"net.fabricmc.loader.impl.launch.knot.KnotClient".to_owned())
+    );
+    assert!(
+        prepared
+            .arguments
+            .iter()
+            .any(|value| value.contains("1.21.1.jar"))
+    );
+    assert!(
+        prepared
+            .arguments
+            .iter()
+            .all(|value| !value.contains("fabric.jar"))
+    );
+    assert_eq!(
+        &prepared.arguments[prepared.arguments.len() - 2..],
+        ["--username", "Alex"]
+    );
 }
 
 #[test]
@@ -124,11 +152,13 @@ fn fails_closed_for_tampered_or_missing_client_artifact() {
 fn missing_java_or_auth_data_produces_explicit_errors() {
     let f = Fixture::new();
     assert!(matches!(
-        f.coordinator().prepare(f.id, 4096, &[], &Fixture::env(), &Fixture::vars()),
+        f.coordinator()
+            .prepare(f.id, 4096, &[], &Fixture::env(), &Fixture::vars()),
         Err(CoordinatorError::Java(_))
     ));
     assert!(matches!(
-        f.coordinator().prepare(f.id, 4096, &f.runtimes(), &Fixture::env(), &BTreeMap::new()),
+        f.coordinator()
+            .prepare(f.id, 4096, &f.runtimes(), &Fixture::env(), &BTreeMap::new()),
         Err(CoordinatorError::Build(_))
     ));
 }
@@ -137,9 +167,18 @@ fn missing_java_or_auth_data_produces_explicit_errors() {
 fn rejects_unready_or_unknown_instances() {
     let f = Fixture::new();
     f.write_instance("fabric", InstanceState::Incomplete);
-    assert!(matches!(f.prepare(), Err(CoordinatorError::InstanceNotReady)));
     assert!(matches!(
-        f.coordinator().prepare(InstanceId::new(), 4096, &f.runtimes(), &Fixture::env(), &Fixture::vars()),
+        f.prepare(),
+        Err(CoordinatorError::InstanceNotReady)
+    ));
+    assert!(matches!(
+        f.coordinator().prepare(
+            InstanceId::new(),
+            4096,
+            &f.runtimes(),
+            &Fixture::env(),
+            &Fixture::vars()
+        ),
         Err(CoordinatorError::Instance(_))
     ));
 }
@@ -152,24 +191,40 @@ fn missing_version_or_absent_client_metadata_does_not_guess_jar() {
     f.write_instance("fabric", InstanceState::Ready);
     fs::write(f.game.join("versions/1.21.1/1.21.1.json"),
         r#"{"id":"1.21.1","mainClass":"Main","javaVersion":{"component":"delta","majorVersion":21},"arguments":{}}"#).unwrap();
-    assert!(matches!(f.prepare(), Err(CoordinatorError::MissingClientMetadata)));
+    assert!(matches!(
+        f.prepare(),
+        Err(CoordinatorError::MissingClientMetadata)
+    ));
 }
 
 #[test]
 fn does_not_launch_versions_with_unprepared_native_or_asset_data() {
     let f = Fixture::new();
     let child = f.game.join("versions/fabric/fabric.json");
-    fs::write(&child, format!(r#"{{
+    fs::write(
+        &child,
+        format!(
+            r#"{{
         "id":"fabric","inheritsFrom":"1.21.1",
         "libraries":[{{"name":"org.lwjgl:lwjgl:3:natives-windows",
             "downloads":{{"artifact":{{"path":"native.jar","sha1":"{SHA_ABC}","size":3,
             "url":"https://example.invalid/native"}}}}}}]
-    }}"#)).unwrap();
-    assert!(matches!(f.prepare(), Err(CoordinatorError::NativesNotReady)));
-    fs::write(&child, r#"{
+    }}"#
+        ),
+    )
+    .unwrap();
+    assert!(matches!(
+        f.prepare(),
+        Err(CoordinatorError::NativesNotReady)
+    ));
+    fs::write(
+        &child,
+        r#"{
         "id":"fabric","inheritsFrom":"1.21.1",
         "assetIndex":{"id":"17","sha1":"a9993e364706816aba3e25717850c26c9cd0d89d",
         "size":3,"url":"https://example.invalid/assets"}
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
     assert!(matches!(f.prepare(), Err(CoordinatorError::AssetsNotReady)));
 }
