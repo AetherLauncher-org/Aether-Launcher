@@ -119,7 +119,12 @@ fn an_allowed_save_refuses_unprotected_refresh_tokens() {
         store.save(&account),
         Err(StoreError::InsecurePersistence)
     ));
-    assert!(!root.path().join(format!("{}.json", account.account_id.as_uuid())).exists());
+    assert!(
+        !root
+            .path()
+            .join(format!("{}.json", account.account_id.as_uuid()))
+            .exists()
+    );
 }
 
 #[test]
@@ -132,11 +137,22 @@ fn existing_plaintext_refresh_token_documents_are_refused() {
         account.account_id.as_uuid(),
         SECRET
     );
-    fs::write(root.path().join(format!("{}.json", account.account_id.as_uuid())), raw).unwrap();
+    fs::write(
+        root.path()
+            .join(format!("{}.json", account.account_id.as_uuid())),
+        raw,
+    )
+    .unwrap();
 
-    for policy in [RefreshTokenPersistence::Deny, RefreshTokenPersistence::Allow] {
+    for policy in [
+        RefreshTokenPersistence::Deny,
+        RefreshTokenPersistence::Allow,
+    ] {
         let store = root.store().with_refresh_persistence(policy);
-        assert!(matches!(store.load(account.account_id), Err(StoreError::UntrustedContent)));
+        assert!(matches!(
+            store.load(account.account_id),
+            Err(StoreError::UntrustedContent)
+        ));
     }
 }
 
@@ -147,7 +163,13 @@ fn metadata_document_never_contains_any_token() {
     root.store().save(&account).expect("metadata is permitted");
     let document = root.raw_json(account.account_id);
 
-    for key in ["access_token", "xsts_token", "minecraft_token", "xbl_token", "refresh_token"] {
+    for key in [
+        "access_token",
+        "xsts_token",
+        "minecraft_token",
+        "xbl_token",
+        "refresh_token",
+    ] {
         assert!(!document.contains(key), "document must omit {key}");
     }
     for key in ["account_id", "display_name", "kind"] {
