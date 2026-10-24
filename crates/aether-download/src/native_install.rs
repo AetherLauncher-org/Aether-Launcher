@@ -13,7 +13,7 @@ use zip::ZipArchive;
 
 use crate::DownloadArtifact;
 use crate::native_zip::{
-    NativeZipEntry, NativeZipError, MAX_NATIVE_UNCOMPRESSED_BYTES, preflight_native_zip,
+    MAX_NATIVE_UNCOMPRESSED_BYTES, NativeZipEntry, NativeZipError, preflight_native_zip,
 };
 use crate::verify::{ArtifactVerificationError, verify_local_artifact};
 
@@ -69,12 +69,16 @@ pub fn install_native_archives(
     archives: &[NativeInstallArchive<'_>],
 ) -> Result<PathBuf, NativeInstallError> {
     let game_root = fs::canonicalize(game_directory)?;
-    let parent = natives_directory.parent().ok_or(NativeInstallError::UnsafeDestination)?;
+    let parent = natives_directory
+        .parent()
+        .ok_or(NativeInstallError::UnsafeDestination)?;
     let parent = fs::canonicalize(parent)?;
     if !parent.starts_with(&game_root) {
         return Err(NativeInstallError::UnsafeDestination);
     }
-    let name = natives_directory.file_name().ok_or(NativeInstallError::UnsafeDestination)?;
+    let name = natives_directory
+        .file_name()
+        .ok_or(NativeInstallError::UnsafeDestination)?;
     if !crate::is_safe_relative_path(Path::new(name)) {
         return Err(NativeInstallError::UnsafeDestination);
     }
@@ -112,7 +116,9 @@ pub fn install_native_archives(
                 continue;
             }
             let size = entry.uncompressed_size;
-            budget = budget.checked_add(size).ok_or(NativeInstallError::TooLarge)?;
+            budget = budget
+                .checked_add(size)
+                .ok_or(NativeInstallError::TooLarge)?;
             if budget > MAX_NATIVE_UNCOMPRESSED_BYTES {
                 return Err(NativeInstallError::TooLarge);
             }
@@ -149,7 +155,10 @@ pub fn install_native_archives(
                 fs::create_dir_all(parent)?;
             }
             let mut file = zip.by_index(index)?;
-            let mut dest = OpenOptions::new().write(true).create_new(true).open(&output)?;
+            let mut dest = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&output)?;
             // Enforce the declared length during streaming as well as preflight.
             let copied = io::copy(&mut file.by_ref().take(expected + 1), &mut dest)?;
             dest.flush()?;
