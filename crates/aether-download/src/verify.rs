@@ -18,7 +18,11 @@ pub enum ArtifactVerificationError {
     #[error("artifact is not a regular file: {0:?}")]
     NotAFile(PathBuf),
     #[error("file size mismatch at {path:?}: expected {expected}, received {actual}")]
-    SizeMismatch { path: PathBuf, expected: u64, actual: u64 },
+    SizeMismatch {
+        path: PathBuf,
+        expected: u64,
+        actual: u64,
+    },
     #[error("file SHA-1 mismatch: {0:?}")]
     HashMismatch(PathBuf),
     #[error("I/O error at {path:?}: {source}")]
@@ -36,17 +40,21 @@ pub fn verify_local_artifact(
     artifact: &DownloadArtifact,
 ) -> Result<PathBuf, ArtifactVerificationError> {
     if !is_safe_relative_path(&artifact.destination) {
-        return Err(ArtifactVerificationError::UnsafePath(artifact.destination.clone()));
+        return Err(ArtifactVerificationError::UnsafePath(
+            artifact.destination.clone(),
+        ));
     }
-    let game_root = fs::canonicalize(game_directory).map_err(|source| ArtifactVerificationError::Io {
-        path: game_directory.to_owned(),
-        source,
-    })?;
+    let game_root =
+        fs::canonicalize(game_directory).map_err(|source| ArtifactVerificationError::Io {
+            path: game_directory.to_owned(),
+            source,
+        })?;
     let file_path = game_root.join(&artifact.destination);
-    let file_path = fs::canonicalize(&file_path).map_err(|source| ArtifactVerificationError::Io {
-        path: file_path,
-        source,
-    })?;
+    let file_path =
+        fs::canonicalize(&file_path).map_err(|source| ArtifactVerificationError::Io {
+            path: file_path,
+            source,
+        })?;
     if !file_path.starts_with(&game_root) {
         return Err(ArtifactVerificationError::EscapedPath(file_path));
     }
@@ -71,10 +79,12 @@ pub fn verify_local_artifact(
     let mut digest = Sha1::new();
     let mut buffer = [0_u8; 64 * 1024];
     loop {
-        let read = input.read(&mut buffer).map_err(|source| ArtifactVerificationError::Io {
-            path: file_path.clone(),
-            source,
-        })?;
+        let read = input
+            .read(&mut buffer)
+            .map_err(|source| ArtifactVerificationError::Io {
+                path: file_path.clone(),
+                source,
+            })?;
         if read == 0 {
             break;
         }
