@@ -140,12 +140,7 @@ impl InstanceLaunchCoordinator {
         let resolved =
             load_resolved_version_manifest(&self.game_directory, instance.version.as_str())?;
         if let Some(index) = &resolved.manifest.asset_index {
-            verify_installed_assets(
-                &self.game_directory,
-                &index.id,
-                &index.sha1,
-                index.size,
-            )?;
+            verify_installed_assets(&self.game_directory, &index.id, &index.sha1, index.size)?;
         }
         let runtime = select_java_runtime(&resolved.manifest, runtimes)?;
         let source = resolved
