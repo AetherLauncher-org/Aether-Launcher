@@ -1,3 +1,6 @@
+pub mod process;
+pub use process::{GameProcess, LogRecord, LogStream, ProcessError};
+
 pub mod native;
 pub use native::{NativeArchive, NativePlan, NativePlanError, build_native_plan};
 
