@@ -269,8 +269,14 @@ fn omits_native_classifier_jars_from_classpath_after_preparation() {
         &runtime(),
         &environment(),
         &f.options,
-    ).unwrap();
-    assert!(!plan.arguments.iter().any(|arg| arg.contains("natives-windows")));
+    )
+    .unwrap();
+    assert!(
+        !plan
+            .arguments
+            .iter()
+            .any(|arg| arg.contains("natives-windows"))
+    );
 }
 
 #[cfg(unix)]
