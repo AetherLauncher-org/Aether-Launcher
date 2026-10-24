@@ -63,15 +63,15 @@ struct RegisteredProcess {
 
 impl RegisteredProcess {
     fn poll(&mut self) -> Result<(), RegistryError> {
-        if self.status.state == InstanceRunState::Running {
-            if let Some(exit) = self.process.try_wait()? {
-                self.status.state = if exit.success() {
-                    InstanceRunState::Exited
-                } else {
-                    InstanceRunState::Failed
-                };
-                self.status.exit_code = exit.code();
-            }
+        if self.status.state == InstanceRunState::Running
+            && let Some(exit) = self.process.try_wait()?
+        {
+            self.status.state = if exit.success() {
+                InstanceRunState::Exited
+            } else {
+                InstanceRunState::Failed
+            };
+            self.status.exit_code = exit.code();
         }
         self.status.discarded_logs = self.process.discarded_logs();
         Ok(())
