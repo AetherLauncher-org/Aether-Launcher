@@ -89,6 +89,7 @@ name = "aether-launch"
 version = "0.1.0"
 dependencies = [
  "aether-core",
+ "aether-storage",
  "aether-download",
  "aether-manifest",
  "aether-runtime",
