@@ -108,65 +108,50 @@ fn a_denied_save_writes_no_clear_text_token() {
 }
 
 #[test]
-fn an_allowed_save_round_trips_the_refresh_token() {
+fn an_allowed_save_refuses_unprotected_refresh_tokens() {
     let root = TempRoot::new();
     let store = root
         .store()
         .with_refresh_persistence(RefreshTokenPersistence::Allow);
-    let account = microsoft_account("Alex")
-        .with_refresh(RefreshToken::new(SECRET))
-        .with_xuid(Some("2535412345678901".to_owned()));
+    let account = microsoft_account("Alex").with_refresh(RefreshToken::new(SECRET));
 
-    store.save(&account).expect("the save should succeed");
-    assert!(root.raw_json(account.account_id).contains(SECRET));
-
-    let loaded = store
-        .load(account.account_id)
-        .expect("the load should succeed")
-        .expect("the account should be present");
-    assert_eq!(loaded, account);
-    let refresh = loaded.refresh.expect("the token should be present");
-    assert_eq!(refresh.expose(), SECRET);
+    assert!(matches!(
+        store.save(&account),
+        Err(StoreError::InsecurePersistence)
+    ));
+    assert!(!root.path().join(format!("{}.json", account.account_id.as_uuid())).exists());
 }
 
 #[test]
-fn a_denying_store_drops_a_token_written_under_allow() {
+fn existing_plaintext_refresh_token_documents_are_refused() {
     let root = TempRoot::new();
-    let account = microsoft_account("Steve").with_refresh(RefreshToken::new(SECRET));
+    let account = microsoft_account("Steve");
+    root.store().save(&account).unwrap();
+    let raw = format!(
+        r#"{{"account_id":"{}","display_name":"Steve","kind":"microsoft","refresh_token":"{}"}}"#,
+        account.account_id.as_uuid(),
+        SECRET
+    );
+    fs::write(root.path().join(format!("{}.json", account.account_id.as_uuid())), raw).unwrap();
 
-    root.store()
-        .with_refresh_persistence(RefreshTokenPersistence::Allow)
-        .save(&account)
-        .expect("the save should succeed");
-
-    let loaded = root
-        .store()
-        .load(account.account_id)
-        .expect("the load should succeed")
-        .expect("the account should be present");
-    assert_eq!(loaded.refresh, None);
-    assert_eq!(loaded.display_name, account.display_name);
+    for policy in [RefreshTokenPersistence::Deny, RefreshTokenPersistence::Allow] {
+        let store = root.store().with_refresh_persistence(policy);
+        assert!(matches!(store.load(account.account_id), Err(StoreError::UntrustedContent)));
+    }
 }
 
 #[test]
-fn the_document_never_contains_a_never_persisted_token_key() {
+fn metadata_document_never_contains_any_token() {
     let root = TempRoot::new();
-    let store = root
-        .store()
-        .with_refresh_persistence(RefreshTokenPersistence::Allow);
     let account = microsoft_account("Steve").with_refresh(RefreshToken::new(SECRET));
-
-    store.save(&account).expect("the save should succeed");
+    root.store().save(&account).expect("metadata is permitted");
     let document = root.raw_json(account.account_id);
 
-    for key in ["access_token", "xsts_token", "minecraft_token", "xbl_token"] {
-        assert!(!document.contains(key), "the document must not carry {key}");
+    for key in ["access_token", "xsts_token", "minecraft_token", "xbl_token", "refresh_token"] {
+        assert!(!document.contains(key), "document must omit {key}");
     }
-    for field in ["account_id", "display_name", "kind", "refresh_token"] {
-        assert!(
-            document.contains(field),
-            "the document should carry {field}"
-        );
+    for key in ["account_id", "display_name", "kind"] {
+        assert!(document.contains(key), "document must contain {key}");
     }
 }
 

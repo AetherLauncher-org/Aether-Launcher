@@ -1,61 +1,14 @@
-//! Credential persistence and the policy that decides what may reach the disk.
+//! Credential metadata persistence. Tokens must be protected by a platform vault.
 //!
-//! # Security boundary
+//! This file-backed implementation stores account IDs, display names, kinds and
+//! XUIDs only. All refresh/access/Xbox/Minecraft tokens remain in memory. The
+//! legacy `RefreshTokenPersistence::Allow` option is retained for API compatibility,
+//! but attempting to persist a refresh token is refused, not written in plaintext.
+//! Plaintext tokens in pre-existing credential files are also refused on load.
+//! Use an OS-protected credential store before implementing remember-me behavior.
 //!
-//! This module is the only place in the crate that writes credentials, and it writes
-//! as little as it can:
-//!
-//! * **Nothing is persisted by default.** [`RefreshTokenPersistence`] starts out as
-//!   [`RefreshTokenPersistence::Deny`], which means every save strips the refresh token
-//!   and leaves only account metadata (id, display name, kind, XUID). An OAuth 2.0
-//!   refresh token is written in clear text only when the caller explicitly opts in with
-//!   [`RefreshTokenPersistence::Allow`]. Opting in is a promise about the user's intent,
-//!   not a technical feature: the constructor cannot verify it.
-//! * **Only refresh tokens can ever reach the disk.** The wire format understood by
-//!   [`FileCredentialStore`] has no representation for an Xbox Live (XBL) token, an XSTS
-//!   token or a Minecraft access token. They exist in memory during a sign-in and are
-//!   re-derived from the refresh token on the next launch. A document that carries one of
-//!   those fields is rejected with [`StoreError::UntrustedContent`] rather than read, so
-//!   a file planted by another program can never smuggle a token into the process
-//!   through this path.
-//! * **The platform provides no file protection here.** On Windows there is no POSIX
-//!   `0600` mode to apply, and tightening the ACL with `icacls` is not this crate's job.
-//!   A persisted refresh token is therefore readable by any process running as the same
-//!   user — and, depending on the directory the caller picks, potentially by other
-//!   users of the machine. This is a **known limitation**. A caller that needs stronger
-//!   guarantees has to harden the folder itself (ACL inheritance, a user-only profile
-//!   directory) or replace this store with an implementation backed by the system
-//!   credential manager; the [`CredentialStore`] trait is the seam for exactly that. The
-//!   Tauri layer owns that decision — this module deliberately offers no encryption.
-//! * **A leaked refresh token is long lived.** Whoever reads one in clear text can
-//!   impersonate the account and minecraft profile until the user revokes access in the
-//!   Microsoft account security centre; there is no server-side binding to this machine.
-//! * **Writes are atomic, not encrypted.** A save encodes to a temporary file in the same
-//!   directory, flushes it to stable storage, and then renames it over the target, so a
-//!   crash or a concurrent reader sees either the old document or the new one and never a
-//!   half-written file. Atomicity buys integrity; it buys no confidentiality.
-//! * **Errors carry no secrets and no paths.** Every [`StoreError`] variant has a fixed
-//!   message. The operating system error is attached as a `#[source]` for diagnostics,
-//!   but the path, the account id and the document contents are never formatted into the
-//!   message or the `Display` of the error, so a log line cannot reveal where the store
-//!   lives or what it holds.
-//!
-//! # What a stored document looks like
-//!
-//! ```json
-//! {
-//!   "account_id": "5f0c…",
-//!   "display_name": "Steve",
-//!   "kind": "microsoft",
-//!   "xuid": "2535…",
-//!   "refresh_token": "M.R3_BAY…"
-//! }
-//! ```
-//!
-//! `refresh_token` only appears under [`RefreshTokenPersistence::Allow`] and an absent or
-//! empty `xuid` is omitted. Unknown keys are ignored on read, so the format can grow
-//! without breaking older builds; keys that look like a token this store never persists
-//! are not "unknown", they are a refusal.
+//! Writes of metadata are atomic, not encrypted. Error messages never include
+//! account secrets or their filesystem paths.
 
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -69,20 +22,17 @@ use uuid::Uuid;
 use crate::token::RefreshToken;
 use crate::{AccountId, AccountKind};
 
-/// Whether a refresh token may be written to the disk.
-///
-/// The default is [`RefreshTokenPersistence::Deny`]: a store that was never told
-/// otherwise keeps nothing but account metadata. Choosing
-/// [`RefreshTokenPersistence::Allow`] is an explicit statement that the user agreed to
-/// keep a long-lived credential in clear text on this machine.
+/// Persistence intent. This file store never writes plaintext credentials.
+/// Until a platform credential vault is available, `Allow` fails closed for
+/// accounts carrying refresh tokens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RefreshTokenPersistence {
     /// No token is ever written. Saving strips the refresh token and keeps the account
     /// metadata only.
     #[default]
     Deny,
-    /// The refresh token may be written in clear text. The caller is responsible for
-    /// having obtained the user's consent.
+    /// Reserved for a future protected credential store. File-backed token
+    /// persistence with this policy returns `StoreError::InsecurePersistence`.
     Allow,
 }
 
@@ -102,8 +52,7 @@ pub struct StoredCredential {
     pub account_id: AccountId,
     pub display_name: String,
     pub kind: AccountKind,
-    /// Only possibly present when the store persists under
-    /// [`RefreshTokenPersistence::Allow`].
+    /// In-memory refresh token; never persisted by this file store.
     pub refresh: Option<RefreshToken>,
     pub xuid: Option<String>,
 }
@@ -179,11 +128,7 @@ pub trait CredentialStore {
 ///
 /// # Security
 ///
-/// See the [module documentation](self) for the full boundary. In short: the directory
-/// inherits whatever protection its parent gives it — on Windows nothing is tightened
-/// here — so a store created with [`RefreshTokenPersistence::Allow`] puts a clear-text
-/// refresh token wherever the caller points it, readable by every process that can read
-/// that directory.
+/// Only metadata is written; an opt-in token save fails closed without an OS vault.
 pub struct FileCredentialStore {
     root: PathBuf,
     persistence: RefreshTokenPersistence,
@@ -288,10 +233,16 @@ impl CredentialStore for FileCredentialStore {
             return Err(StoreError::UntrustedContent);
         }
 
+        if wire.refresh_token.is_some() {
+            return Err(StoreError::UntrustedContent);
+        }
         Ok(Some(wire.into_credential(self.persistence)))
     }
 
     fn save(&self, credential: &StoredCredential) -> Result<(), StoreError> {
+        if self.persistence == RefreshTokenPersistence::Allow && credential.refresh.is_some() {
+            return Err(StoreError::InsecurePersistence);
+        }
         fs::create_dir_all(&self.root).map_err(StoreError::Write)?;
 
         let wire = WireCredential::from_credential(credential, self.persistence);
@@ -358,57 +309,31 @@ struct WireCredential {
     kind: AccountKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     xuid: Option<String>,
-    /// Clear-text refresh token. Present only when the store allows it; omitted
-    /// otherwise so the field does not even advertise that a token once existed.
+    /// Legacy field: accepted by the decoder only to reject unsafe old documents.
+    /// New metadata files always omit it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     refresh_token: Option<String>,
 }
 
 impl WireCredential {
-    /// Applies the persistence policy: under `Deny` the secret never enters the wire
-    /// struct in the first place, so no later step can encode it.
-    fn from_credential(
-        credential: &StoredCredential,
-        persistence: RefreshTokenPersistence,
-    ) -> Self {
-        let refresh_token = match persistence {
-            RefreshTokenPersistence::Allow => credential
-                .refresh
-                .as_ref()
-                .map(|refresh| refresh.expose().to_owned()),
-            RefreshTokenPersistence::Deny => None,
-        };
-        // An empty secret is not a secret; omit it instead of storing an empty string that
-        // `RefreshToken::parse` would later reject.
-        let refresh_token = refresh_token.filter(|token| !token.is_empty());
-
+    /// File-backed persistence intentionally never serializes tokens.
+    fn from_credential(credential: &StoredCredential, _policy: RefreshTokenPersistence) -> Self {
         Self {
             account_id: credential.account_id,
             display_name: credential.display_name.clone(),
             kind: credential.kind.clone(),
             xuid: credential.xuid.clone().filter(|xuid| !xuid.is_empty()),
-            refresh_token,
+            refresh_token: None,
         }
     }
 
-    /// Converts back, re-applying the policy so a document written under `Allow` and then
-    /// read by a denying store does not resurrect a token the caller no longer wants in
-    /// memory.
-    fn into_credential(self, persistence: RefreshTokenPersistence) -> StoredCredential {
-        let refresh = match persistence {
-            RefreshTokenPersistence::Allow => self
-                .refresh_token
-                // A malformed value (empty) drops the token instead of failing the load;
-                // the account is still usable, the user just signs in again.
-                .and_then(|token| RefreshToken::parse(token).ok()),
-            RefreshTokenPersistence::Deny => None,
-        };
-
+    /// File-backed decoding never rehydrates a long-lived token.
+    fn into_credential(self, _policy: RefreshTokenPersistence) -> StoredCredential {
         StoredCredential {
             account_id: self.account_id,
             display_name: self.display_name,
             kind: self.kind,
-            refresh,
+            refresh: None,
             xuid: self.xuid,
         }
     }
@@ -514,6 +439,8 @@ pub enum StoreError {
     Encode(#[source] serde_json::Error),
     #[error("the stored credential contains a token type this store never persists")]
     UntrustedContent,
+    #[error("plaintext refresh token persistence requires an OS credential vault")]
+    InsecurePersistence,
 }
 
 #[cfg(test)]
