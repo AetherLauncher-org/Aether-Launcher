@@ -68,9 +68,7 @@ pub fn verify_installed_assets(
     index_sha1: &str,
     index_size: u64,
 ) -> Result<VerifiedAssets, AssetError> {
-    if !is_safe_relative_path(Path::new(index_id))
-        || index_id.contains(['/', '\\'])
-    {
+    if !is_safe_relative_path(Path::new(index_id)) || index_id.contains(['/', '\\']) {
         return Err(AssetError::UnsafeIndexId);
     }
     if index_size > MAX_INDEX_BYTES {
@@ -115,7 +113,9 @@ pub fn verify_installed_assets(
         if object.size > MAX_OBJECT_BYTES {
             return Err(AssetError::ObjectTooLarge);
         }
-        total = total.checked_add(object.size).ok_or(AssetError::TotalSizeOverflow)?;
+        total = total
+            .checked_add(object.size)
+            .ok_or(AssetError::TotalSizeOverflow)?;
         if let Some(existing) = distinct.insert(object.hash.to_ascii_lowercase(), object.size)
             && existing != object.size
         {
@@ -138,7 +138,9 @@ pub fn verify_installed_assets(
             }],
         };
         verify_local_artifact(game_directory, &object_artifact)?;
-        bytes_verified = bytes_verified.checked_add(*size).ok_or(AssetError::TotalSizeOverflow)?;
+        bytes_verified = bytes_verified
+            .checked_add(*size)
+            .ok_or(AssetError::TotalSizeOverflow)?;
     }
     Ok(VerifiedAssets {
         index_file,
