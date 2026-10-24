@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use aether_core::{InstanceId, InstanceState};
+use aether_download::assets::{AssetError, verify_installed_assets};
 use aether_download::verify::{ArtifactVerificationError, verify_local_artifact};
 use aether_download::{ArtifactSource, DownloadArtifact};
 use aether_manifest::rules::Environment;
@@ -30,8 +31,8 @@ pub enum CoordinatorError {
     MissingClientMetadata,
     #[error("natives are required but not yet prepared by the integrated launcher")]
     NativesNotReady,
-    #[error("asset index and assets must be verified before launching this version")]
-    AssetsNotReady,
+    #[error(transparent)]
+    Asset(#[from] AssetError),
     #[error(transparent)]
     Instance(#[from] InstanceLoadError),
     #[error(transparent)]
@@ -99,8 +100,13 @@ impl InstanceLaunchCoordinator {
         if !native_plan.archives.is_empty() {
             return Err(CoordinatorError::NativesNotReady);
         }
-        if resolved.manifest.asset_index.is_some() {
-            return Err(CoordinatorError::AssetsNotReady);
+        if let Some(index) = &resolved.manifest.asset_index {
+            verify_installed_assets(
+                &self.game_directory,
+                &index.id,
+                &index.sha1,
+                index.size,
+            )?;
         }
         let runtime = select_java_runtime(&resolved.manifest, runtimes)?;
         let source = resolved
