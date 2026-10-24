@@ -25,7 +25,11 @@ pub struct NativePlan {
 impl NativePlan {
     pub fn download_plan(&self) -> DownloadPlan {
         DownloadPlan {
-            artifacts: self.archives.iter().map(|native| native.artifact.clone()).collect(),
+            artifacts: self
+                .archives
+                .iter()
+                .map(|native| native.artifact.clone())
+                .collect(),
         }
     }
 }
@@ -69,17 +73,26 @@ pub fn build_native_plan(
         let Some(classifier) = selected else {
             continue;
         };
-        let metadata = library.downloads.as_ref().and_then(|downloads| {
-            if named == Some(classifier.as_str()) {
-                downloads.artifact.as_ref().or_else(|| downloads.classifiers.get(&classifier))
-            } else {
-                downloads.classifiers.get(&classifier)
-            }
-        }).ok_or_else(|| NativePlanError::MissingMetadata {
-            library: library.name.clone(),
-            classifier: classifier.clone(),
-        })?;
-        let exclusions = library.extract.as_ref()
+        let metadata = library
+            .downloads
+            .as_ref()
+            .and_then(|downloads| {
+                if named == Some(classifier.as_str()) {
+                    downloads
+                        .artifact
+                        .as_ref()
+                        .or_else(|| downloads.classifiers.get(&classifier))
+                } else {
+                    downloads.classifiers.get(&classifier)
+                }
+            })
+            .ok_or_else(|| NativePlanError::MissingMetadata {
+                library: library.name.clone(),
+                classifier: classifier.clone(),
+            })?;
+        let exclusions = library
+            .extract
+            .as_ref()
             .map(|extract| extract.exclude.clone())
             .unwrap_or_default();
         for exclusion in &exclusions {
@@ -115,14 +128,21 @@ fn download_artifact(metadata: &LibraryArtifact) -> Result<DownloadArtifact, Nat
     })
 }
 
-fn expand_native_architecture(template: &str, architecture: &str) -> Result<String, NativePlanError> {
+fn expand_native_architecture(
+    template: &str,
+    architecture: &str,
+) -> Result<String, NativePlanError> {
     if !template.contains("${arch}") {
         return Ok(template.to_owned());
     }
     let bits = match architecture.to_ascii_lowercase().as_str() {
         "x86" | "i386" | "i486" | "i586" | "i686" | "32" => "32",
         "x86_64" | "amd64" | "x64" | "aarch64" | "arm64" | "64" => "64",
-        _ => return Err(NativePlanError::UnsupportedArchitecture(architecture.to_owned())),
+        _ => {
+            return Err(NativePlanError::UnsupportedArchitecture(
+                architecture.to_owned(),
+            ));
+        }
     };
     Ok(template.replace("${arch}", bits))
 }
@@ -143,13 +163,18 @@ fn classifier_applies(classifier: &str, environment: &Environment) -> bool {
     if classifier == platform {
         return true;
     }
-    let Some(suffix) = classifier.strip_prefix(platform).and_then(|value| value.strip_prefix('-')) else {
+    let Some(suffix) = classifier
+        .strip_prefix(platform)
+        .and_then(|value| value.strip_prefix('-'))
+    else {
         return false;
     };
     let architecture = environment.os_arch.to_ascii_lowercase();
     match suffix {
         "32" | "x86" => matches!(architecture.as_str(), "32" | "x86" | "i386" | "i686"),
-        "64" | "x64" | "x86_64" | "amd64" => matches!(architecture.as_str(), "64" | "x64" | "x86_64" | "amd64"),
+        "64" | "x64" | "x86_64" | "amd64" => {
+            matches!(architecture.as_str(), "64" | "x64" | "x86_64" | "amd64")
+        }
         "arm64" | "aarch64" => matches!(architecture.as_str(), "arm64" | "aarch64"),
         _ => false,
     }
