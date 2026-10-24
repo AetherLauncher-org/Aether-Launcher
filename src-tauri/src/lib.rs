@@ -23,7 +23,7 @@ fn application_info() -> ApplicationInfo {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![application_info])
+        .invoke_handler(command_handlers())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -34,7 +34,6 @@ pub fn run() {
 /// branches only conflict on the `generate_handler!` list. Instances are the
 /// first module; as more trusted backends are exposed, their handlers are
 /// chained here.
-#[allow(dead_code)]
 fn command_handlers() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         application_info,
