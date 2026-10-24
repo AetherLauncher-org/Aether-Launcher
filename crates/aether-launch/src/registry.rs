@@ -133,7 +133,10 @@ impl InstanceProcessRegistry {
         &mut self,
         instance_id: InstanceId,
     ) -> Result<InstanceProcessStatus, RegistryError> {
-        let entry = self.entries.get_mut(&instance_id).ok_or(RegistryError::UnknownInstance)?;
+        let entry = self
+            .entries
+            .get_mut(&instance_id)
+            .ok_or(RegistryError::UnknownInstance)?;
         entry.poll()?;
         Ok(entry.status.clone())
     }
@@ -152,11 +155,11 @@ impl InstanceProcessRegistry {
 
     /// Read at most the process's bounded 256-record log buffer.
     /// Records are consumed; repeated calls return only newly arrived lines.
-    pub fn drain_logs(
-        &mut self,
-        instance_id: InstanceId,
-    ) -> Result<Vec<LogRecord>, RegistryError> {
-        let entry = self.entries.get_mut(&instance_id).ok_or(RegistryError::UnknownInstance)?;
+    pub fn drain_logs(&mut self, instance_id: InstanceId) -> Result<Vec<LogRecord>, RegistryError> {
+        let entry = self
+            .entries
+            .get_mut(&instance_id)
+            .ok_or(RegistryError::UnknownInstance)?;
         entry.poll()?;
         Ok(entry.process.drain_logs())
     }
@@ -167,7 +170,10 @@ impl InstanceProcessRegistry {
         &mut self,
         instance_id: InstanceId,
     ) -> Result<InstanceProcessStatus, RegistryError> {
-        let entry = self.entries.get_mut(&instance_id).ok_or(RegistryError::UnknownInstance)?;
+        let entry = self
+            .entries
+            .get_mut(&instance_id)
+            .ok_or(RegistryError::UnknownInstance)?;
         entry.poll()?;
         if entry.status.state == InstanceRunState::Running {
             let exit = entry.process.stop()?;
