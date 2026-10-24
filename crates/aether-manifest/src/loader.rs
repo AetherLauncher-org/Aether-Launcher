@@ -180,10 +180,8 @@ mod tests {
     impl Fixture {
         fn new() -> Self {
             let suffix = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
-            let root = std::env::temp_dir().join(format!(
-                "aether-manifest-{}-{suffix}",
-                std::process::id()
-            ));
+            let root = std::env::temp_dir()
+                .join(format!("aether-manifest-{}-{suffix}", std::process::id()));
             std::fs::create_dir_all(root.join("versions")).unwrap();
             Self(root)
         }
@@ -208,24 +206,33 @@ mod tests {
     #[test]
     fn resolves_three_levels_with_existing_merge_semantics() {
         let f = Fixture::new();
-        f.write("1.21.1", r#"{
+        f.write(
+            "1.21.1",
+            r#"{
             "id":"1.21.1",
             "mainClass":"net.minecraft.client.main.Main",
             "javaVersion":{"component":"java-runtime-delta","majorVersion":21},
             "libraries":[{"name":"org.ow2.asm:asm:9.6"}],
             "arguments":{"game":["--parent"],"jvm":["-cp","parent"]}
-        }"#);
-        f.write("middle", r#"{
+        }"#,
+        );
+        f.write(
+            "middle",
+            r#"{
             "id":"middle","inheritsFrom":"1.21.1",
             "libraries":[{"name":"org.ow2.asm:asm:9.7"}],
             "arguments":{"game":["--middle"]}
-        }"#);
-        f.write("fabric", r#"{
+        }"#,
+        );
+        f.write(
+            "fabric",
+            r#"{
             "id":"fabric","inheritsFrom":"middle",
             "mainClass":"net.fabricmc.loader.impl.launch.knot.KnotClient",
             "libraries":[{"name":"net.fabricmc:fabric-loader:0.16.0"}],
             "arguments":{"game":["--child"],"jvm":["-DFabric=true"]}
-        }"#);
+        }"#,
+        );
 
         let merged = load_version_manifest(f.root(), "fabric").unwrap();
         assert_eq!(merged.id, "fabric");
@@ -235,7 +242,11 @@ mod tests {
             Some("net.fabricmc.loader.impl.launch.knot.KnotClient")
         );
         assert_eq!(merged.java_version.unwrap().major_version, 21);
-        let libraries: Vec<&str> = merged.libraries.iter().map(|lib| lib.name.as_str()).collect();
+        let libraries: Vec<&str> = merged
+            .libraries
+            .iter()
+            .map(|lib| lib.name.as_str())
+            .collect();
         assert_eq!(
             libraries,
             ["net.fabricmc:fabric-loader:0.16.0", "org.ow2.asm:asm:9.7"]
@@ -256,7 +267,10 @@ mod tests {
     fn loads_a_standalone_manifest() {
         let f = Fixture::new();
         f.write("1.20.1", r#"{"id":"1.20.1"}"#);
-        assert_eq!(load_version_manifest(f.root(), "1.20.1").unwrap().id, "1.20.1");
+        assert_eq!(
+            load_version_manifest(f.root(), "1.20.1").unwrap().id,
+            "1.20.1"
+        );
     }
 
     #[test]
@@ -287,7 +301,14 @@ mod tests {
     #[test]
     fn rejects_unsafe_child_and_parent_identifiers() {
         let f = Fixture::new();
-        for id in ["../other", "..", "C:escape", "folder\\other", "CON.json", "bad."] {
+        for id in [
+            "../other",
+            "..",
+            "C:escape",
+            "folder\\other",
+            "CON.json",
+            "bad.",
+        ] {
             assert!(matches!(
                 load_version_manifest(f.root(), id),
                 Err(VersionLoadError::UnsafeVersionId(_))
