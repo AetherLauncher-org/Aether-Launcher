@@ -1,3 +1,4 @@
+import type { JavaRuntimeInfo } from "./java";
 import { invoke } from "@tauri-apps/api/core";
 
 /**
@@ -16,6 +17,7 @@ export type ApplicationInfo = {
 
 type CommandResults = {
   application_info: ApplicationInfo;
+  list_java_runtimes: JavaRuntimeInfo[];
 };
 
 export const defaultApplicationInfo: ApplicationInfo = {
@@ -37,6 +39,11 @@ function call<Name extends keyof CommandResults>(
 
 export function getApplicationInfo(): Promise<ApplicationInfo> {
   return call("application_info");
+}
+
+/** Preserve the Java discovery API used by PR #12. */
+export function listJavaRuntimes(): Promise<JavaRuntimeInfo[]> {
+  return call("list_java_runtimes");
 }
 
 // 带参数的命令封装与错误描述
@@ -63,3 +70,11 @@ export type { JavaRuntimeInfo } from "./java";
 // 微软账户登录
 export { describeLoginStatus, startMicrosoftLogin } from "./accounts";
 export type { MicrosoftLoginStatus } from "./accounts";
+
+// Installed game lifecycle (offline only; no arbitrary executable or paths)
+export {
+  activateInstalledInstance,
+  startInstalledInstance,
+  stopInstalledInstance,
+} from "./launch";
+export type { GameRunStatus } from "./launch";
