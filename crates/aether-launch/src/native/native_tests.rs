@@ -29,7 +29,7 @@ fn selects_legacy_native_classifier_by_windows_architecture() {
                 "natives-windows-64":{{"path":"tv/twitch/platform-64.jar","sha1":"{SHA}","size":60,"url":"https://example.invalid/64"}}
             }}}}
         }}]
-    }}"#).replace("${", "${");
+    }}"#);
     let manifest = parse_version_manifest(&json).unwrap();
 
     let x64 = build_native_plan(&manifest, &environment("windows", "x86_64")).unwrap();
@@ -158,7 +158,7 @@ fn unknown_architecture_does_not_guess_a_legacy_classifier() {
     let manifest = parse_version_manifest(r#"{
         "id":"v","libraries":[{"name":"a:b:1",
         "natives":{"windows":"natives-windows-${arch}"}}]
-    }"#.replace("${", "${").as_str()).unwrap();
+    }"#).unwrap();
     assert_eq!(
         build_native_plan(&manifest, &environment("windows", "unknown")),
         Err(NativePlanError::UnsupportedArchitecture("unknown".to_owned()))
