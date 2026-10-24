@@ -105,7 +105,12 @@ fn builds_ordered_classpath_and_arguments_for_fabric() {
     )
     .unwrap();
 
-    let cp = std::env::join_paths([first, second, f.options.client_jar.clone()]).unwrap();
+    let cp = std::env::join_paths([
+        std::fs::canonicalize(first).unwrap(),
+        std::fs::canonicalize(second).unwrap(),
+        f.options.client_jar.clone(),
+    ])
+    .unwrap();
     assert_eq!(plan.arguments[0], "-Xmx4096m");
     assert_eq!(
         plan.arguments[1],
