@@ -203,11 +203,7 @@ fn spawn_reader<T: Read + Send + 'static>(
         let mut line = Vec::new();
         let mut truncated = false;
 
-        loop {
-            let chunk = match input.fill_buf() {
-                Ok(value) => value,
-                Err(_) => break,
-            };
+        while let Ok(chunk) = input.fill_buf() {
             if chunk.is_empty() {
                 break;
             }
