@@ -45,6 +45,13 @@ pub enum VersionLoadError {
     InheritanceTooDeep,
 }
 
+/// A fully resolved version and the source version of its client download.
+#[derive(Debug, Clone)]
+pub struct ResolvedVersionManifest {
+    pub manifest: VersionManifest,
+    pub client_jar_version: Option<String>,
+}
+
 /// Read `<game_directory>/versions/<id>/<id>.json` and resolve all local parents.
 ///
 /// Parent manifests are resolved before `merge_with_parent`. The resulting
@@ -57,14 +64,21 @@ pub fn load_version_manifest(
     game_directory: &Path,
     version_id: &str,
 ) -> Result<VersionManifest, VersionLoadError> {
-    validate_version_id(version_id)?;
+    Ok(load_resolved_version_manifest(game_directory, version_id)?.manifest)
+}
 
+/// Also preserve the origin of downloads.client, since Fabric/Forge may
+/// inherit the actual client JAR from a parent version.
+pub fn load_resolved_version_manifest(
+    game_directory: &Path,
+    version_id: &str,
+) -> Result<ResolvedVersionManifest, VersionLoadError> {
+    validate_version_id(version_id)?;
     let versions = game_directory.join("versions");
     let root = fs::canonicalize(&versions).map_err(|source| VersionLoadError::Io {
         path: versions,
         source,
     })?;
-
     resolve_version(&root, version_id, &mut Vec::new())
 }
 
@@ -72,7 +86,7 @@ fn resolve_version(
     root: &Path,
     id: &str,
     chain: &mut Vec<String>,
-) -> Result<VersionManifest, VersionLoadError> {
+) -> Result<ResolvedVersionManifest, VersionLoadError> {
     validate_version_id(id)?;
     if chain.iter().any(|seen| seen == id) {
         let mut cycle = chain.clone();
@@ -93,7 +107,7 @@ fn resolve_entry(
     root: &Path,
     id: &str,
     chain: &mut Vec<String>,
-) -> Result<VersionManifest, VersionLoadError> {
+) -> Result<ResolvedVersionManifest, VersionLoadError> {
     let path = root.join(id).join(format!("{id}.json"));
     let canonical = fs::canonicalize(&path).map_err(|source| VersionLoadError::Io {
         path: path.clone(),
@@ -133,12 +147,32 @@ fn resolve_entry(
         });
     }
 
+    let local_has_client = manifest
+        .downloads
+        .as_ref()
+        .and_then(|downloads| downloads.client.as_ref())
+        .is_some();
     match manifest.inherits_from.as_deref() {
         Some(parent_id) => {
             let parent = resolve_version(root, parent_id, chain)?;
-            Ok(manifest.merge_with_parent(&parent))
+            let merged = manifest.merge_with_parent(&parent.manifest);
+            let client_jar_version = if local_has_client {
+                Some(id.to_owned())
+            } else if manifest.downloads.is_some() {
+                // A child downloads object replaces the parent's object.
+                None
+            } else {
+                parent.client_jar_version
+            };
+            Ok(ResolvedVersionManifest {
+                manifest: merged,
+                client_jar_version,
+            })
         }
-        None => Ok(manifest),
+        None => Ok(ResolvedVersionManifest {
+            manifest,
+            client_jar_version: local_has_client.then(|| id.to_owned()),
+        }),
     }
 }
 
