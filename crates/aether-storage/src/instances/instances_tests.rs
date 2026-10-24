@@ -18,11 +18,16 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let number = NEXT.fetch_add(1, Ordering::Relaxed);
-        let base = std::env::temp_dir().join(format!("aether-store-{}-{number}", std::process::id()));
+        let base =
+            std::env::temp_dir().join(format!("aether-store-{}-{number}", std::process::id()));
         let id = InstanceId::new();
         let directory = base.join("instances").join(id.to_string());
         fs::create_dir_all(&directory).unwrap();
-        Self { base, id, directory }
+        Self {
+            base,
+            id,
+            directory,
+        }
     }
 
     fn record(&self) -> GameInstance {
@@ -66,12 +71,18 @@ fn rejects_mismatched_instance_id_and_root() {
     instance.id = InstanceId::new();
     fixture.write(&instance);
     let store = InstanceStore::open(&fixture.base).unwrap();
-    assert!(matches!(store.load(fixture.id), Err(InstanceLoadError::IdMismatch)));
+    assert!(matches!(
+        store.load(fixture.id),
+        Err(InstanceLoadError::IdMismatch)
+    ));
 
     instance.id = fixture.id;
     instance.root = fixture.base.clone();
     fixture.write(&instance);
-    assert!(matches!(store.load(fixture.id), Err(InstanceLoadError::RootMismatch)));
+    assert!(matches!(
+        store.load(fixture.id),
+        Err(InstanceLoadError::RootMismatch)
+    ));
 }
 
 #[test]
@@ -80,9 +91,15 @@ fn rejects_oversized_and_malformed_records() {
     let file = fixture.directory.join("instance.json");
     fs::write(&file, vec![b'a'; 128 * 1024 + 1]).unwrap();
     let store = InstanceStore::open(&fixture.base).unwrap();
-    assert!(matches!(store.load(fixture.id), Err(InstanceLoadError::TooLarge)));
+    assert!(matches!(
+        store.load(fixture.id),
+        Err(InstanceLoadError::TooLarge)
+    ));
     fs::write(file, b"{bad json").unwrap();
-    assert!(matches!(store.load(fixture.id), Err(InstanceLoadError::Decode(_))));
+    assert!(matches!(
+        store.load(fixture.id),
+        Err(InstanceLoadError::Decode(_))
+    ));
 }
 
 #[cfg(unix)]
@@ -97,12 +114,18 @@ fn rejects_symlinked_records_and_directories() {
     fs::rename(&file, &target).unwrap();
     symlink(&target, &file).unwrap();
     let store = InstanceStore::open(&fixture.base).unwrap();
-    assert!(matches!(store.load(fixture.id), Err(InstanceLoadError::UnsafeRecord)));
+    assert!(matches!(
+        store.load(fixture.id),
+        Err(InstanceLoadError::UnsafeRecord)
+    ));
 
     fs::remove_file(&file).unwrap();
     fs::remove_dir(&fixture.directory).unwrap();
     symlink(&fixture.base, &fixture.directory).unwrap();
-    assert!(matches!(store.load(fixture.id), Err(InstanceLoadError::UnsafeDirectory)));
+    assert!(matches!(
+        store.load(fixture.id),
+        Err(InstanceLoadError::UnsafeDirectory)
+    ));
 }
 
 #[cfg(unix)]
