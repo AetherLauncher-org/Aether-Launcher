@@ -103,6 +103,27 @@ impl InstanceLaunchCoordinator {
         )
     }
 
+    /// Verify installed files and, if needed, install native JARs in the
+    /// managed Minecraft game directory. This may perform local filesystem
+    /// writes, but never downloads missing archives.
+    pub fn prepare_and_install(
+        &self,
+        instance_id: InstanceId,
+        memory_mib: u32,
+        runtimes: &[JavaRuntime],
+        environment: &Environment,
+        account_variables: &BTreeMap<String, String>,
+    ) -> Result<LaunchPlan, CoordinatorError> {
+        self.prepare_internal(
+            instance_id,
+            memory_mib,
+            runtimes,
+            environment,
+            account_variables,
+            true,
+        )
+    }
+
     fn prepare_internal(
         &self,
         instance_id: InstanceId,
@@ -213,13 +234,12 @@ impl InstanceLaunchCoordinator {
             Err(RegistryError::UnknownInstance) | Ok(_) => {}
             Err(error) => return Err(CoordinatorError::Registry(error)),
         }
-        let plan = self.prepare_internal(
+        let plan = self.prepare_and_install(
             instance_id,
             memory_mib,
             runtimes,
             environment,
             account_variables,
-            true,
         )?;
         Ok(self.processes.start(instance_id, &plan, redactions)?)
     }
