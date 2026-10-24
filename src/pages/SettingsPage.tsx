@@ -1,6 +1,7 @@
 import { Radio, RadioGroup, Text } from "@fluentui/react-components";
+import { JavaRuntimeSection } from "../components/JavaRuntimeSection";
+import { MemorySection } from "../components/MemorySection";
 import { PageHeader } from "../components/PageHeader";
-import { PendingPanel } from "../components/PendingPanel";
 import { isThemePreference } from "../lib/theme";
 import type { ThemePreference } from "../lib/theme";
 import type { PageDefinition } from "../navigation";
@@ -44,7 +45,8 @@ export function SettingsPage({
         </RadioGroup>
       </section>
 
-      <PendingPanel title={page.pendingTitle} body={page.pendingBody} />
+      <JavaRuntimeSection />
+      <MemorySection />
     </>
   );
 }
