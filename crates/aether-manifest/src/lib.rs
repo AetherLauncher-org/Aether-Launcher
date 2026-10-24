@@ -1,6 +1,9 @@
 pub mod arguments;
 mod inherit;
+pub mod loader;
 pub mod rules;
+
+pub use loader::{VersionLoadError, load_version_manifest};
 
 use aether_core::VersionId;
 use serde::{Deserialize, Serialize};
