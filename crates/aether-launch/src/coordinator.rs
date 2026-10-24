@@ -6,21 +6,19 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use aether_core::{InstanceId, InstanceState};
-use aether_download::{ArtifactSource, DownloadArtifact};
 use aether_download::verify::{ArtifactVerificationError, verify_local_artifact};
-use aether_manifest::{VersionLoadError, load_resolved_version_manifest};
+use aether_download::{ArtifactSource, DownloadArtifact};
 use aether_manifest::rules::Environment;
+use aether_manifest::{VersionLoadError, load_resolved_version_manifest};
 use aether_runtime::JavaRuntime;
 use aether_storage::{InstanceLoadError, InstanceStore};
 use thiserror::Error;
 
 use crate::native::{NativePlanError, build_native_plan};
 use crate::plan::{LaunchBuildError, LaunchOptions, build_launch_plan};
-use crate::registry::{
-    InstanceProcessRegistry, InstanceProcessStatus, RegistryError,
-};
-use crate::{JavaSelectionError, LaunchPlan, LaunchRequest, select_java_runtime};
 use crate::process::LogRecord;
+use crate::registry::{InstanceProcessRegistry, InstanceProcessStatus, RegistryError};
+use crate::{JavaSelectionError, LaunchPlan, LaunchRequest, select_java_runtime};
 
 #[derive(Debug, Error)]
 pub enum CoordinatorError {
@@ -95,10 +93,8 @@ impl InstanceLaunchCoordinator {
         if instance.state != InstanceState::Ready {
             return Err(CoordinatorError::InstanceNotReady);
         }
-        let resolved = load_resolved_version_manifest(
-            &self.game_directory,
-            instance.version.as_str(),
-        )?;
+        let resolved =
+            load_resolved_version_manifest(&self.game_directory, instance.version.as_str())?;
         let native_plan = build_native_plan(&resolved.manifest, environment)?;
         if !native_plan.archives.is_empty() {
             return Err(CoordinatorError::NativesNotReady);
@@ -110,11 +106,16 @@ impl InstanceLaunchCoordinator {
         let source = resolved
             .client_jar_version
             .ok_or(CoordinatorError::MissingClientMetadata)?;
-        let client = resolved.manifest.downloads.as_ref()
+        let client = resolved
+            .manifest
+            .downloads
+            .as_ref()
             .and_then(|downloads| downloads.client.as_ref())
             .ok_or(CoordinatorError::MissingClientMetadata)?;
         let artifact = DownloadArtifact {
-            destination: PathBuf::from("versions").join(&source).join(format!("{source}.jar")),
+            destination: PathBuf::from("versions")
+                .join(&source)
+                .join(format!("{source}.jar")),
             size: client.size,
             sha1: client.sha1.clone(),
             sources: vec![ArtifactSource {
