@@ -4,6 +4,11 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub mod engine;
+pub mod hash;
+pub mod selector;
+pub mod transport;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactSource {
     pub provider: String,
@@ -59,7 +64,7 @@ pub enum DownloadPlanError {
     InvalidSha1(PathBuf),
 }
 
-fn is_sha1(value: &str) -> bool {
+pub(crate) fn is_sha1(value: &str) -> bool {
     value.len() == 40 && value.chars().all(|c| c.is_ascii_hexdigit())
 }
 
@@ -72,7 +77,7 @@ fn destination_key(path: &Path) -> String {
 
 /// 与平台无关的检查：同时把 `/` 和 `\` 当作分隔符，
 /// 这样在 Linux 上通过的路径换到 Windows 上也不会越出目录。
-fn is_safe_relative_path(path: &Path) -> bool {
+pub(crate) fn is_safe_relative_path(path: &Path) -> bool {
     let Some(text) = path.to_str() else {
         return false;
     };
@@ -103,7 +108,9 @@ fn is_windows_reserved(stem: &str) -> bool {
     numbered.is_some_and(|digit| matches!(digit.as_bytes(), [b'1'..=b'9']))
 }
 
+// 末尾的 re-export 属于集成要求，触发 items_after_test_module 时在此豁免。
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use std::path::PathBuf;
 
@@ -188,3 +195,12 @@ mod tests {
         assert_eq!(broken.validate(), Err(expected));
     }
 }
+
+// 按“集成要求”固定在文件末尾；`items_after_test_module` 在此显式豁免。
+pub use engine::{
+    ArtifactResult, AttemptError, CancellationToken, DownloadEngine, DownloadError, NoopProgress,
+    ProgressSink, RetryPolicy, SourceFailure,
+};
+pub use hash::{HashMismatch, HashingWriter, VerifyError, verify_reader};
+pub use selector::{ProviderStat, degraded_weight, effective_weight, order_sources};
+pub use transport::{HttpTransport, Range, TransportError, TransportRequest, TransportResponse};
