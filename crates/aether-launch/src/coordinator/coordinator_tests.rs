@@ -226,5 +226,28 @@ fn does_not_launch_versions_with_unprepared_native_or_asset_data() {
     }"#,
     )
     .unwrap();
-    assert!(matches!(f.prepare(), Err(CoordinatorError::AssetsNotReady)));
+    assert!(matches!(f.prepare(), Err(CoordinatorError::Asset(_))));
 }
+
+#[test]
+fn verified_asset_index_and_objects_allow_launch_plan_preparation() {
+    let f = Fixture::new();
+    let object = "a9993e364706816aba3e25717850c26c9cd0d89d";
+    let object_path = f.game.join("assets/objects").join(&object[..2]).join(object);
+    fs::create_dir_all(object_path.parent().unwrap()).unwrap();
+    fs::write(&object_path, b"abc").unwrap();
+
+    let index = r#"{"objects":{"test":{"hash":"a9993e364706816aba3e25717850c26c9cd0d89d","size":3}}}"#;
+    fs::create_dir_all(f.game.join("assets/indexes")).unwrap();
+    fs::write(f.game.join("assets/indexes/17.json"), index).unwrap();
+    fs::write(
+        f.game.join("versions/fabric/fabric.json"),
+        r#"{"id":"fabric","inheritsFrom":"1.21.1","assetIndex":{"id":"17","sha1":"9c93b561ed119366ac6421c25bca8172515fc0fd","size":81,"url":"https://example.invalid/assets"}}"#,
+    ).unwrap();
+    let plan = f.prepare().unwrap();
+    assert!(plan.arguments.contains(&"--username".to_owned()));
+
+    fs::write(&object_path, b"bad").unwrap();
+    assert!(matches!(f.prepare(), Err(CoordinatorError::Asset(_))));
+}
+
