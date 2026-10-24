@@ -43,8 +43,6 @@ pub enum LaunchBuildError {
     EscapedLibraryPath(PathBuf),
     #[error("cannot resolve Maven JAR location for {0}")]
     InvalidCoordinate(String),
-    #[error("native classified library requires extraction support: {0}")]
-    UnsupportedNativeLibrary(String),
     #[error("cannot construct Java classpath: {0}")]
     InvalidClasspath(String),
     #[error("unclosed Minecraft argument placeholder: {0}")]
@@ -85,6 +83,20 @@ pub fn build_launch_plan(
 
     let mut library_jars = Vec::new();
     for library in manifest.active_libraries(environment) {
+        // Classified native JARs contribute extracted binaries, not Java
+        // classes. Their verification and installation is the coordinator's
+        // responsibility; never add them to the classpath.
+        if library
+            .name
+            .split('@')
+            .next()
+            .unwrap_or("")
+            .split(':')
+            .nth(3)
+            .is_some_and(|classifier| classifier.starts_with("natives-"))
+        {
+            continue;
+        }
         let relative = library_path(library)?;
         let absolute = canonical_root.join(relative);
         ensure_file(&absolute)?;
@@ -182,12 +194,6 @@ fn ensure_directory(path: &Path) -> Result<(), LaunchBuildError> {
 fn library_path(library: &aether_manifest::Library) -> Result<PathBuf, LaunchBuildError> {
     let name = library.name.split('@').next().unwrap_or("");
     let parts: Vec<&str> = name.split(':').collect();
-    if parts.len() == 4 && parts[3].starts_with("natives-") {
-        return Err(LaunchBuildError::UnsupportedNativeLibrary(
-            library.name.clone(),
-        ));
-    }
-
     let path = if let Some(artifact) = library
         .downloads
         .as_ref()
