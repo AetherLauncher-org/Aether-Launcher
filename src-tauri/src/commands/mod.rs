@@ -11,3 +11,4 @@
 //! fail-closed preconditions are fully implemented.
 
 pub mod instances;
+pub mod launch;

@@ -13,6 +13,10 @@ impl InstanceId {
     pub fn new() -> Self {
         Self(Uuid::new_v4())
     }
+
+    pub fn parse(value: &str) -> Result<Self, uuid::Error> {
+        Uuid::parse_str(value).map(Self)
+    }
 }
 
 impl std::fmt::Display for InstanceId {
