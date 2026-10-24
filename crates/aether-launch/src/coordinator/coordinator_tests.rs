@@ -262,7 +262,7 @@ fn prepares_missing_natives_once_and_verifies_them_before_reuse() {
     const HEX: &str = "504b03041400000000009555585d924e846c04000000040000000a0000006e61746976652e646c6c676f6f64504b010214031400000000009555585d924e846c04000000040000000a00000000000000000000008001000000006e61746976652e646c6c504b05060000000001000100380000002c0000000000";
     let jar: Vec<u8> = HEX
         .as_bytes()
-        .chunks_exact(2)
+        .chunks(2)
         .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
         .collect();
     assert_eq!(jar.len(), 122);
