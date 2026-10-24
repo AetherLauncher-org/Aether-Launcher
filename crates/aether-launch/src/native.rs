@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use aether_download::native_install::{NativeInstallArchive, NativeInstallError, install_native_archives};
 use aether_download::{
     ArtifactSource, DownloadArtifact, DownloadPlan, DownloadPlanError, is_safe_relative_path,
 };
@@ -23,6 +24,20 @@ pub struct NativePlan {
 }
 
 impl NativePlan {
+    /// Verify and unpack all previously downloaded native JARs, then publish
+    /// a new natives directory in a single same-filesystem rename.
+    pub fn install(
+        &self,
+        game_directory: &Path,
+        natives_directory: &Path,
+    ) -> Result<PathBuf, NativeInstallError> {
+        let archives: Vec<_> = self.archives.iter().map(|archive| NativeInstallArchive {
+            artifact: &archive.artifact,
+            exclusions: &archive.exclusions,
+        }).collect();
+        install_native_archives(game_directory, natives_directory, &archives)
+    }
+
     pub fn download_plan(&self) -> DownloadPlan {
         DownloadPlan {
             artifacts: self
