@@ -65,10 +65,15 @@ pub fn build_launch_plan(
     request.validate()?;
     select_java_runtime(manifest, std::slice::from_ref(runtime))?;
 
-    let main_class = manifest.main_class.as_deref()
+    let main_class = manifest
+        .main_class
+        .as_deref()
         .filter(|value| !value.trim().is_empty())
         .ok_or(LaunchBuildError::MissingMainClass)?;
-    let args = manifest.arguments.as_ref().ok_or(LaunchBuildError::UnsupportedArguments)?;
+    let args = manifest
+        .arguments
+        .as_ref()
+        .ok_or(LaunchBuildError::UnsupportedArguments)?;
 
     ensure_file(&options.client_jar)?;
     ensure_directory(&options.working_directory)?;
@@ -99,13 +104,35 @@ pub fn build_launch_plan(
     let mut variables = options.variables.clone();
     // Intrinsic placeholders cannot be overridden by account-supplied variables.
     variables.insert("classpath".to_owned(), classpath.clone());
-    variables.insert("classpath_separator".to_owned(), if cfg!(windows) { ";" } else { ":" }.to_owned());
-    variables.insert("natives_directory".to_owned(), options.natives_directory.to_string_lossy().into_owned());
-    variables.insert("library_directory".to_owned(), library_root.to_string_lossy().into_owned());
-    variables.insert("game_directory".to_owned(), options.working_directory.to_string_lossy().into_owned());
-    variables.insert("assets_root".to_owned(), options.game_directory.join("assets").to_string_lossy().into_owned());
+    variables.insert(
+        "classpath_separator".to_owned(),
+        if cfg!(windows) { ";" } else { ":" }.to_owned(),
+    );
+    variables.insert(
+        "natives_directory".to_owned(),
+        options.natives_directory.to_string_lossy().into_owned(),
+    );
+    variables.insert(
+        "library_directory".to_owned(),
+        library_root.to_string_lossy().into_owned(),
+    );
+    variables.insert(
+        "game_directory".to_owned(),
+        options.working_directory.to_string_lossy().into_owned(),
+    );
+    variables.insert(
+        "assets_root".to_owned(),
+        options
+            .game_directory
+            .join("assets")
+            .to_string_lossy()
+            .into_owned(),
+    );
     variables.insert("version_name".to_owned(), manifest.id.clone());
-    if let Some(asset_id) = manifest.asset_index.as_ref().map(|index| index.id.as_str())
+    if let Some(asset_id) = manifest
+        .asset_index
+        .as_ref()
+        .map(|index| index.id.as_str())
         .or(manifest.assets.as_deref())
     {
         variables.insert("assets_index_name".to_owned(), asset_id.to_owned());
@@ -113,7 +140,9 @@ pub fn build_launch_plan(
 
     let jvm = expand_arguments(&args.jvm, environment);
     let game = expand_arguments(&args.game, environment);
-    let classpath_provided = jvm.iter().any(|arg| matches!(arg.as_str(), "-cp" | "-classpath" | "--class-path"));
+    let classpath_provided = jvm
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "-cp" | "-classpath" | "--class-path"));
 
     let mut arguments = vec![format!("-Xmx{}m", request.memory_mib)];
     for arg in jvm {
@@ -154,10 +183,14 @@ fn library_path(library: &aether_manifest::Library) -> Result<PathBuf, LaunchBui
     let name = library.name.split('@').next().unwrap_or("");
     let parts: Vec<&str> = name.split(':').collect();
     if parts.len() == 4 && parts[3].starts_with("natives-") {
-        return Err(LaunchBuildError::UnsupportedNativeLibrary(library.name.clone()));
+        return Err(LaunchBuildError::UnsupportedNativeLibrary(
+            library.name.clone(),
+        ));
     }
 
-    let path = if let Some(artifact) = library.downloads.as_ref()
+    let path = if let Some(artifact) = library
+        .downloads
+        .as_ref()
         .and_then(|download| download.artifact.as_ref())
     {
         artifact.path.clone()
@@ -174,7 +207,10 @@ fn library_path(library: &aether_manifest::Library) -> Result<PathBuf, LaunchBui
         } else {
             format!("{artifact}-{version}.jar")
         };
-        format!("{}/{artifact}/{version}/{filename}", group.replace('.', "/"))
+        format!(
+            "{}/{artifact}/{version}/{filename}",
+            group.replace('.', "/")
+        )
     };
 
     let relative = PathBuf::from(path.replace('\\', "/"));
@@ -184,7 +220,10 @@ fn library_path(library: &aether_manifest::Library) -> Result<PathBuf, LaunchBui
     Ok(relative)
 }
 
-fn substitute(argument: &str, variables: &BTreeMap<String, String>) -> Result<String, LaunchBuildError> {
+fn substitute(
+    argument: &str,
+    variables: &BTreeMap<String, String>,
+) -> Result<String, LaunchBuildError> {
     let mut expanded = String::with_capacity(argument.len());
     let mut rest = argument;
     while let Some(start) = rest.find("${") {
@@ -194,7 +233,8 @@ fn substitute(argument: &str, variables: &BTreeMap<String, String>) -> Result<St
             return Err(LaunchBuildError::UnclosedPlaceholder(argument.to_owned()));
         };
         let name = &tail[..end];
-        let value = variables.get(name)
+        let value = variables
+            .get(name)
             .ok_or_else(|| LaunchBuildError::MissingPlaceholder(name.to_owned()))?;
         expanded.push_str(value);
         rest = &tail[end + 1..];
