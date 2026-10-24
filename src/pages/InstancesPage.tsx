@@ -1,6 +1,7 @@
 import {
   Badge,
   Button,
+  Input,
   SearchBox,
   Text,
   Tooltip,
@@ -21,7 +22,15 @@ import {
   ListSkeleton,
 } from "../components/PageState";
 import { PageHeader } from "../components/PageHeader";
-import { emptyInstanceListing, isTauri, listInstances } from "../ipc";
+import {
+  activateInstalledInstance,
+  describeCommandError,
+  emptyInstanceListing,
+  isTauri,
+  listInstances,
+  startInstalledInstance,
+  stopInstalledInstance,
+} from "../ipc";
 import type { InstanceListing, InstanceSummary } from "../ipc";
 import {
   describeSkippedReason,
@@ -51,6 +60,9 @@ export function InstancesPage({ page }: InstancesPageProps) {
   const [listing, setListing] = useState<InstanceListing>(emptyInstanceListing);
   const [memoryMiB] = useState(loadMemoryMiB);
   const [javaKey] = useState(loadJavaRuntimeKey);
+  const [offlineName, setOfflineName] = useState("Player");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [launchError, setLaunchError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const result = await listInstances();
@@ -83,6 +95,37 @@ export function InstancesPage({ page }: InstancesPageProps) {
       }));
     },
     [],
+  );
+
+  const handleInstanceAction = useCallback(
+    async (instance: InstanceSummary) => {
+      setBusyId(instance.id);
+      setLaunchError(null);
+      try {
+        let nextState: InstanceSummary["state"];
+        if (instance.state === "running") {
+          await stopInstalledInstance(instance.id);
+          nextState = "ready";
+        } else if (instance.state === "incomplete" || instance.state === "failed") {
+          await activateInstalledInstance(instance.id);
+          nextState = "ready";
+        } else {
+          await startInstalledInstance(instance.id, offlineName, memoryMiB);
+          nextState = "running";
+        }
+        setListing((previous) => ({
+          ...previous,
+          instances: previous.instances.map((item) =>
+            item.id === instance.id ? { ...item, state: nextState } : item,
+          ),
+        }));
+      } catch (error) {
+        setLaunchError(describeCommandError(error));
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [offlineName, memoryMiB],
   );
 
   // 徽章只报数量，空状态标题才负责「还没有实例」这句话，避免同一句文案出现两次
@@ -144,6 +187,22 @@ export function InstancesPage({ page }: InstancesPageProps) {
           </div>
         </div>
 
+        <div className="toolbar-actions">
+          <Text>离线玩家名</Text>
+          <Input
+            value={offlineName}
+            onChange={(_, data) => setOfflineName(data.value)}
+            aria-label="离线玩家名"
+            maxLength={16}
+            disabled={!desktop}
+          />
+        </div>
+        {launchError ? (
+          <Text role="alert" className="muted">
+            启动失败：{launchError}
+          </Text>
+        ) : null}
+
         {status === "error" && error ? (
           <ErrorState
             title="读取实例失败"
@@ -184,6 +243,8 @@ export function InstancesPage({ page }: InstancesPageProps) {
             instances={visible}
             memoryMiB={memoryMiB}
             javaLabel={javaKey === null ? null : formatJavaLabel(javaKey)}
+            onAction={handleInstanceAction}
+            busyId={busyId}
           />
         )}
 
@@ -210,7 +271,7 @@ export function InstancesPage({ page }: InstancesPageProps) {
       />
 
       <Text className="page-footnote muted">
-        默认内存 {formatMemoryMiB(memoryMiB)}，可在设置里调整。
+        默认内存 {formatMemoryMiB(memoryMiB)}。当前仅支持启动官方 .minecraft 中已安装且已验证的现代版本（离线单人模式）；验证安装后再点击启动。
       </Text>
     </>
   );

@@ -10,6 +10,8 @@ type InstanceListProps = {
   memoryMiB: number;
   /** 默认 Java 的可读标签，例如 `Java 21 · x64`；没有检测到时为 null */
   javaLabel: string | null;
+  onAction?: (instance: InstanceSummary) => void;
+  busyId?: string | null;
 };
 
 /**
@@ -22,6 +24,8 @@ export function InstanceList({
   instances,
   memoryMiB,
   javaLabel,
+  onAction,
+  busyId,
 }: InstanceListProps) {
   return (
     <ul className="instance-list">
@@ -61,18 +65,27 @@ export function InstanceList({
             <Tooltip
               content={
                 running
-                  ? "游戏正在运行"
-                  : "启动流程还在开发，完成后这里是启动按钮"
+                  ? "停止由 Aether 启动的游戏"
+                  : instance.state === "incomplete"
+                    ? "验证官方 .minecraft 已安装版本和资产"
+                    : "从官方 .minecraft 启动已安装版本（离线模式）"
               }
               relationship="description"
             >
               <Button
                 appearance="primary"
                 icon={<Play24Filled />}
-                disabled={!running}
-                aria-label={`启动 ${instance.name}`}
+                disabled={!onAction || busyId === instance.id}
+                onClick={() => onAction?.(instance)}
+                aria-label={`${running ? "停止" : instance.state === "incomplete" ? "验证" : "启动"} ${instance.name}`}
               >
-                启动
+                {busyId === instance.id
+                  ? "处理中"
+                  : running
+                    ? "停止"
+                    : instance.state === "incomplete"
+                      ? "验证安装"
+                      : "启动"}
               </Button>
             </Tooltip>
           </li>
