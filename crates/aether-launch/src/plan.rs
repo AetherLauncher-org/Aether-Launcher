@@ -204,5 +204,5 @@ fn substitute(argument: &str, variables: &BTreeMap<String, String>) -> Result<St
 }
 
 #[cfg(test)]
-#[path = "plan_tests.rs"]
+#[path = "plan/plan_tests.rs"]
 mod tests;
