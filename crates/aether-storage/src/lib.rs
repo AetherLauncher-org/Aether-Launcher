@@ -1,3 +1,6 @@
+pub mod instances;
+pub use instances::{InstanceLoadError, InstanceStore};
+
 use aether_core::GameInstance;
 use thiserror::Error;
 
