@@ -39,7 +39,7 @@ impl Fixture {
                 "mainClass":"net.minecraft.client.main.Main",
                 "javaVersion":{{"component":"java-runtime-delta","majorVersion":21}},
                 "downloads":{{"client":{{"sha1":"{SHA_ABC}","size":3,"url":"https://example.invalid/client.jar"}}}},
-                "arguments":{{"jvm":["-cp","${classpath}"],"game":["--username","${auth_player_name}"]}}
+                "arguments":{{"jvm":["-cp","${{classpath}}"],"game":["--username","${{auth_player_name}}"]}}
             }}"#),
         ).unwrap();
         fs::write(
