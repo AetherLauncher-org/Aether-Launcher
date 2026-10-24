@@ -93,9 +93,10 @@ pub fn preflight_native_zip(
         }
 
         // Exclusion is applied only after security checks, even for directories.
-        if prefixes.iter().any(|prefix| {
-            relative == prefix || relative.starts_with(&format!("{prefix}/"))
-        }) {
+        if prefixes
+            .iter()
+            .any(|prefix| relative == prefix || relative.starts_with(&format!("{prefix}/")))
+        {
             continue;
         }
         let normalized = relative.to_ascii_lowercase();
@@ -144,14 +145,24 @@ mod tests {
         ];
         let prepared = preflight_native_zip(&entries, &["META-INF/".to_owned()]).unwrap();
         assert_eq!(prepared.len(), 2);
-        assert_eq!(prepared[0].relative_path, PathBuf::from("windows/x64/lwjgl.dll"));
+        assert_eq!(
+            prepared[0].relative_path,
+            PathBuf::from("windows/x64/lwjgl.dll")
+        );
     }
 
     #[test]
     fn rejects_zip_slip_and_windows_paths() {
-        for name in ["../outside.dll", "/absolute.dll", "C:/x.dll", "a/../../x.dll",
-            "a//b.dll", "CON.dll", "dir\\..\\escape.dll", "file.dll:stream"]
-        {
+        for name in [
+            "../outside.dll",
+            "/absolute.dll",
+            "C:/x.dll",
+            "a/../../x.dll",
+            "a//b.dll",
+            "CON.dll",
+            "dir\\..\\escape.dll",
+            "file.dll:stream",
+        ] {
             assert_eq!(
                 preflight_native_zip(&[file(name, 1)], &[]),
                 Err(NativeZipError::UnsafePath(name.to_owned()))
@@ -176,11 +187,14 @@ mod tests {
             Err(NativeZipError::FileTooLarge(_))
         ));
         assert!(matches!(
-            preflight_native_zip(&[
-                file("a.dll", MAX_NATIVE_FILE_BYTES),
-                file("b.dll", MAX_NATIVE_FILE_BYTES),
-                file("c.dll", 1)
-            ], &[]),
+            preflight_native_zip(
+                &[
+                    file("a.dll", MAX_NATIVE_FILE_BYTES),
+                    file("b.dll", MAX_NATIVE_FILE_BYTES),
+                    file("c.dll", 1)
+                ],
+                &[]
+            ),
             Err(NativeZipError::ArchiveTooLarge)
         ));
     }
@@ -192,7 +206,10 @@ mod tests {
             Err(NativeZipError::InvalidExclusion("../".to_owned()))
         );
         assert!(matches!(
-            preflight_native_zip(&[file("META-INF/../../outside", 1)], &["META-INF/".to_owned()]),
+            preflight_native_zip(
+                &[file("META-INF/../../outside", 1)],
+                &["META-INF/".to_owned()]
+            ),
             Err(NativeZipError::UnsafePath(_))
         ));
     }
