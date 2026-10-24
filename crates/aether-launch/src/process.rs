@@ -253,6 +253,9 @@ fn publish(
 /// Validate process paths before launch; kept internal to avoid arbitrary
 /// executable selection via an IPC API.
 pub fn validate_launch_executable(plan: &LaunchPlan) -> Result<PathBuf, ProcessError> {
+    if !plan.runtime.executable.is_absolute() {
+        return Err(ProcessError::InvalidExecutable);
+    }
     let path = fs::canonicalize(&plan.runtime.executable)
         .map_err(|_| ProcessError::InvalidExecutable)?;
     if !path.is_file() {
