@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use aether_core::{InstanceId, InstanceState};
 use aether_download::assets::{AssetError, verify_installed_assets};
+use aether_download::native_install::NativeInstallError;
 use aether_download::verify::{ArtifactVerificationError, verify_local_artifact};
 use aether_download::{ArtifactSource, DownloadArtifact};
 use aether_manifest::rules::Environment;
@@ -29,8 +30,10 @@ pub enum CoordinatorError {
     InstanceNotReady,
     #[error("client JAR metadata is missing from the installed version chain")]
     MissingClientMetadata,
-    #[error("natives are required but not yet prepared by the integrated launcher")]
+    #[error("natives are required but not yet installed for this instance")]
     NativesNotReady,
+    #[error(transparent)]
+    NativeInstall(#[from] NativeInstallError),
     #[error(transparent)]
     Asset(#[from] AssetError),
     #[error(transparent)]
@@ -90,16 +93,31 @@ impl InstanceLaunchCoordinator {
         environment: &Environment,
         account_variables: &BTreeMap<String, String>,
     ) -> Result<LaunchPlan, CoordinatorError> {
+        self.prepare_internal(
+            instance_id,
+            memory_mib,
+            runtimes,
+            environment,
+            account_variables,
+            false,
+        )
+    }
+
+    fn prepare_internal(
+        &self,
+        instance_id: InstanceId,
+        memory_mib: u32,
+        runtimes: &[JavaRuntime],
+        environment: &Environment,
+        account_variables: &BTreeMap<String, String>,
+        install_natives: bool,
+    ) -> Result<LaunchPlan, CoordinatorError> {
         let instance = self.store.load(instance_id)?;
         if instance.state != InstanceState::Ready {
             return Err(CoordinatorError::InstanceNotReady);
         }
         let resolved =
             load_resolved_version_manifest(&self.game_directory, instance.version.as_str())?;
-        let native_plan = build_native_plan(&resolved.manifest, environment)?;
-        if !native_plan.archives.is_empty() {
-            return Err(CoordinatorError::NativesNotReady);
-        }
         if let Some(index) = &resolved.manifest.asset_index {
             verify_installed_assets(
                 &self.game_directory,
@@ -130,11 +148,37 @@ impl InstanceLaunchCoordinator {
             }],
         };
         let client_jar = verify_local_artifact(&self.game_directory, &artifact)?;
+
+        let native_plan = build_native_plan(&resolved.manifest, environment)?;
+        let natives_directory = if native_plan.archives.is_empty() {
+            instance.root.join("natives")
+        } else {
+            // Native binaries live under the trusted Minecraft game tree,
+            // not inside a potentially independent instance store.
+            let parent = self.game_directory.join("natives");
+            let destination = parent.join(instance_id.to_string());
+            match fs::symlink_metadata(&destination) {
+                Ok(_) => {
+                    native_plan.verify_installed(&self.game_directory, &destination)?;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    if !install_natives {
+                        return Err(CoordinatorError::NativesNotReady);
+                    }
+                    fs::create_dir_all(&parent)?;
+                    native_plan.install(&self.game_directory, &destination)?;
+                    // Do not trust extraction until content checks pass.
+                    native_plan.verify_installed(&self.game_directory, &destination)?;
+                }
+                Err(error) => return Err(CoordinatorError::Io(error)),
+            }
+            destination
+        };
         let options = LaunchOptions {
             game_directory: self.game_directory.clone(),
             working_directory: instance.root.clone(),
             client_jar,
-            natives_directory: instance.root.join("natives"),
+            natives_directory,
             variables: account_variables.clone(),
         };
         let request = LaunchRequest {
@@ -169,12 +213,13 @@ impl InstanceLaunchCoordinator {
             Err(RegistryError::UnknownInstance) | Ok(_) => {}
             Err(error) => return Err(CoordinatorError::Registry(error)),
         }
-        let plan = self.prepare(
+        let plan = self.prepare_internal(
             instance_id,
             memory_mib,
             runtimes,
             environment,
             account_variables,
+            true,
         )?;
         Ok(self.processes.start(instance_id, &plan, redactions)?)
     }
