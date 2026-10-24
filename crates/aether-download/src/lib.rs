@@ -1,3 +1,8 @@
+pub mod assets;
+pub mod native_install;
+pub mod native_zip;
+pub mod verify;
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -77,7 +82,7 @@ fn destination_key(path: &Path) -> String {
 
 /// 与平台无关的检查：同时把 `/` 和 `\` 当作分隔符，
 /// 这样在 Linux 上通过的路径换到 Windows 上也不会越出目录。
-pub(crate) fn is_safe_relative_path(path: &Path) -> bool {
+pub fn is_safe_relative_path(path: &Path) -> bool {
     let Some(text) = path.to_str() else {
         return false;
     };
