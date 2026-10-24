@@ -23,6 +23,11 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 aether-core = { path = "../crates/aether-core" }
+aether-auth = { path = "../crates/aether-auth" }
+aether-download = { path = "../crates/aether-download" }
+aether-launch = { path = "../crates/aether-launch" }
+aether-manifest = { path = "../crates/aether-manifest" }
+aether-runtime = { path = "../crates/aether-runtime" }
 aether-storage = { path = "../crates/aether-storage" }
 serde.workspace = true
 tracing.workspace = true
