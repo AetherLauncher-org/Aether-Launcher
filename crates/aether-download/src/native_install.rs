@@ -13,7 +13,8 @@ use zip::ZipArchive;
 
 use crate::DownloadArtifact;
 use crate::native_zip::{
-    MAX_NATIVE_UNCOMPRESSED_BYTES, NativeZipEntry, NativeZipError, preflight_native_zip,
+    MAX_NATIVE_UNCOMPRESSED_BYTES, MAX_NATIVE_ZIP_ENTRIES, NativeZipEntry, NativeZipError,
+    preflight_native_zip,
 };
 use crate::verify::{ArtifactVerificationError, verify_local_artifact};
 
@@ -92,9 +93,14 @@ pub fn install_native_archives(
     let mut inputs = Vec::new();
     let mut names = HashSet::new();
     let mut budget = 0_u64;
+    let mut entry_count = 0_usize;
     for archive in archives {
         let path = verify_local_artifact(&game_root, archive.artifact)?;
         let mut zip = ZipArchive::new(File::open(&path)?)?;
+        entry_count = entry_count.saturating_add(zip.len());
+        if entry_count > MAX_NATIVE_ZIP_ENTRIES {
+            return Err(NativeInstallError::Preflight(NativeZipError::TooManyEntries));
+        }
         let mut entries = Vec::with_capacity(zip.len());
         for index in 0..zip.len() {
             let file = zip.by_index(index)?;
