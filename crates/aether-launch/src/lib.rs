@@ -1,3 +1,6 @@
+pub mod native;
+pub use native::{NativeArchive, NativePlan, NativePlanError, build_native_plan};
+
 pub mod plan;
 pub use plan::{LaunchBuildError, LaunchOptions, build_launch_plan};
 
