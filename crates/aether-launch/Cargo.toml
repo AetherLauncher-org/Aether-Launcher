@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 aether-core = { path = "../aether-core" }
+aether-download = { path = "../aether-download" }
 aether-manifest = { path = "../aether-manifest" }
 aether-runtime = { path = "../aether-runtime" }
 serde.workspace = true
