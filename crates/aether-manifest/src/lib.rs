@@ -5,6 +5,8 @@ pub mod rules;
 
 pub use loader::{VersionLoadError, load_version_manifest};
 
+use std::collections::BTreeMap;
+
 use aether_core::VersionId;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -54,6 +56,14 @@ pub struct LibraryArtifact {
 pub struct LibraryDownloads {
     #[serde(default)]
     pub artifact: Option<LibraryArtifact>,
+    #[serde(default)]
+    pub classifiers: BTreeMap<String, LibraryArtifact>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct LibraryExtract {
+    #[serde(default)]
+    pub exclude: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,6 +77,11 @@ pub struct Library {
     pub url: Option<String>,
     #[serde(default)]
     pub rules: Vec<Rule>,
+    /// Operating system to native classifier mapping, e.g. windows -> natives-windows-${arch}.
+    #[serde(default)]
+    pub natives: BTreeMap<String, String>,
+    #[serde(default)]
+    pub extract: Option<LibraryExtract>,
 }
 
 impl Library {
@@ -75,7 +90,7 @@ impl Library {
     }
 }
 
-/// 版本清单。继承合并见 [`VersionManifest::merge_with_parent`]；目前不处理旧版的 `natives` / `classifiers`。
+/// 版本清单。继承合并见 [`VersionManifest::merge_with_parent`]。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VersionManifest {
