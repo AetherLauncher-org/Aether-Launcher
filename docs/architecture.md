@@ -33,9 +33,9 @@ graph LR
 | `aether-download` | 下载计划与校验 | `ArtifactSource`、`DownloadArtifact`、`DownloadPlan::validate`；`native_zip::preflight_native_zip` 验证 ZIP 条目名称、文件类型、重复目标和解压大小限制 |
 | `aether-auth` | 账户模型 | `AccountId`、`AccountKind`（Microsoft / Offline）、`AccountProfile` |
 | `aether-runtime` | Java 运行时 | `JavaRuntime`、`supports`；跨平台检测 PATH / JAVA_HOME / 常见安装目录和 Minecraft runtime，探测 Java 版本、架构与厂商 |
-| `aether-launch` | 启动请求与计划 | `LaunchRequest`、`LaunchPlan`；`select_java_runtime` 选 Java；`build_launch_plan` 组装 JVM / classpath / 游戏参数；`build_native_plan` 选择 native JAR 并输出下载计划；`GameProcess` 监督子进程并捕获有界日志；`InstanceProcessRegistry` 按实例 ID 维护运行状态、停止与日志查询 |
+| `aether-launch` | 启动请求与计划 | `LaunchRequest`、`LaunchPlan`；`select_java_runtime` 选 Java；`build_launch_plan` 组装 JVM / classpath / 游戏参数；`build_native_plan` 选择 native JAR 并输出下载计划；`GameProcess` 监督子进程并捕获有界日志；`InstanceProcessRegistry` 按实例 ID 管理进程；`InstanceLaunchCoordinator` 从可信实例文件准备启动并校验客户端 JAR |
 | `aether-modloader` | 模组加载器 | `ModLoaderKind`（Fabric / Forge / NeoForge / Quilt）、`ModLoaderVersion` |
-| `aether-storage` | 本地持久化 | `encode_instance` / `decode_instance`（`GameInstance` 的 JSON 编解码） |
+| `aether-storage` | 本地持久化 | `encode_instance` / `decode_instance`、`InstanceStore::load`（从受管理的 UUID 目录读取和验证实例） |
 
 按现有类型推断，启动一次游戏时的分工是：`manifest` 解析版本，`download` 生成并校验下载计划，`runtime` 选 Java，`launch` 组装启动计划，`storage` 保存实例。目前还没有代码把它们串起来。
 
@@ -129,6 +129,16 @@ Java 发现命令 `list_java_runtimes` 是只读且无参数的 IPC：Tauri 使�
 - `forget_finished(instance_id)` 只能清理已结束的实例，拒绝静默删除正在运行的进程；清理或重新启动会丢弃旧日志。注册表被销毁时，`GameProcess` 的析构行为会尝试结束尚在运行的主进程。
 
 该注册表的方法要求可变引用（`&mut self`），供后端所有者序列化访问；目前**没有向 Tauri 暴露状态、启动或停止 IPC**。后续应先实现可信的实例目录加载与启动计划准备，再以仅接受已注册实例 ID 的有限域命令接入 UI；同时补充长期保留日志、后台状态轮询、进程树清理及优雅退出能力。
+
+## 可信实例读取与启动协调（Rust 内部）
+
+新增 `aether_storage::InstanceStore`，由后端指定 **受管理的存储根目录**，按 `instances/<UUID>/instance.json` 读取实例，不接受调用方给出的任意路径。它会限制实例记录的大小（128 KiB）、拒绝符号链接记录和跳转目录，检查 JSON 中的实例 UUID 与请求一致，且工作目录必须是该 UUID 对应的实例目录。`InstanceId` 现实现 `Display`，序列化后的 UUID 可直接用作目录名。
+
+`aether_manifest::load_resolved_version_manifest` 在多级 `inheritsFrom` 合并时额外记录 `downloads.client` 来自哪个版本。不能把 Fabric 子版本的 `id` 误当作实际客户端 JAR 文件名。
+
+`aether_launch::InstanceLaunchCoordinator` 将上述读取与 `JavaRuntime` 选择、客户端 JAR 本地大小/SHA-1 核验、`build_launch_plan` 和 `InstanceProcessRegistry` 串联。后端拥有可信 `instance_storage_root` 与 `game_directory`，`prepare(instance_id, memory_mib, runtimes, environment, account_variables)` 只从 UUID 加载受管理实例，不接受前端传入可执行路径、Java argv、客户端 JAR 路径或工作目录。对受信任的账户上下文可以用 `start` 启动准备好的计划；`status/list/drain_logs/stop/forget_finished` 将操作限定在已注册实例的进程句柄上。
+
+**当前是受限协调器，不是完整 Minecraft 启动器。** 若版本需要尚未经过协调器准备的 natives、或 `assetIndex` 已声明而资源未校验，则返回 `NativesNotReady` / `AssetsNotReady`，不启动游戏；只允许已经安装且能够验证客户端 JAR 的现代、资源要求完整满足当前条件的实例。未实现通用下载、微软账户验证、完整资产校验与 natives 自动安装的端到端编排。这些能力齐备之前，**不开放实例启动的 Tauri IPC**。受管理的存储根目录须为仅被可信启动器进程修改的目录，防止并发文件替换的竞态风险。
 
 ## 还没有的部分
 
