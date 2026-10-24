@@ -48,7 +48,9 @@ pub enum NativeInstallError {
     TooLarge,
     #[error("native ZIP file {0:?} returned a different uncompressed size")]
     ChangedFileSize(PathBuf),
-    #[error("installed native file is missing, redirected or differs from its verified source: {0:?}")]
+    #[error(
+        "installed native file is missing, redirected or differs from its verified source: {0:?}"
+    )]
     InvalidInstalledFile(PathBuf),
     #[error("installed natives contain an unexpected file or symlink: {0:?}")]
     UnexpectedInstalledFile(PathBuf),
@@ -219,7 +221,9 @@ pub fn verify_installed_native_archives(
         let mut zip = ZipArchive::new(File::open(path)?)?;
         total_entries = total_entries.saturating_add(zip.len());
         if total_entries > MAX_NATIVE_ZIP_ENTRIES {
-            return Err(NativeInstallError::Preflight(NativeZipError::TooManyEntries));
+            return Err(NativeInstallError::Preflight(
+                NativeZipError::TooManyEntries,
+            ));
         }
         let mut entries = Vec::with_capacity(zip.len());
         for index in 0..zip.len() {
@@ -235,7 +239,8 @@ pub fn verify_installed_native_archives(
         }
         let selected = preflight_native_zip(&entries, archive.exclusions)?;
         for entry in selected {
-            byte_budget = byte_budget.checked_add(entry.expected_size)
+            byte_budget = byte_budget
+                .checked_add(entry.expected_size)
                 .ok_or(NativeInstallError::TooLarge)?;
             if byte_budget > MAX_NATIVE_UNCOMPRESSED_BYTES {
                 return Err(NativeInstallError::TooLarge);
@@ -248,7 +253,8 @@ pub fn verify_installed_native_archives(
             let output = native_root.join(&relative);
             let metadata = fs::symlink_metadata(&output)
                 .map_err(|_| NativeInstallError::InvalidInstalledFile(output.clone()))?;
-            if !metadata.is_file() || metadata.file_type().is_symlink()
+            if !metadata.is_file()
+                || metadata.file_type().is_symlink()
                 || metadata.len() != entry.expected_size
             {
                 return Err(NativeInstallError::InvalidInstalledFile(output));
@@ -258,10 +264,13 @@ pub fn verify_installed_native_archives(
                 return Err(NativeInstallError::InvalidInstalledFile(output));
             }
             // Find the already preflighted ZIP member, not a guessed output.
-            let index = entries.iter().position(|candidate| {
-                !candidate.is_directory
-                    && PathBuf::from(candidate.name.replace('\\', "/")) == relative
-            }).ok_or_else(|| NativeInstallError::InvalidInstalledFile(output.clone()))?;
+            let index = entries
+                .iter()
+                .position(|candidate| {
+                    !candidate.is_directory
+                        && PathBuf::from(candidate.name.replace('\\', "/")) == relative
+                })
+                .ok_or_else(|| NativeInstallError::InvalidInstalledFile(output.clone()))?;
             let mut zipped = zip.by_index(index)?;
             let mut installed = File::open(&output)?;
             let mut left = [0_u8; 64 * 1024];
@@ -288,7 +297,9 @@ pub fn verify_installed_native_archives(
             let item = item?;
             walked += 1;
             if walked > MAX_NATIVE_ZIP_ENTRIES {
-                return Err(NativeInstallError::Preflight(NativeZipError::TooManyEntries));
+                return Err(NativeInstallError::Preflight(
+                    NativeZipError::TooManyEntries,
+                ));
             }
             let meta = fs::symlink_metadata(item.path())?;
             let path = item.path();
@@ -298,7 +309,8 @@ pub fn verify_installed_native_archives(
             if meta.is_dir() {
                 pending.push(path);
             } else if meta.is_file() {
-                let relative = path.strip_prefix(&native_root)
+                let relative = path
+                    .strip_prefix(&native_root)
                     .map_err(|_| NativeInstallError::UnsafeDestination)?;
                 if !expected.contains(&relative.to_string_lossy().to_ascii_lowercase()) {
                     return Err(NativeInstallError::UnexpectedInstalledFile(path));
