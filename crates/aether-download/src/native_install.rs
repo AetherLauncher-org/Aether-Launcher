@@ -115,12 +115,14 @@ pub fn install_native_archives(
                 unix_mode: file.unix_mode(),
             });
         }
-        let selected = preflight_native_zip(&entries, archive.exclusions)?;
+        let selected: HashSet<_> = preflight_native_zip(&entries, archive.exclusions)?
+            .into_iter()
+            .map(|entry| entry.relative_path)
+            .collect();
         let mut indices = Vec::new();
         for (index, entry) in entries.iter().enumerate() {
             let path = PathBuf::from(entry.name.replace('\\', "/"));
-            let candidate = selected.iter().find(|file| file.relative_path == path);
-            if entry.is_directory || candidate.is_none() {
+            if entry.is_directory || !selected.contains(&path) {
                 continue;
             }
             let size = entry.uncompressed_size;
