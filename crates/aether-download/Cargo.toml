@@ -7,5 +7,9 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+aether-core = { path = "../aether-core" }
+regex.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
 thiserror.workspace = true

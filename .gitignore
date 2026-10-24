@@ -29,3 +29,6 @@ coverage
 *.njsproj
 *.sln
 *.sw?
+
+# Local research notes are kept out of the repository (see CONTRIBUTING)
+docs/excluded/
