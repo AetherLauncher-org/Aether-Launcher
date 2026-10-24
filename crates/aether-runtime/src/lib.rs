@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -18,33 +19,40 @@ impl JavaRuntime {
         self.major_version == required_major_version
     }
 
-    /// 从 java 可执行文件路径探测版本信息
+    /// Probe a Java executable and use its JVM properties when available.
     pub fn probe(executable: PathBuf) -> Result<Self, RuntimeError> {
-        let output = Command::new(&executable)
-            .arg("-version")
+        let mut output = Command::new(&executable)
+            .args(["-XshowSettings:properties", "-version"])
             .output()
-            .map_err(|e| RuntimeError::CommandFailed(executable.clone(), e))?;
+            .map_err(|error| RuntimeError::CommandFailed(executable.clone(), error))?;
 
-        let version_output = String::from_utf8_lossy(&output.stderr);
+        // Some older VMs do not support -XshowSettings:properties.
+        if !output.status.success() {
+            output = Command::new(&executable)
+                .arg("-version")
+                .output()
+                .map_err(|error| RuntimeError::CommandFailed(executable.clone(), error))?;
+        }
+
+        if !output.status.success() {
+            return Err(RuntimeError::UnsuccessfulExit(executable, output.status));
+        }
+
+        // The version banner normally goes to stderr, but some VMs use stdout.
+        let version_output = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         let major_version = parse_java_major_version(&version_output)
             .ok_or_else(|| RuntimeError::VersionParseFailure(executable.clone()))?;
 
-        let architecture = if version_output.contains("64-Bit") || version_output.contains("amd64") {
-            "x64".to_string()
-        } else if version_output.contains("aarch64") || version_output.contains("arm64") {
-            "arm64".to_string()
-        } else {
-            "x86".to_string()
-        };
-
-        let vendor = extract_vendor(&version_output);
-
         Ok(Self {
             executable,
             major_version,
-            architecture,
-            vendor,
+            architecture: extract_architecture(&version_output),
+            vendor: extract_vendor(&version_output),
         })
     }
 }
@@ -55,41 +63,80 @@ pub enum RuntimeError {
     CommandFailed(PathBuf, std::io::Error),
     #[error("failed to parse java version from {0:?}")]
     VersionParseFailure(PathBuf),
+    #[error("java command at {0:?} exited unsuccessfully: {1}")]
+    UnsuccessfulExit(PathBuf, std::process::ExitStatus),
 }
 
 fn parse_java_major_version(output: &str) -> Option<u16> {
-    // 适配不同 JVM 版本输出格式
-    // Java 8: java version "1.8.0_..."
-    // Java 9+: java version "11.0.18" 或 openjdk version "17.0.9"
-
     for line in output.lines() {
-        if let Some(version_part) = line.split('"').nth(1) {
-            if let Some(major_str) = version_part.split('.').next() {
-                if major_str == "1" {
-                    // Java 8 及以下是 1.x.x 格式
-                    if let Some(minor) = version_part.split('.').nth(1) {
-                        if let Ok(v) = minor.parse::<u16>() {
-                            return Some(v);
-                        }
-                    }
-                } else if let Ok(v) = major_str.parse::<u16>() {
-                    return Some(v);
-                }
-            }
+        let line = line.trim();
+        let Some((prefix, quoted)) = line.split_once('"') else {
+            continue;
+        };
+        if !matches!(
+            prefix.trim(),
+            "java version" | "openjdk version" | "java full version"
+        ) {
+            continue;
+        }
+
+        let version = quoted.split('"').next()?;
+        let mut parts = version.split('.');
+        let first = parts.next()?;
+        if first == "1" {
+            // Java 8 and earlier used versions such as 1.8.0_391.
+            return parts.next()?.parse::<u16>().ok();
+        }
+
+        // Early-access JVMs may advertise versions such as "25-ea".
+        let digits: String = first.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if let Ok(major) = digits.parse::<u16>() {
+            return Some(major);
         }
     }
     None
 }
 
+fn extract_property<'a>(output: &'a str, property: &str) -> Option<&'a str> {
+    output.lines().find_map(|line| {
+        let (name, value) = line.trim().split_once('=')?;
+        (name.trim() == property)
+            .then_some(value.trim())
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn extract_architecture(output: &str) -> String {
+    if let Some(arch) = extract_property(output, "os.arch") {
+        let normalized = match arch.to_ascii_lowercase().as_str() {
+            "amd64" | "x86_64" | "x64" => "x64",
+            "aarch64" | "arm64" => "arm64",
+            "x86" | "i386" | "i486" | "i586" | "i686" => "x86",
+            "arm" | "arm32" => "arm",
+            _ => arch,
+        };
+        return normalized.to_string();
+    }
+
+    // A generic "64-Bit Server VM" banner does not identify the CPU family.
+    let lower = output.to_ascii_lowercase();
+    if lower.contains("aarch64") || lower.contains("arm64") {
+        "arm64".to_string()
+    } else if lower.contains("amd64") || lower.contains("x86_64") {
+        "x64".to_string()
+    } else if lower.contains("i386") || lower.contains("i686") || lower.contains("x86") {
+        "x86".to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
+
 fn extract_vendor(output: &str) -> Option<String> {
-    let lower = output.to_lowercase();
-    if lower.contains("openjdk") {
-        Some("OpenJDK".to_string())
-    } else if lower.contains("oracle") {
-        Some("Oracle".to_string())
-    } else if lower.contains("adoptium") || lower.contains("temurin") {
+    let lower = output.to_ascii_lowercase();
+    // Most vendor distributions also mention OpenJDK; check specific ones first.
+    if lower.contains("adoptium") || lower.contains("temurin") {
         Some("Adoptium".to_string())
-    } else if lower.contains("zulu") {
+    } else if lower.contains("zulu") || lower.contains("azul") {
         Some("Azul Zulu".to_string())
     } else if lower.contains("amazon") || lower.contains("corretto") {
         Some("Amazon Corretto".to_string())
@@ -97,30 +144,34 @@ fn extract_vendor(output: &str) -> Option<String> {
         Some("Microsoft".to_string())
     } else if lower.contains("graalvm") {
         Some("GraalVM".to_string())
+    } else if lower.contains("oracle") {
+        Some("Oracle".to_string())
+    } else if lower.contains("openjdk") {
+        Some("OpenJDK".to_string())
     } else {
-        None
+        extract_property(output, "java.vendor").map(str::to_string)
     }
 }
 
 /// 扫描系统中常见位置的 Java 安装
 pub fn discover_java_runtimes() -> Vec<JavaRuntime> {
     let mut runtimes = Vec::new();
-    let candidates = discover_java_candidates();
+    let mut seen = HashSet::new();
 
-    for candidate in candidates {
+    for candidate in discover_java_candidates() {
+        // Different installs with the same vendor/major/architecture must remain
+        // selectable. Only de-duplicate paths resolving to the same executable.
+        let identity = std::fs::canonicalize(&candidate).unwrap_or_else(|_| candidate.clone());
+        if !seen.insert(identity) {
+            continue;
+        }
+
         if let Ok(runtime) = JavaRuntime::probe(candidate) {
-            // 去重：同版本、同架构只保留一个
-            if !runtimes.iter().any(|r: &JavaRuntime| {
-                r.major_version == runtime.major_version
-                    && r.architecture == runtime.architecture
-                    && r.vendor == runtime.vendor
-            }) {
-                runtimes.push(runtime);
-            }
+            runtimes.push(runtime);
         }
     }
 
-    runtimes.sort_by_key(|r| std::cmp::Reverse(r.major_version));
+    runtimes.sort_by_key(|runtime| std::cmp::Reverse(runtime.major_version));
     runtimes
 }
 
@@ -290,23 +341,23 @@ fn discover_java_candidates() -> Vec<PathBuf> {
 }
 
 fn scan_minecraft_runtime(base: &Path, paths: &mut Vec<PathBuf>, executable_name: &str) {
-    if let Ok(entries) = std::fs::read_dir(base) {
-        for entry in entries.flatten() {
-            let runtime_path = entry.path();
-            // Minecraft runtime 通常是 jre-legacy, java-runtime-alpha, java-runtime-beta, java-runtime-gamma 等
-            if runtime_path.is_dir() {
-                let java_exe = runtime_path.join("bin").join(executable_name);
-                if java_exe.exists() {
-                    paths.push(java_exe);
-                }
-                // 有些版本可能嵌套更深
-                if let Ok(nested) = std::fs::read_dir(&runtime_path) {
-                    for nested_entry in nested.flatten() {
-                        let nested_java = nested_entry.path().join("bin").join(executable_name);
-                        if nested_java.exists() {
-                            paths.push(nested_java);
-                        }
-                    }
+    // Mojang commonly installs:
+    // runtime/<component>/<platform>/<component>/bin/java(.exe).
+    // Bound the depth and avoid symlink directories to prevent cycles.
+    let mut pending = vec![(base.to_path_buf(), 0_u8)];
+    while let Some((dir, depth)) = pending.pop() {
+        let executable = dir.join("bin").join(executable_name);
+        if executable.is_file() {
+            paths.push(executable);
+        }
+
+        if depth >= 4 {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                    pending.push((entry.path(), depth + 1));
                 }
             }
         }
@@ -345,6 +396,72 @@ mod tests {
     fn extracts_adoptium_vendor() {
         let output = "Eclipse Temurin Runtime";
         assert_eq!(extract_vendor(output), Some("Adoptium".to_string()));
+    }
+
+    #[test]
+    fn parses_version_after_unquoted_property_lines() {
+        let output = "Property settings:\n    os.arch = amd64\nopenjdk version \"17.0.9\"";
+        assert_eq!(parse_java_major_version(output), Some(17));
+    }
+
+    #[test]
+    fn parses_early_access_version() {
+        assert_eq!(
+            parse_java_major_version("openjdk version \"25-ea\" 2025-03-18"),
+            Some(25)
+        );
+    }
+
+    #[test]
+    fn ignores_unrelated_quoted_lines() {
+        assert_eq!(parse_java_major_version("setting \"99\"\nnot a java version"), None);
+    }
+
+    #[test]
+    fn detects_arm64_from_properties_even_with_64_bit_banner() {
+        let output = "Property settings:\n    os.arch = aarch64\nOpenJDK 64-Bit Server VM";
+        assert_eq!(extract_architecture(output), "arm64");
+    }
+
+    #[test]
+    fn does_not_guess_x64_from_generic_64_bit_banner() {
+        assert_eq!(extract_architecture("OpenJDK 64-Bit Server VM"), "unknown");
+    }
+
+    #[test]
+    fn prefers_specific_vendor_to_generic_openjdk() {
+        assert_eq!(
+            extract_vendor("openjdk version \"21\"\nOpenJDK Runtime Environment Temurin"),
+            Some("Adoptium".to_string())
+        );
+    }
+
+    #[test]
+    fn finds_mojang_nested_runtime_layout() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "aether-java-runtime-{}-{unique}",
+            std::process::id()
+        ));
+        let name = if cfg!(windows) { "java.exe" } else { "java" };
+        let executable = root
+            .join("java-runtime-gamma")
+            .join("windows-x64")
+            .join("java-runtime-gamma")
+            .join("bin")
+            .join(name);
+
+        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        std::fs::File::create(&executable).unwrap();
+
+        let mut paths = Vec::new();
+        scan_minecraft_runtime(&root, &mut paths, name);
+        let result = paths.contains(&executable);
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(result, "nested Mojang runtime should be discovered");
     }
 
     #[test]
