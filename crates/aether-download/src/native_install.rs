@@ -48,6 +48,10 @@ pub enum NativeInstallError {
     TooLarge,
     #[error("native ZIP file {0:?} returned a different uncompressed size")]
     ChangedFileSize(PathBuf),
+    #[error("installed native file is missing, redirected or differs from its verified source: {0:?}")]
+    InvalidInstalledFile(PathBuf),
+    #[error("installed natives contain an unexpected file or symlink: {0:?}")]
+    UnexpectedInstalledFile(PathBuf),
 }
 
 struct StageGuard(PathBuf);
@@ -184,6 +188,127 @@ pub fn install_native_archives(
     // The stage no longer exists after a successful same-filesystem rename.
     drop(guard);
     Ok(destination)
+}
+
+/// Compare an existing native directory against the validated contents of
+/// its source JARs. Every file is streamed and byte-compared; a stale or
+/// tampered directory is never trusted merely because it exists.
+///
+/// The application-owned game tree must not be concurrently altered by
+/// untrusted processes during this check or the eventual launch.
+pub fn verify_installed_native_archives(
+    game_directory: &Path,
+    natives_directory: &Path,
+    archives: &[NativeInstallArchive<'_>],
+) -> Result<(), NativeInstallError> {
+    let game_root = fs::canonicalize(game_directory)?;
+    let metadata = fs::symlink_metadata(natives_directory)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(NativeInstallError::UnsafeDestination);
+    }
+    let native_root = fs::canonicalize(natives_directory)?;
+    if !native_root.starts_with(&game_root) {
+        return Err(NativeInstallError::UnsafeDestination);
+    }
+    let mut expected = HashSet::<String>::new();
+    let mut byte_budget = 0_u64;
+    let mut total_entries = 0_usize;
+
+    for archive in archives {
+        let path = verify_local_artifact(&game_root, archive.artifact)?;
+        let mut zip = ZipArchive::new(File::open(path)?)?;
+        total_entries = total_entries.saturating_add(zip.len());
+        if total_entries > MAX_NATIVE_ZIP_ENTRIES {
+            return Err(NativeInstallError::Preflight(NativeZipError::TooManyEntries));
+        }
+        let mut entries = Vec::with_capacity(zip.len());
+        for index in 0..zip.len() {
+            let file = zip.by_index(index)?;
+            let name = std::str::from_utf8(file.name_raw())
+                .map_err(|_| NativeInstallError::InvalidEntryName)?;
+            entries.push(NativeZipEntry {
+                name: name.to_owned(),
+                uncompressed_size: file.size(),
+                is_directory: file.is_dir(),
+                unix_mode: file.unix_mode(),
+            });
+        }
+        let selected = preflight_native_zip(&entries, archive.exclusions)?;
+        for entry in selected {
+            byte_budget = byte_budget.checked_add(entry.expected_size)
+                .ok_or(NativeInstallError::TooLarge)?;
+            if byte_budget > MAX_NATIVE_UNCOMPRESSED_BYTES {
+                return Err(NativeInstallError::TooLarge);
+            }
+            let key = entry.relative_path.to_string_lossy().to_ascii_lowercase();
+            if !expected.insert(key) {
+                return Err(NativeInstallError::DuplicateOutput(entry.relative_path));
+            }
+            let relative = entry.relative_path;
+            let output = native_root.join(&relative);
+            let metadata = fs::symlink_metadata(&output)
+                .map_err(|_| NativeInstallError::InvalidInstalledFile(output.clone()))?;
+            if !metadata.is_file() || metadata.file_type().is_symlink()
+                || metadata.len() != entry.expected_size
+            {
+                return Err(NativeInstallError::InvalidInstalledFile(output));
+            }
+            let canonical = fs::canonicalize(&output)?;
+            if !canonical.starts_with(&native_root) {
+                return Err(NativeInstallError::InvalidInstalledFile(output));
+            }
+            // Find the already preflighted ZIP member, not a guessed output.
+            let index = entries.iter().position(|candidate| {
+                !candidate.is_directory
+                    && PathBuf::from(candidate.name.replace('\\', "/")) == relative
+            }).ok_or_else(|| NativeInstallError::InvalidInstalledFile(output.clone()))?;
+            let mut zipped = zip.by_index(index)?;
+            let mut installed = File::open(&output)?;
+            let mut left = [0_u8; 64 * 1024];
+            let mut right = [0_u8; 64 * 1024];
+            loop {
+                let n = zipped.read(&mut left)?;
+                if n == 0 {
+                    break;
+                }
+                installed.read_exact(&mut right[..n])?;
+                if left[..n] != right[..n] {
+                    return Err(NativeInstallError::InvalidInstalledFile(output));
+                }
+            }
+        }
+    }
+
+    // Also reject unexpected files/symlinks in the native search path. This
+    // prevents an unrelated binary from being loaded ahead of trusted natives.
+    let mut pending = vec![native_root.clone()];
+    let mut walked = 0_usize;
+    while let Some(dir) = pending.pop() {
+        for item in fs::read_dir(&dir)? {
+            let item = item?;
+            walked += 1;
+            if walked > MAX_NATIVE_ZIP_ENTRIES {
+                return Err(NativeInstallError::Preflight(NativeZipError::TooManyEntries));
+            }
+            let meta = fs::symlink_metadata(item.path())?;
+            let path = item.path();
+            if meta.file_type().is_symlink() {
+                return Err(NativeInstallError::UnexpectedInstalledFile(path));
+            }
+            if meta.is_dir() {
+                pending.push(path);
+            } else if meta.is_file() {
+                let relative = path.strip_prefix(&native_root)
+                    .map_err(|_| NativeInstallError::UnsafeDestination)?;
+                if !expected.contains(&relative.to_string_lossy().to_ascii_lowercase()) {
+                    return Err(NativeInstallError::UnexpectedInstalledFile(path));
+                }
+            } else {
+                return Err(NativeInstallError::UnexpectedInstalledFile(path));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
