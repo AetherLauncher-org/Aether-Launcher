@@ -283,17 +283,18 @@ fn scan_directory_rejects_a_missing_root() {
 #[test]
 fn scan_directory_skips_symlinks() {
     let temp = TempDir::new("symlink");
+    let scan = temp.mkdir("scan");
     let target = temp.mkdir("outside-target");
     fs::write(target.join("secret.json"), b"{}").unwrap();
 
-    let link = temp.path().join("linked");
+    let link = scan.join("linked");
     if std::os::windows::fs::symlink_dir(&target, &link).is_err() {
         // Creating a symlink needs developer mode or an elevated shell; the
         // behaviour under test is still covered by the file-metadata check.
         return;
     }
 
-    let snapshot = scan_directory(temp.path()).unwrap();
+    let snapshot = scan_directory(&scan).unwrap();
     assert!(!snapshot.contains("linked"));
     assert!(
         !snapshot
@@ -307,11 +308,12 @@ fn scan_directory_skips_symlinks() {
 #[test]
 fn scan_directory_skips_symlinks() {
     let temp = TempDir::new("symlink");
+    let scan = temp.mkdir("scan");
     let target = temp.mkdir("outside-target");
     fs::write(target.join("secret.json"), b"{}").unwrap();
-    std::os::unix::fs::symlink(&target, temp.path().join("linked")).unwrap();
+    std::os::unix::fs::symlink(&target, scan.join("linked")).unwrap();
 
-    let snapshot = scan_directory(temp.path()).unwrap();
+    let snapshot = scan_directory(&scan).unwrap();
     assert!(!snapshot.contains("linked"));
     assert!(
         !snapshot

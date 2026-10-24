@@ -499,9 +499,13 @@ impl<'a> DownloadEngine<'a> {
         cancel: &CancellationToken,
         progress: &dyn ProgressSink,
     ) -> Result<(), AttemptError> {
+        // Reject pre-existing links before touching the directory tree, then
+        // recheck after creating any missing parent directories.
+        reject_linked_destination(self.root, &artifact.destination)?;
         if let Some(parent) = dest_full.parent() {
             fs::create_dir_all(parent)?;
         }
+        reject_linked_destination(self.root, &artifact.destination)?;
 
         let mut existing = part_length(part);
         if existing >= artifact.size && existing > 0 {
@@ -613,6 +617,32 @@ fn part_path(dest_full: &Path) -> PathBuf {
     let mut name = dest_full.file_name().unwrap_or_default().to_os_string();
     name.push(".part");
     dest_full.with_file_name(name)
+}
+
+/// Refuse pre-existing filesystem links inside the managed download tree.
+/// A lexically safe relative path can still escape through a symlinked parent
+/// or a symlinked .part file. This is a preflight check, not a substitute for
+/// OS-level no-follow/openat primitives against concurrent local attackers.
+fn reject_linked_destination(root: &Path, destination: &Path) -> io::Result<()> {
+    fn reject_link(path: &Path) -> io::Result<()> {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.file_type().is_symlink() => Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "download target contains a symbolic link",
+            )),
+            Ok(_) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
+
+    reject_link(root)?;
+    let mut current = root.to_path_buf();
+    for component in destination.components() {
+        current.push(component.as_os_str());
+        reject_link(&current)?;
+    }
+    reject_link(&part_path(&root.join(destination)))
 }
 
 /// `.part` 的现有长度；不存在（或不是常规文件）时视为 0。

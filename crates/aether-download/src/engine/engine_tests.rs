@@ -936,6 +936,67 @@ fn rejects_artifacts_without_issuing_requests() {
     assert!(progress.events().is_empty());
 }
 
+#[cfg(unix)]
+#[test]
+fn symlinked_destination_parent_is_rejected_before_network() {
+    let root = TempRoot::new("linked-parent");
+    let outside = TempRoot::new("linked-parent-outside");
+    std::os::unix::fs::symlink(outside.path(), root.join("libraries")).unwrap();
+
+    let body = body_of(32, 7);
+    let transport = FakeTransport::new(Vec::new());
+    let sleeps = SleepRecorder::default();
+    let outcome = engine(
+        &transport,
+        root.path(),
+        2,
+        Duration::from_millis(10),
+        Duration::from_secs(1),
+        &sleeps,
+    )
+    .download_artifact(
+        &artifact("libraries/client.jar", body.len() as u64, &sha1_of(&body), &["a"]),
+        &CancellationToken::new(),
+        &CollectProgress::default(),
+    );
+
+    assert!(outcome.is_err());
+    assert_eq!(transport.request_count(), 0);
+    assert!(!outside.join("client.jar.part").exists());
+    assert!(!outside.join("client.jar").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_partial_file_is_not_followed_or_overwritten() {
+    let root = TempRoot::new("linked-partial");
+    let outside = TempRoot::new("linked-partial-outside");
+    let protected = outside.join("protected.txt");
+    fs::write(&protected, b"untouched").unwrap();
+    std::os::unix::fs::symlink(&protected, root.join("client.jar.part")).unwrap();
+
+    let body = body_of(32, 8);
+    let transport = FakeTransport::new(Vec::new());
+    let sleeps = SleepRecorder::default();
+    let outcome = engine(
+        &transport,
+        root.path(),
+        2,
+        Duration::from_millis(10),
+        Duration::from_secs(1),
+        &sleeps,
+    )
+    .download_artifact(
+        &artifact("client.jar", body.len() as u64, &sha1_of(&body), &["a"]),
+        &CancellationToken::new(),
+        &CollectProgress::default(),
+    );
+
+    assert!(outcome.is_err());
+    assert_eq!(transport.request_count(), 0);
+    assert_eq!(fs::read(&protected).unwrap(), b"untouched");
+}
+
 #[test]
 fn pre_cancelled_token_issues_no_request() {
     let root = TempRoot::new("pre-cancel");
