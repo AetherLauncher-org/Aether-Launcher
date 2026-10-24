@@ -19,7 +19,8 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let id = NEXT.fetch_add(1, Ordering::Relaxed);
-        let game = std::env::temp_dir().join(format!("aether-native-install-{}-{id}", std::process::id()));
+        let game =
+            std::env::temp_dir().join(format!("aether-native-install-{}-{id}", std::process::id()));
         fs::create_dir_all(game.join("libraries")).unwrap();
         fs::create_dir_all(game.join("instances/one")).unwrap();
         let output = game.join("instances/one/natives");
@@ -30,8 +31,10 @@ impl Fixture {
         let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
         for &(entry, bytes) in files {
             writer
-                .start_file(entry, SimpleFileOptions::default()
-                    .compression_method(zip::CompressionMethod::Stored))
+                .start_file(
+                    entry,
+                    SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored),
+                )
                 .unwrap();
             writer.write_all(bytes).unwrap();
         }
@@ -65,31 +68,42 @@ fn install(
     install_native_archives(
         &fixture.game,
         &fixture.output,
-        &[NativeInstallArchive { artifact, exclusions }],
+        &[NativeInstallArchive {
+            artifact,
+            exclusions,
+        }],
     )
 }
 
 fn assert_not_published(fixture: &Fixture) {
     assert!(!fixture.output.exists());
     let parent = fixture.output.parent().unwrap();
-    assert!(fs::read_dir(parent)
-        .unwrap()
-        .flatten()
-        .all(|entry| !entry.file_name().to_string_lossy().starts_with(".aether-native-stage-")));
+    assert!(fs::read_dir(parent).unwrap().flatten().all(|entry| {
+        !entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".aether-native-stage-")
+    }));
 }
 
 #[test]
 fn verifies_archive_and_atomically_publishes_native_files() {
     let f = Fixture::new();
-    let jar = f.jar("native.jar", &[
-        ("META-INF/MANIFEST.MF", b"metadata"),
-        ("linux/liblwjgl.so", b"native"),
-        ("windows/lwjgl.dll", b"windows"),
-    ]);
+    let jar = f.jar(
+        "native.jar",
+        &[
+            ("META-INF/MANIFEST.MF", b"metadata"),
+            ("linux/liblwjgl.so", b"native"),
+            ("windows/lwjgl.dll", b"windows"),
+        ],
+    );
     let path = install(&f, &jar, &["META-INF/".to_owned()]).unwrap();
     assert_eq!(path, f.output);
     assert_eq!(fs::read(path.join("linux/liblwjgl.so")).unwrap(), b"native");
-    assert_eq!(fs::read(path.join("windows/lwjgl.dll")).unwrap(), b"windows");
+    assert_eq!(
+        fs::read(path.join("windows/lwjgl.dll")).unwrap(),
+        b"windows"
+    );
     assert!(!path.join("META-INF/MANIFEST.MF").exists());
 }
 
@@ -98,10 +112,16 @@ fn refuses_bad_hash_or_size_without_creating_output() {
     let f = Fixture::new();
     let mut jar = f.jar("native.jar", &[("native.dll", b"good")]);
     jar.sha1 = "0000000000000000000000000000000000000000".to_owned();
-    assert!(matches!(install(&f, &jar, &[]), Err(NativeInstallError::Verification(_))));
+    assert!(matches!(
+        install(&f, &jar, &[]),
+        Err(NativeInstallError::Verification(_))
+    ));
     assert_not_published(&f);
     jar.size += 1;
-    assert!(matches!(install(&f, &jar, &[]), Err(NativeInstallError::Verification(_))));
+    assert!(matches!(
+        install(&f, &jar, &[]),
+        Err(NativeInstallError::Verification(_))
+    ));
     assert_not_published(&f);
 }
 
@@ -109,7 +129,10 @@ fn refuses_bad_hash_or_size_without_creating_output() {
 fn blocks_traversal_and_rejects_existing_native_directory() {
     let f = Fixture::new();
     let bad = f.jar("bad.jar", &[("../outside.dll", b"escape")]);
-    assert!(matches!(install(&f, &bad, &[]), Err(NativeInstallError::Preflight(_))));
+    assert!(matches!(
+        install(&f, &bad, &[]),
+        Err(NativeInstallError::Preflight(_))
+    ));
     assert_not_published(&f);
     assert!(!f.game.join("instances/one/outside.dll").exists());
 
@@ -132,11 +155,20 @@ fn rejects_duplicate_files_across_native_archives() {
         &f.game,
         &f.output,
         &[
-            NativeInstallArchive { artifact: &first, exclusions: &[] },
-            NativeInstallArchive { artifact: &second, exclusions: &[] },
+            NativeInstallArchive {
+                artifact: &first,
+                exclusions: &[],
+            },
+            NativeInstallArchive {
+                artifact: &second,
+                exclusions: &[],
+            },
         ],
     );
-    assert!(matches!(result, Err(NativeInstallError::DuplicateOutput(_))));
+    assert!(matches!(
+        result,
+        Err(NativeInstallError::DuplicateOutput(_))
+    ));
     assert_not_published(&f);
 }
 
@@ -147,7 +179,10 @@ fn refuses_destination_outside_the_game_directory() {
     let result = install_native_archives(
         &f.game,
         Path::new("/"),
-        &[NativeInstallArchive { artifact: &jar, exclusions: &[] }],
+        &[NativeInstallArchive {
+            artifact: &jar,
+            exclusions: &[],
+        }],
     );
     assert!(matches!(result, Err(NativeInstallError::UnsafeDestination)));
     assert_not_published(&f);
@@ -159,12 +194,19 @@ fn refuses_external_symlinked_archive() {
     use std::os::unix::fs::symlink;
 
     let f = Fixture::new();
-    let outside = f.game.parent().unwrap().join(format!("aether-external-{}", std::process::id()));
+    let outside = f
+        .game
+        .parent()
+        .unwrap()
+        .join(format!("aether-external-{}", std::process::id()));
     fs::write(&outside, b"external").unwrap();
     let original = f.jar("native.jar", &[("native.dll", b"good")]);
     fs::remove_file(f.game.join(&original.destination)).unwrap();
     symlink(&outside, f.game.join(&original.destination)).unwrap();
-    assert!(matches!(install(&f, &original, &[]), Err(NativeInstallError::Verification(_))));
+    assert!(matches!(
+        install(&f, &original, &[]),
+        Err(NativeInstallError::Verification(_))
+    ));
     assert_not_published(&f);
     fs::remove_file(outside).unwrap();
 }
