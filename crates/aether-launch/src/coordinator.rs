@@ -155,10 +155,12 @@ impl InstanceLaunchCoordinator {
         redactions: &[String],
     ) -> Result<InstanceProcessStatus, CoordinatorError> {
         // Reject duplicate launches before performing file inspection.
-        if let Ok(status) = self.processes.status(instance_id)
-            && status.state == crate::registry::InstanceRunState::Running
-        {
-            return Err(CoordinatorError::Registry(RegistryError::AlreadyRunning));
+        match self.processes.status(instance_id) {
+            Ok(status) if status.state == crate::registry::InstanceRunState::Running => {
+                return Err(CoordinatorError::Registry(RegistryError::AlreadyRunning));
+            }
+            Err(RegistryError::UnknownInstance) | Ok(_) => {}
+            Err(error) => return Err(CoordinatorError::Registry(error)),
         }
         let plan = self.prepare(instance_id, memory_mib, runtimes, environment, account_variables)?;
         Ok(self.processes.start(instance_id, &plan, redactions)?)
