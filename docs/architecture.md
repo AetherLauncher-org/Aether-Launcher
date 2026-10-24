@@ -98,7 +98,7 @@ Java 发现命令 `list_java_runtimes` 是只读且无参数的 IPC：Tauri 使�
 - 按当前系统和 features 的规则过滤 library。优先使用 `downloads.artifact.path`，否则由 Maven 坐标生成本地 `libraries` 相对路径；验证路径安全、存在性，并拒绝链接到 `libraries` 目录之外的库文件。
 - classpath 按清单库顺序追加实际客户端 JAR，使用运行系统对应的路径分隔符。展开条件参数及 `${...}` 占位符；缺失变量明确报错，非递归展开；若 JVM 参数没有显式 `-cp` 则补齐。
 - 不走 Shell，不执行 Java；认证变量可能包含访问令牌，不要记录或持久化完整 argv。
-- natives 的元数据解析与下载计划已实现，但真实下载、ZIP 提取、文件完整性校验及旧版参数仍待实现。对显式的 `natives-*` classifier 不会误当普通 classpath 库。
+- natives 下载计划、已下载 JAR 的校验/安全提取和已安装目录的复核已实现；HTTP 下载、旧版参数仍待实现。独立 `natives-*` classifier JAR 由协调器准备后不进入 JVM classpath。
 
 ## Natives 下载计划与解包安全边界
 
@@ -108,7 +108,7 @@ Java 发现命令 `list_java_runtimes` 是只读且无参数的 IPC：Tauri 使�
 
 **现已支持本地安装 natives：** `aether_download::verify::verify_local_artifact` 流式校验已有文件的大小与 SHA-1，拒绝链接到游戏根目录之外的文件；`aether_download::native_install::install_native_archives` 会先预检查所有 ZIP 条目，在同一文件系统上创建私有临时目录、使用 `create_new` 流式解压，并重新检查实际解压字节数。全部成功后只通过目录 rename 发布，失败时清理临时目录，已有的正式 natives 目录不被正常流程覆盖。上层使用 `NativePlan::install(game_directory, natives_directory)` 调用。
 
-**安全及使用边界：** 此接口不下载文件，也不会调用带历史安全漏洞的 `ZipArchive::extract`。调用方必须保证游戏根目录没有不受信任进程并发篡改，并提供全新的、位于游戏根目录内的 natives 目录。ZIP 库升级至 9.0.5 以避开已公开的解压漏洞，对应 Rust MSRV 从 1.85 提升到 1.88。SHA-1 用于与 Mojang 清单核验文件内容，不视为抗恶意碰撞的签名机制。当前 `build_launch_plan` **仍会拒绝**显式 native classifier；需要先准备 natives 再整合完整启动流程。
+**安全及使用边界：** 此接口不下载文件，也不会调用带历史安全漏洞的 `ZipArchive::extract`。调用方必须保证游戏根目录没有不受信任进程并发篡改，并提供全新的、位于游戏根目录内的 natives 目录。ZIP 库升级至 9.0.5 以避开已公开的解压漏洞，对应 Rust MSRV 从 1.85 提升到 1.88。SHA-1 用于与 Mojang 清单核验文件内容，不视为抗恶意碰撞的签名机制。当前 `build_launch_plan` 会略过显式 native classifier 的 classpath 条目；调用方必须先确认所需 natives 已安全准备。
 
 ## 游戏进程管理（Rust 内部 API）
 
@@ -138,7 +138,15 @@ Java 发现命令 `list_java_runtimes` 是只读且无参数的 IPC：Tauri 使�
 
 `aether_launch::InstanceLaunchCoordinator` 将上述读取与 `JavaRuntime` 选择、客户端 JAR 本地大小/SHA-1 核验、`build_launch_plan` 和 `InstanceProcessRegistry` 串联。后端拥有可信 `instance_storage_root` 与 `game_directory`，`prepare(instance_id, memory_mib, runtimes, environment, account_variables)` 只从 UUID 加载受管理实例，不接受前端传入可执行路径、Java argv、客户端 JAR 路径或工作目录。对受信任的账户上下文可以用 `start` 启动准备好的计划；`status/list/drain_logs/stop/forget_finished` 将操作限定在已注册实例的进程句柄上。
 
-**当前是受限协调器，不是完整 Minecraft 启动器。** 若版本需要尚未经过协调器准备的 natives、或 `assetIndex` 已声明而资源未校验，则返回 `NativesNotReady` / `AssetsNotReady`，不启动游戏；只允许已经安装且能够验证客户端 JAR 的现代、资源要求完整满足当前条件的实例。未实现通用下载、微软账户验证、完整资产校验与 natives 自动安装的端到端编排。这些能力齐备之前，**不开放实例启动的 Tauri IPC**。受管理的存储根目录须为仅被可信启动器进程修改的目录，防止并发文件替换的竞态风险。
+**当前是受限协调器，不是完整 Minecraft 启动器。** 若 natives 缺失，协调器只在明确调用安装路径时提取已下载的档案；声明的 `assetIndex` 必须先通过真实文件的逐项校验，否则直接失败。只允许已经安装且能够验证客户端 JAR 的现代、资源要求完整满足当前条件的实例。未实现通用下载、微软账户验证、完整资产校验与 natives 自动安装的端到端编排。这些能力齐备之前，**不开放实例启动的 Tauri IPC**。受管理的存储根目录须为仅被可信启动器进程修改的目录，防止并发文件替换的竞态风险。
+
+## 已安装 assets 与 natives 的启动前校验
+
+`aether_download::assets::verify_installed_assets(game_directory, index_id, sha1, size)` 对 **已有的** `assets/indexes/<id>.json` 进行大小/SHA-1 核验，解析 `objects` 中的哈希与大小，并逐一校验 `assets/objects/<前两位>/<sha1>`。不使用逻辑资源名组装文件路径。索引最大 32 MiB、最多 250000 个对象、单文件最大 1 GiB；对象 hash 必须是 40 位十六进制，重复 hash 的声明大小必须一致。缺失、大小不符或 SHA-1 不匹配均会阻止启动。校验不联网，也不创建或修复文件。资源索引中的虚拟目录重映射尚未实现。
+
+`NativePlan::verify_installed(game_directory, natives_directory)` 会验证来源 JAR 完整性，重复执行安全预检查，对照 ZIP 原始内容逐字节核验已解包的 native 文件，拒绝损坏、缺失、额外文件或符号链接。已存在的 natives 目录不因“目录存在”而默认可信。`InstanceLaunchCoordinator::prepare` 保持只读：如需 natives 而目录尚未安装，则返回 `NativesNotReady`。`prepare_and_install` 只会在目标不存在时将**已经下载**的 native JAR 安全解包到 `<game_directory>/natives/<实例UUID>`，并重新校验安装结果；如果已有目录被篡改，返回错误而不擅自覆盖。 `start` 使用这一准备路径，然后才启动 Java 进程。Native classifier JAR 仅用于提取，不进入 JVM classpath。
+
+**仍待实现：** Mojang HTTP 下载与下载缓存回填、资源对象修复、legacy `virtual/legacy` assets、完整身份认证、运行时 Java 自动安装、模组加载器适配，以及进程组优雅关闭。当前接口仅供受信任 Rust 调用，假设游戏数据目录没有不受信任进程同时修改。未向 Tauri 提供任意命令或任意路径执行能力。
 
 ## 还没有的部分
 
