@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use aether_download::native_install::{
     NativeInstallArchive, NativeInstallError, install_native_archives,
+    verify_installed_native_archives,
 };
 use aether_download::{
     ArtifactSource, DownloadArtifact, DownloadPlan, DownloadPlanError, is_safe_relative_path,
@@ -42,6 +43,24 @@ impl NativePlan {
             })
             .collect();
         install_native_archives(game_directory, natives_directory, &archives)
+    }
+
+    /// Verify every installed native binary against its SHA-1-verified
+    /// source JAR. Existing directories are never trusted by path alone.
+    pub fn verify_installed(
+        &self,
+        game_directory: &Path,
+        natives_directory: &Path,
+    ) -> Result<(), NativeInstallError> {
+        let archives: Vec<_> = self
+            .archives
+            .iter()
+            .map(|archive| NativeInstallArchive {
+                artifact: &archive.artifact,
+                exclusions: &archive.exclusions,
+            })
+            .collect();
+        verify_installed_native_archives(game_directory, natives_directory, &archives)
     }
 
     pub fn download_plan(&self) -> DownloadPlan {
