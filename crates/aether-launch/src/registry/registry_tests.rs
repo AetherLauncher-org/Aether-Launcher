@@ -20,6 +20,14 @@ fn fixture_child() {
     thread::sleep(Duration::from_millis(1200));
 }
 
+#[test]
+fn fixture_failed_child() {
+    if !std::env::args().any(|arg| arg == "--exact") {
+        return;
+    }
+    panic!("simulated game failure");
+}
+
 fn plan() -> LaunchPlan {
     LaunchPlan {
         runtime: JavaRuntime {
@@ -136,6 +144,22 @@ fn supports_independent_instances_and_restart_after_stop() {
 
     registry.stop(first).unwrap();
     registry.stop(second).unwrap();
+}
+
+#[test]
+fn nonzero_child_exit_maps_to_failed_instance_state() {
+    let id = InstanceId::new();
+    let mut failed_plan = plan();
+    failed_plan.arguments[1] = "registry::tests::fixture_failed_child".to_owned();
+    let mut registry = InstanceProcessRegistry::new();
+    registry.start(id, &failed_plan, &[]).unwrap();
+
+    let status = await_exit(&mut registry, id);
+    assert_eq!(status.state, InstanceRunState::Failed);
+    assert_eq!(status.state.instance_state(), InstanceState::Failed);
+    assert_ne!(status.exit_code, Some(0));
+    assert_eq!(registry.stop(id).unwrap().state, InstanceRunState::Failed);
+    registry.forget_finished(id).unwrap();
 }
 
 #[test]
