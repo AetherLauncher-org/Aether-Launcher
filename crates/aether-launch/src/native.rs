@@ -2,7 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
-use aether_download::native_install::{NativeInstallArchive, NativeInstallError, install_native_archives};
+use aether_download::native_install::{
+    NativeInstallArchive, NativeInstallError, install_native_archives,
+};
 use aether_download::{
     ArtifactSource, DownloadArtifact, DownloadPlan, DownloadPlanError, is_safe_relative_path,
 };
@@ -31,10 +33,14 @@ impl NativePlan {
         game_directory: &Path,
         natives_directory: &Path,
     ) -> Result<PathBuf, NativeInstallError> {
-        let archives: Vec<_> = self.archives.iter().map(|archive| NativeInstallArchive {
-            artifact: &archive.artifact,
-            exclusions: &archive.exclusions,
-        }).collect();
+        let archives: Vec<_> = self
+            .archives
+            .iter()
+            .map(|archive| NativeInstallArchive {
+                artifact: &archive.artifact,
+                exclusions: &archive.exclusions,
+            })
+            .collect();
         install_native_archives(game_directory, natives_directory, &archives)
     }
 
