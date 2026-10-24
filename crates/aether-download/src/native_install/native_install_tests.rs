@@ -6,7 +6,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use sha1::{Digest, Sha1};
 use zip::write::SimpleFileOptions;
 
-use super::{NativeInstallArchive, NativeInstallError, install_native_archives};
+use super::{
+    NativeInstallArchive, NativeInstallError, install_native_archives,
+    verify_installed_native_archives,
+};
 use crate::{ArtifactSource, DownloadArtifact};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -209,4 +212,48 @@ fn refuses_external_symlinked_archive() {
     ));
     assert_not_published(&f);
     fs::remove_file(outside).unwrap();
+}
+
+#[test]
+fn verifies_existing_natives_and_rejects_tampering_and_extras() {
+    let f = Fixture::new();
+    let artifact = f.jar("native.jar", &[("native.dll", b"good")]);
+    let archives = [NativeInstallArchive {
+        artifact: &artifact,
+        exclusions: &[],
+    }];
+    install_native_archives(&f.game, &f.output, &archives).unwrap();
+    verify_installed_native_archives(&f.game, &f.output, &archives).unwrap();
+
+    fs::write(f.output.join("native.dll"), b"evil").unwrap();
+    assert!(matches!(
+        verify_installed_native_archives(&f.game, &f.output, &archives),
+        Err(NativeInstallError::InvalidInstalledFile(_))
+    ));
+    fs::write(f.output.join("native.dll"), b"good").unwrap();
+    fs::write(f.output.join("unknown.dll"), b"untrusted").unwrap();
+    assert!(matches!(
+        verify_installed_native_archives(&f.game, &f.output, &archives),
+        Err(NativeInstallError::UnexpectedInstalledFile(_))
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn rejects_symlinked_native_directory_members() {
+    use std::os::unix::fs::symlink;
+
+    let f = Fixture::new();
+    let artifact = f.jar("native.jar", &[("native.dll", b"good")]);
+    let archives = [NativeInstallArchive {
+        artifact: &artifact,
+        exclusions: &[],
+    }];
+    install_native_archives(&f.game, &f.output, &archives).unwrap();
+    fs::remove_file(f.output.join("native.dll")).unwrap();
+    symlink(f.game.join("libraries/native.jar"), f.output.join("native.dll")).unwrap();
+    assert!(matches!(
+        verify_installed_native_archives(&f.game, &f.output, &archives),
+        Err(NativeInstallError::InvalidInstalledFile(_))
+    ));
 }
