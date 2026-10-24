@@ -11,5 +11,6 @@ aether-core = { path = "../aether-core" }
 aether-download = { path = "../aether-download" }
 aether-manifest = { path = "../aether-manifest" }
 aether-runtime = { path = "../aether-runtime" }
+aether-storage = { path = "../aether-storage" }
 serde.workspace = true
 thiserror.workspace = true
