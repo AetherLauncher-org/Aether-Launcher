@@ -18,7 +18,8 @@ fn environment(os: &str, arch: &str) -> Environment {
 
 #[test]
 fn selects_legacy_native_classifier_by_windows_architecture() {
-    let json = format!(r#"{{
+    let json = format!(
+        r#"{{
         "id":"1.8.8",
         "libraries":[{{
             "name":"tv.twitch:twitch-external-platform:4.5",
@@ -29,7 +30,8 @@ fn selects_legacy_native_classifier_by_windows_architecture() {
                 "natives-windows-64":{{"path":"tv/twitch/platform-64.jar","sha1":"{SHA}","size":60,"url":"https://example.invalid/64"}}
             }}}}
         }}]
-    }}"#);
+    }}"#
+    );
     let manifest = parse_version_manifest(&json).unwrap();
 
     let x64 = build_native_plan(&manifest, &environment("windows", "x86_64")).unwrap();
@@ -51,7 +53,8 @@ fn selects_legacy_native_classifier_by_windows_architecture() {
 
 #[test]
 fn modern_classified_lwjgl_is_platform_specific() {
-    let json = format!(r#"{{
+    let json = format!(
+        r#"{{
         "id":"1.21",
         "libraries":[
             {{"name":"org.lwjgl:lwjgl:3.3.3:natives-windows","downloads":{{"artifact":{{
@@ -66,7 +69,8 @@ fn modern_classified_lwjgl_is_platform_specific() {
                 "path":"org/lwjgl/arm.jar","sha1":"{SHA}","size":44,"url":"https://example.invalid/arm"
             }}}}}}
         ]
-    }}"#);
+    }}"#
+    );
     let manifest = parse_version_manifest(&json).unwrap();
     let win = build_native_plan(&manifest, &environment("windows", "x86_64")).unwrap();
     assert_eq!(win.archives.len(), 1);
@@ -80,19 +84,29 @@ fn modern_classified_lwjgl_is_platform_specific() {
 
 #[test]
 fn respects_library_platform_rules_and_missing_native_metadata() {
-    let manifest = parse_version_manifest(r#"{
+    let manifest = parse_version_manifest(
+        r#"{
         "id":"v","libraries":[
             {"name":"org.lwjgl:lwjgl:3.3:natives-windows",
              "rules":[{"action":"allow","os":{"name":"linux"}}]}
         ]
-    }"#).unwrap();
-    assert!(build_native_plan(&manifest, &environment("windows", "x86_64"))
-        .unwrap().archives.is_empty());
+    }"#,
+    )
+    .unwrap();
+    assert!(
+        build_native_plan(&manifest, &environment("windows", "x86_64"))
+            .unwrap()
+            .archives
+            .is_empty()
+    );
 
-    let missing = parse_version_manifest(r#"{
+    let missing = parse_version_manifest(
+        r#"{
         "id":"v","libraries":[{"name":"group:artifact:1",
         "natives":{"windows":"natives-windows"}}]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
     assert!(matches!(
         build_native_plan(&missing, &environment("windows", "x86_64")),
         Err(NativePlanError::MissingMetadata { .. })
@@ -101,24 +115,28 @@ fn respects_library_platform_rules_and_missing_native_metadata() {
 
 #[test]
 fn rejects_unsafe_artifact_paths_and_exclusions() {
-    let json = format!(r#"{{
+    let json = format!(
+        r#"{{
         "id":"v","libraries":[{{"name":"a:b:1:natives-windows",
         "downloads":{{"artifact":{{"path":"../escape.jar","sha1":"{SHA}",
             "size":1,"url":"https://example.invalid"}}}}}}
         ]
-    }}"#);
+    }}"#
+    );
     let manifest = parse_version_manifest(&json).unwrap();
     assert!(matches!(
         build_native_plan(&manifest, &environment("windows", "x86_64")),
         Err(NativePlanError::UnsafePath(_))
     ));
-    let json = format!(r#"{{
+    let json = format!(
+        r#"{{
         "id":"v","libraries":[{{"name":"a:b:1:natives-windows",
         "extract":{{"exclude":["../outside"]}},
         "downloads":{{"artifact":{{"path":"ok.jar","sha1":"{SHA}",
             "size":1,"url":"https://example.invalid"}}}}}}
         ]
-    }}"#);
+    }}"#
+    );
     let manifest = parse_version_manifest(&json).unwrap();
     assert_eq!(
         build_native_plan(&manifest, &environment("windows", "x86_64")),
@@ -138,29 +156,38 @@ fn rejects_invalid_checksums_and_duplicate_destinations() {
         Err(NativePlanError::Download(DownloadPlanError::InvalidSha1(_)))
     ));
 
-    let json = format!(r#"{{
+    let json = format!(
+        r#"{{
         "id":"v","libraries":[
             {{"name":"a:b:1:natives-windows","downloads":{{"artifact":{{
                 "path":"a.jar","sha1":"{SHA}","size":1,"url":"x"}}}}}},
             {{"name":"c:d:2:natives-windows","downloads":{{"artifact":{{
                 "path":"A.jar","sha1":"{SHA}","size":1,"url":"x"}}}}}}
         ]
-    }}"#);
+    }}"#
+    );
     let manifest = parse_version_manifest(&json).unwrap();
     assert!(matches!(
         build_native_plan(&manifest, &environment("windows", "x86_64")),
-        Err(NativePlanError::Download(DownloadPlanError::DuplicateDestination(_)))
+        Err(NativePlanError::Download(
+            DownloadPlanError::DuplicateDestination(_)
+        ))
     ));
 }
 
 #[test]
 fn unknown_architecture_does_not_guess_a_legacy_classifier() {
-    let manifest = parse_version_manifest(r#"{
+    let manifest = parse_version_manifest(
+        r#"{
         "id":"v","libraries":[{"name":"a:b:1",
         "natives":{"windows":"natives-windows-${arch}"}}]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
     assert_eq!(
         build_native_plan(&manifest, &environment("windows", "unknown")),
-        Err(NativePlanError::UnsupportedArchitecture("unknown".to_owned()))
+        Err(NativePlanError::UnsupportedArchitecture(
+            "unknown".to_owned()
+        ))
     );
 }
