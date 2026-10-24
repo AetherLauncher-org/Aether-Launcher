@@ -99,7 +99,9 @@ pub fn install_native_archives(
         let mut zip = ZipArchive::new(File::open(&path)?)?;
         entry_count = entry_count.saturating_add(zip.len());
         if entry_count > MAX_NATIVE_ZIP_ENTRIES {
-            return Err(NativeInstallError::Preflight(NativeZipError::TooManyEntries));
+            return Err(NativeInstallError::Preflight(
+                NativeZipError::TooManyEntries,
+            ));
         }
         let mut entries = Vec::with_capacity(zip.len());
         for index in 0..zip.len() {
