@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getApplicationInfo, isTauri } from "./index";
+import { getApplicationInfo, isTauri, listJavaRuntimes } from "./index";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -34,5 +34,36 @@ describe("getApplicationInfo", () => {
 
     await expect(getApplicationInfo()).resolves.toEqual(info);
     expect(invoke).toHaveBeenCalledWith("application_info");
+  });
+});
+
+describe("listJavaRuntimes", () => {
+  it("returns typed Java runtime records from the IPC command", async () => {
+    const runtimes = [
+      {
+        executable: "C:\\Program Files\\Java\\bin\\java.exe",
+        majorVersion: 21,
+        architecture: "x64",
+        vendor: "Adoptium",
+      },
+      {
+        executable: "/usr/lib/jvm/java-17/bin/java",
+        majorVersion: 17,
+        architecture: "arm64",
+        vendor: null,
+      },
+    ];
+    vi.mocked(invoke).mockResolvedValue(runtimes);
+
+    await expect(listJavaRuntimes()).resolves.toEqual(runtimes);
+    expect(invoke).toHaveBeenCalledWith("list_java_runtimes");
+  });
+
+  it("accepts no installations and propagates IPC errors", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce([]);
+    await expect(listJavaRuntimes()).resolves.toEqual([]);
+
+    vi.mocked(invoke).mockRejectedValueOnce("Java discovery task failed");
+    await expect(listJavaRuntimes()).rejects.toBe("Java discovery task failed");
   });
 });
