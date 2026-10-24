@@ -252,12 +252,7 @@ fn discover_java_candidates() -> Vec<PathBuf> {
     }
 
     // 常见安装位置
-    let common_dirs = [
-        "/usr/lib/jvm",
-        "/usr/java",
-        "/opt/java",
-        "/opt/jdk",
-    ];
+    let common_dirs = ["/usr/lib/jvm", "/usr/java", "/opt/java", "/opt/jdk"];
 
     for base_dir in &common_dirs {
         if let Ok(entries) = std::fs::read_dir(base_dir) {
@@ -414,7 +409,10 @@ mod tests {
 
     #[test]
     fn ignores_unrelated_quoted_lines() {
-        assert_eq!(parse_java_major_version("setting \"99\"\nnot a java version"), None);
+        assert_eq!(
+            parse_java_major_version("setting \"99\"\nnot a java version"),
+            None
+        );
     }
 
     #[test]
