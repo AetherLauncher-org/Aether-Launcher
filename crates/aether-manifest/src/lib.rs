@@ -3,7 +3,10 @@ mod inherit;
 pub mod loader;
 pub mod rules;
 
-pub use loader::{VersionLoadError, load_version_manifest};
+pub use loader::{
+    ResolvedVersionManifest, VersionLoadError, load_resolved_version_manifest,
+    load_version_manifest,
+};
 
 use std::collections::BTreeMap;
 
