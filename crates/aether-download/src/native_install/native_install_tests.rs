@@ -251,7 +251,11 @@ fn rejects_symlinked_native_directory_members() {
     }];
     install_native_archives(&f.game, &f.output, &archives).unwrap();
     fs::remove_file(f.output.join("native.dll")).unwrap();
-    symlink(f.game.join("libraries/native.jar"), f.output.join("native.dll")).unwrap();
+    symlink(
+        f.game.join("libraries/native.jar"),
+        f.output.join("native.dll"),
+    )
+    .unwrap();
     assert!(matches!(
         verify_installed_native_archives(&f.game, &f.output, &archives),
         Err(NativeInstallError::InvalidInstalledFile(_))
