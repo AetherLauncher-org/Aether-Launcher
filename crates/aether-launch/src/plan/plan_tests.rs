@@ -253,7 +253,7 @@ fn rejects_path_traversal_and_missing_libraries() {
 }
 
 #[test]
-fn refuses_native_classifiers_until_extraction_is_supported() {
+fn omits_native_classifier_jars_from_classpath_after_preparation() {
     let f = Fixture::new();
     let manifest = parse_version_manifest(
         r#"{
@@ -263,16 +263,14 @@ fn refuses_native_classifiers_until_extraction_is_supported() {
     }"#,
     )
     .unwrap();
-    assert!(matches!(
-        build_launch_plan(
-            &request(),
-            &manifest,
-            &runtime(),
-            &environment(),
-            &f.options
-        ),
-        Err(LaunchBuildError::UnsupportedNativeLibrary(_))
-    ));
+    let plan = build_launch_plan(
+        &request(),
+        &manifest,
+        &runtime(),
+        &environment(),
+        &f.options,
+    ).unwrap();
+    assert!(!plan.arguments.iter().any(|arg| arg.contains("natives-windows")));
 }
 
 #[cfg(unix)]
