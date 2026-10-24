@@ -48,8 +48,8 @@ pub fn select_java_runtime<'a>(
         .as_ref()
         .ok_or(JavaSelectionError::MissingRequirement)?
         .major_version;
-    let major = u16::try_from(required)
-        .map_err(|_| JavaSelectionError::UnsupportedMajor(required))?;
+    let major =
+        u16::try_from(required).map_err(|_| JavaSelectionError::UnsupportedMajor(required))?;
 
     runtimes
         .iter()
