@@ -90,6 +90,7 @@ cargo test --workspace --exclude aether-desktop
 ## 文档
 
 - [架构概览](docs/architecture.md)：crate 分层、前端结构、IPC 边界，以及各模块还缺什么
+- [模块文档](docs/modules/README.md)：账户、下载引擎与实例生命周期的实现边界
 
 ## 贡献
 
