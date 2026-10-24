@@ -23,5 +23,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 aether-core = { path = "../crates/aether-core" }
+aether-storage = { path = "../crates/aether-storage" }
 serde.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
