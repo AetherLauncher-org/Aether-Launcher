@@ -1,3 +1,6 @@
+pub mod plan;
+pub use plan::{LaunchBuildError, LaunchOptions, build_launch_plan};
+
 use std::path::PathBuf;
 
 use aether_core::InstanceId;
