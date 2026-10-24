@@ -24,7 +24,11 @@ impl Fixture {
 
     fn put_object(&self, bytes: &[u8]) -> String {
         let hash = format!("{:x}", Sha1::digest(bytes));
-        let path = self.root.join("assets/objects").join(&hash[..2]).join(&hash);
+        let path = self
+            .root
+            .join("assets/objects")
+            .join(&hash[..2])
+            .join(&hash);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, bytes).unwrap();
         hash
@@ -86,10 +90,31 @@ fn rejects_missing_and_tampered_object_files() {
     let (digest, size) = fixture.put_index(json!({"objects": {
         "one": {"hash":hash,"size":3}
     }}));
-    fs::write(fixture.root.join("assets/objects").join(&hash[..2]).join(&hash), b"bad").unwrap();
-    assert!(matches!(fixture.verify(&digest, size), Err(AssetError::Verification(_))));
-    fs::remove_file(fixture.root.join("assets/objects").join(&hash[..2]).join(&hash)).unwrap();
-    assert!(matches!(fixture.verify(&digest, size), Err(AssetError::Verification(_))));
+    fs::write(
+        fixture
+            .root
+            .join("assets/objects")
+            .join(&hash[..2])
+            .join(&hash),
+        b"bad",
+    )
+    .unwrap();
+    assert!(matches!(
+        fixture.verify(&digest, size),
+        Err(AssetError::Verification(_))
+    ));
+    fs::remove_file(
+        fixture
+            .root
+            .join("assets/objects")
+            .join(&hash[..2])
+            .join(&hash),
+    )
+    .unwrap();
+    assert!(matches!(
+        fixture.verify(&digest, size),
+        Err(AssetError::Verification(_))
+    ));
 }
 
 #[test]
@@ -98,14 +123,20 @@ fn rejects_bad_hashes_and_conflicting_object_sizes() {
     let (digest, size) = fixture.put_index(json!({"objects": {
         "bad": {"hash":"../invalid","size":3}
     }}));
-    assert!(matches!(fixture.verify(&digest, size), Err(AssetError::InvalidHash(_))));
+    assert!(matches!(
+        fixture.verify(&digest, size),
+        Err(AssetError::InvalidHash(_))
+    ));
 
     let hash = fixture.put_object(b"abc");
     let (digest, size) = fixture.put_index(json!({"objects": {
         "first": {"hash":hash,"size":3},
         "second": {"hash":hash,"size":4}
     }}));
-    assert!(matches!(fixture.verify(&digest, size), Err(AssetError::ConflictingObjectSizes)));
+    assert!(matches!(
+        fixture.verify(&digest, size),
+        Err(AssetError::ConflictingObjectSizes)
+    ));
 }
 
 #[test]
@@ -118,7 +149,10 @@ fn rejects_oversized_index_and_objects_before_verification() {
     let (digest, size) = fixture.put_index(json!({"objects": {
         "huge": {"hash":"0123456789abcdef0123456789abcdef01234567","size":1073741825_u64}
     }}));
-    assert!(matches!(fixture.verify(&digest, size), Err(AssetError::ObjectTooLarge)));
+    assert!(matches!(
+        fixture.verify(&digest, size),
+        Err(AssetError::ObjectTooLarge)
+    ));
 }
 
 #[cfg(unix)]
@@ -128,14 +162,25 @@ fn rejects_object_symlink_outside_game_directory() {
     let fixture = Fixture::new();
     let data = b"abc";
     let hash = format!("{:x}", Sha1::digest(data));
-    let outside = fixture.root.parent().unwrap().join(format!("aether-object-outside-{}", std::process::id()));
+    let outside = fixture
+        .root
+        .parent()
+        .unwrap()
+        .join(format!("aether-object-outside-{}", std::process::id()));
     fs::write(&outside, data).unwrap();
-    let path = fixture.root.join("assets/objects").join(&hash[..2]).join(&hash);
+    let path = fixture
+        .root
+        .join("assets/objects")
+        .join(&hash[..2])
+        .join(&hash);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     symlink(&outside, path).unwrap();
     let (digest, size) = fixture.put_index(json!({"objects": {
         "one": {"hash":hash,"size":3}
     }}));
-    assert!(matches!(fixture.verify(&digest, size), Err(AssetError::Verification(_))));
+    assert!(matches!(
+        fixture.verify(&digest, size),
+        Err(AssetError::Verification(_))
+    ));
     fs::remove_file(outside).unwrap();
 }
