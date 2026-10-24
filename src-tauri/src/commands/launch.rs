@@ -50,9 +50,11 @@ fn installed_game_directory() -> Result<PathBuf, String> {
         .map(PathBuf::from)
         .map(|base| base.join(".minecraft"));
     #[cfg(target_os = "macos")]
-    let path = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .map(|base| base.join("Library").join("Application Support").join("minecraft"));
+    let path = std::env::var_os("HOME").map(PathBuf::from).map(|base| {
+        base.join("Library")
+            .join("Application Support")
+            .join("minecraft")
+    });
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     let path: Option<PathBuf> = None;
 
@@ -82,10 +84,7 @@ fn current_environment() -> Environment {
 /// Verify the client JAR and assets before considering a previously created
 /// instance installed. Library/native verification happens again when launching.
 #[tauri::command]
-pub async fn activate_installed_instance(
-    app: tauri::AppHandle,
-    id: String,
-) -> Result<(), String> {
+pub async fn activate_installed_instance(app: tauri::AppHandle, id: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let id = parse_id(&id)?;
         let store_root = instance_store_root(&app)?;
@@ -99,7 +98,10 @@ pub async fn activate_installed_instance(
         let client_version = resolved
             .client_jar_version
             .ok_or_else(|| "installed version has no verified client JAR metadata".to_owned())?;
-        let client = resolved.manifest.downloads.as_ref()
+        let client = resolved
+            .manifest
+            .downloads
+            .as_ref()
             .and_then(|download| download.client.as_ref())
             .ok_or_else(|| "installed version has no client metadata".to_owned())?;
         let artifact = DownloadArtifact {
@@ -113,8 +115,7 @@ pub async fn activate_installed_instance(
                 url: client.url.clone(),
             }],
         };
-        verify_local_artifact(&game_root, &artifact)
-            .map_err(|error| error.to_string())?;
+        verify_local_artifact(&game_root, &artifact).map_err(|error| error.to_string())?;
         if let Some(index) = &resolved.manifest.asset_index {
             verify_installed_assets(&game_root, &index.id, &index.sha1, index.size)
                 .map_err(|error| error.to_string())?;
@@ -152,19 +153,33 @@ pub async fn start_installed_instance(
         vars.insert("clientid".to_owned(), String::new());
         vars.insert("xuid".to_owned(), String::new());
         vars.insert("launcher_name".to_owned(), "Aether".to_owned());
-        vars.insert("launcher_version".to_owned(), env!("CARGO_PKG_VERSION").to_owned());
+        vars.insert(
+            "launcher_version".to_owned(),
+            env!("CARGO_PKG_VERSION").to_owned(),
+        );
 
         let runtimes = aether_runtime::discover_java_runtimes();
         let state = app.state::<LaunchState>();
-        let mut guard = state.coordinator.lock()
+        let mut guard = state
+            .coordinator
+            .lock()
             .map_err(|_| "game process registry is unavailable".to_owned())?;
         if guard.is_none() {
-            *guard = Some(InstanceLaunchCoordinator::open(&root, &game)
-                .map_err(|error| error.to_string())?);
+            *guard = Some(
+                InstanceLaunchCoordinator::open(&root, &game).map_err(|error| error.to_string())?,
+            );
         }
-        guard.as_mut()
+        guard
+            .as_mut()
             .ok_or_else(|| "game launcher unavailable".to_owned())?
-            .start(id, memory_mib, &runtimes, &current_environment(), &vars, &[])
+            .start(
+                id,
+                memory_mib,
+                &runtimes,
+                &current_environment(),
+                &vars,
+                &[],
+            )
             .map_err(|error| error.to_string())
     })
     .await
@@ -180,9 +195,12 @@ pub async fn stop_installed_instance(
     tauri::async_runtime::spawn_blocking(move || {
         let id = parse_id(&id)?;
         let state = app.state::<LaunchState>();
-        let mut guard = state.coordinator.lock()
+        let mut guard = state
+            .coordinator
+            .lock()
             .map_err(|_| "game process registry is unavailable".to_owned())?;
-        guard.as_mut()
+        guard
+            .as_mut()
             .ok_or_else(|| "no game was started in this session".to_owned())?
             .stop(id)
             .map_err(|error| error.to_string())
