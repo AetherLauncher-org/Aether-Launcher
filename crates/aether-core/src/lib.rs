@@ -15,6 +15,12 @@ impl InstanceId {
     }
 }
 
+impl std::fmt::Display for InstanceId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
 impl Default for InstanceId {
     fn default() -> Self {
         Self::new()
