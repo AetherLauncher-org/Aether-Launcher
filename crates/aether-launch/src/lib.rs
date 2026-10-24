@@ -1,3 +1,6 @@
+pub mod coordinator;
+pub use coordinator::{CoordinatorError, InstanceLaunchCoordinator};
+
 pub mod registry;
 pub use registry::{
     InstanceProcessRegistry, InstanceProcessStatus, InstanceRunState, RegistryError,
