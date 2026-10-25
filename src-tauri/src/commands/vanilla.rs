@@ -6,7 +6,7 @@
 
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use aether_download::transport::{HttpTransport, TransportRequest};
