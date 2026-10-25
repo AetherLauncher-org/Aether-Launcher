@@ -134,7 +134,136 @@ describe("InstancesPage", () => {
     await waitFor(() =>
       expect(screen.getByText("生存 1.21")).toBeInTheDocument(),
     );
-    expect(await screen.findAllByText("可启动")).toHaveLength(2);
+    expect(await screen.findAllByText("未验证")).toHaveLength(2);
+  });
+
+  it("exposes exactly one launch control per instance on the whole page", async () => {
+    enableTauri();
+    vi.mocked(invoke).mockResolvedValue({
+      instances: [{ id: "a", name: "生存 1.21", version: "1.21.1", state: "ready" }],
+      skipped: [],
+    });
+
+    render(<InstancesPage page={page} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("生存 1.21")).toBeInTheDocument(),
+    );
+    expect(screen.getAllByRole("button", { name: "启动" })).toHaveLength(1);
+  });
+
+  it("shows the cautious initial label for a running instance", async () => {
+    enableTauri();
+    vi.mocked(invoke).mockResolvedValue({
+      instances: [
+        { id: "a", name: "生存 1.21", version: "1.21.1", state: "running" },
+      ],
+      skipped: [],
+    });
+
+    render(<InstancesPage page={page} />);
+
+    expect(
+      await screen.findByText("运行中（未验证）"),
+    ).toBeInTheDocument();
+  });
+
+  it("starts through the single launch control with exactly one IPC pair", async () => {
+    enableTauri();
+    mockCommands({
+      list_instances: {
+        instances: [
+          { id: "a", name: "生存 1.21", version: "1.21.1", state: "ready" },
+        ],
+        skipped: [],
+      },
+      activate_installed_instance: undefined,
+      start_installed_instance: runningStatus,
+    });
+
+    render(<InstancesPage page={page} />);
+    const start = await screen.findByRole("button", { name: "启动" });
+    fireEvent.click(start);
+
+    await waitFor(() => expect(screen.getByText("运行中")).toBeInTheDocument());
+    const calls = vi.mocked(invoke).mock.calls.filter(
+      ([command]) => command === "activate_installed_instance",
+    );
+    expect(calls).toHaveLength(1);
+    expect(invoke).toHaveBeenCalledWith("activate_installed_instance", {
+      id: "a",
+    });
+    expect(invoke).toHaveBeenCalledWith("start_installed_instance", {
+      id: "a",
+      offlineName: "Player",
+      memoryMib: 4096,
+    });
+  });
+
+  it("ignores repeated clicks while a launch is in flight", async () => {
+    enableTauri();
+    let resolveActivate: (() => void) | undefined;
+    vi.mocked(invoke).mockImplementation(((cmd: string) => {
+      if (cmd === "list_instances") {
+        return Promise.resolve({
+          instances: [
+            { id: "a", name: "生存 1.21", version: "1.21.1", state: "ready" },
+          ],
+          skipped: [],
+        });
+      }
+      if (cmd === "activate_installed_instance") {
+        return new Promise<void>((resolve) => {
+          resolveActivate = resolve;
+        });
+      }
+      return Promise.resolve(runningStatus);
+    }) as unknown as typeof invoke);
+
+    render(<InstancesPage page={page} />);
+    const start = await screen.findByRole("button", { name: "启动" });
+    fireEvent.click(start);
+    fireEvent.click(start);
+    fireEvent.click(start);
+
+    expect(
+      vi.mocked(invoke).mock.calls.filter(
+        ([command]) => command === "activate_installed_instance",
+      ),
+    ).toHaveLength(1);
+
+    resolveActivate?.();
+    await waitFor(() =>
+      expect(
+        vi.mocked(invoke).mock.calls.filter(
+          ([command]) => command === "start_installed_instance",
+        ),
+      ).toHaveLength(1),
+    );
+  });
+
+  it("no longer renders inline start/stop buttons in the list rows", async () => {
+    enableTauri();
+    vi.mocked(invoke).mockResolvedValue({
+      instances: [
+        { id: "a", name: "生存 1.21", version: "1.21.1", state: "running" },
+        { id: "b", name: "红石实验", version: "1.20.1", state: "ready" },
+      ],
+      skipped: [],
+    });
+
+    render(<InstancesPage page={page} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("生存 1.21")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("button", { name: "停止 生存 1.21" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "启动 红石实验" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("处理中")).not.toBeInTheDocument();
   });
 });
 

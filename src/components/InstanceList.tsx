@@ -1,5 +1,4 @@
-import { Badge, Button, Text, Tooltip } from "@fluentui/react-components";
-import { Play24Filled } from "@fluentui/react-icons";
+import { Badge, Text, Tooltip } from "@fluentui/react-components";
 import type { InstanceSummary } from "../ipc";
 import { describeInstanceState } from "../lib/instances";
 import { formatMemoryMiB } from "../lib/memory";
@@ -10,28 +9,20 @@ type InstanceListProps = {
   memoryMiB: number;
   /** 默认 Java 的可读标签，例如 `Java 21 · x64`；没有检测到时为 null */
   javaLabel: string | null;
-  onAction?: (instance: InstanceSummary) => void;
-  busyId?: string | null;
 };
 
 /**
- * 实例列表。
+ * 实例列表：只负责展示、搜索过滤后的选中列表，不承载生命周期操作——
+ * 启动/停止的唯一入口是列表下方的 `InstanceLaunchPanel`。
  *
  * 用 `<ul>` 而不是表格：一行里既有徽章又有次要信息，语义上是「卡片列表」，
  * 窄窗口下也只需要改 `grid-template-columns`。
  */
-export function InstanceList({
-  instances,
-  memoryMiB,
-  javaLabel,
-  onAction,
-  busyId,
-}: InstanceListProps) {
+export function InstanceList({ instances, memoryMiB, javaLabel }: InstanceListProps) {
   return (
     <ul className="instance-list">
       {instances.map((instance) => {
         const status = describeInstanceState(instance.state);
-        const running = instance.state === "running";
 
         return (
           <li className="instance-row" key={instance.id}>
@@ -60,33 +51,6 @@ export function InstanceList({
               <Badge appearance="tint" color={status.tone} className="status-chip">
                 {status.label}
               </Badge>
-            </Tooltip>
-
-            <Tooltip
-              content={
-                running
-                  ? "停止由 Aether 启动的游戏"
-                  : instance.state === "incomplete"
-                    ? "验证官方 .minecraft 已安装版本和资产"
-                    : "从官方 .minecraft 启动已安装版本（离线模式）"
-              }
-              relationship="description"
-            >
-              <Button
-                appearance="primary"
-                icon={<Play24Filled />}
-                disabled={!onAction || busyId === instance.id}
-                onClick={() => onAction?.(instance)}
-                aria-label={`${running ? "停止" : instance.state === "incomplete" ? "验证" : "启动"} ${instance.name}`}
-              >
-                {busyId === instance.id
-                  ? "处理中"
-                  : running
-                    ? "停止"
-                    : instance.state === "incomplete"
-                      ? "验证安装"
-                      : "启动"}
-              </Button>
             </Tooltip>
           </li>
         );

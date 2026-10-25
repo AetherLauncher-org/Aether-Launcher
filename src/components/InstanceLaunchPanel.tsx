@@ -7,7 +7,7 @@ import {
   startInstalledInstance,
   stopInstalledInstance,
 } from "../ipc";
-import type { GameRunStatus } from "../ipc";
+import type { GameRunStatus, InstanceState } from "../ipc";
 import { validatePlayerName } from "../lib/accounts";
 import {
   buttonLabel,
@@ -15,6 +15,7 @@ import {
   canStop,
   describeExit,
   describePhase,
+  initialLabel,
   launchPhase,
 } from "../lib/launchState";
 import { formatMemoryMiB } from "../lib/memory";
@@ -22,6 +23,8 @@ import { loadMemoryMiB } from "../lib/settings";
 
 type InstanceLaunchPanelProps = {
   instanceId: string;
+  /** 实例清单里的上次已知状态；面板在拿到任何命令结果前只显示「未验证」式标签 */
+  initialState?: InstanceState;
   disabled?: boolean;
 };
 
@@ -30,9 +33,12 @@ type InstanceLaunchPanelProps = {
  *
  * 面板自己持有一份运行状态，不依赖页面传入——每个实例一份，互不干扰。
  * 启动前先 `activate` 验证文件；activate 失败时进入「缺文件」态并显示原因。
+ * `GameRunStatus` 只是命令的一次性返回值，不是事件流；面板不知道进程何时
+ * 在外部退出，所以挂载时的初始标签只引用清单里的上次状态、不声称新鲜。
  */
 export function InstanceLaunchPanel({
   instanceId,
+  initialState = "ready",
   disabled = false,
 }: InstanceLaunchPanelProps) {
   const desktop = isTauri();
@@ -54,7 +60,9 @@ export function InstanceLaunchPanel({
 
   const nameCheck = validatePlayerName(offlineName);
   const phase = launchPhase(status, busy, activateError);
-  const view = describePhase(phase);
+  // 还没拿到任何命令结果时显示清单给的初始标签（「未验证」式），而非「可启动」
+  const view =
+    phase === "installed-ready" ? initialLabel(initialState) : describePhase(phase);
   const exitText = describeExit(status);
   const startDisabled =
     disabled || busy || !canStart(phase) || !nameCheck.ok;
