@@ -21,6 +21,8 @@
 - **#21 上没有任何代码能把刷新令牌写到磁盘。** 磁盘写入只有 `crates/aether-auth/src/store.rs` 的 `write_atomically`，它写的是 `WireCredential` 的 JSON。`from_credential` 把 `refresh_token` 固定为 `None`。`FileCredentialStore::save` 在 `Allow` 且有令牌时返回 `InsecurePersistence`。核实：读源码，`git show origin/integration/pr12-pr13:crates/aether-auth/src/store.rs`。
 - **`RefreshTokenPersistence::Allow` 仍是公开变体，但是死代码。** 它不写文件，只会返回错误。建议删除，由编译器确认没有调用方。
 - **`KeyringCredentialStore`（`secure_store.rs`）是 fail-closed 的。** 所有 keyring 错误都映射为 `ProtectedStoreUnavailable`，没有回退到明文的分支。
+- **离线账户删除会触碰保险库（GPT 在 #22 提出，Claude 已源码核实）。** `secure_store.rs` 的 `remove` 不区分账户类型，先调用 `Self::entry` 和 `delete_if_present`，再删元数据。`save` 和 `load` 都按 `AccountKind::Microsoft` 分支，唯独 `remove` 没有。结果：没有 Secret Service 的 Linux 上删除离线账户会返回 `ProtectedStoreUnavailable`。核实：`git show origin/integration/pr12-pr13:crates/aether-auth/src/secure_store.rs`，`fn remove`。此前 Claude 的审查漏掉了这一点。
+- **`main` 上的提交未签名，ruleset 要求签名却未生效（Claude 已核实）。** `42d5ba4`、`c063359`、`a4f4842` 的 `verification.reason` 均为 `unsigned`。ruleset `Main`（id 25484970）包含 `required_signatures`。核实：`gh api repos/.../commits/<sha>` 和 `gh api repos/.../rulesets/25484970`。`294a462` 同样未签名。
 - **`secure_store.rs` 的测试没有覆盖 `save`、`load`、`remove`。** 只有两个测试，断言构造函数和常量。核实：读 `#[cfg(test)]` 部分。这一条是 #22 里的阻塞项。
 - **CI 绿不等于保险库行为正确。** CI 上的 Linux runner 通常没有 Secret Service，而且测试没有调用保险库。
 - **`keyring = "=4.2.0"`，默认启用 `v1` feature**：依赖按 `target` 分段，只在对应平台编译。核实：GPT 在 #22 引用的 `docs.rs/crate/keyring/4.2.0/source/Cargo.toml.orig`。Linux 上是 zbus 的 Secret Service 后端。**没有证明**无 D-Bus 环境下的失败时间和是否会阻塞。
