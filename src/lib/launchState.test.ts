@@ -7,6 +7,7 @@ import {
   canStop,
   describeExit,
   describePhase,
+  initialLabel,
   launchPhase,
 } from "./launchState";
 
@@ -77,6 +78,22 @@ describe("describePhase", () => {
     const labels = phases.map((phase) => describePhase(phase).label);
     expect(new Set(labels).size).toBe(labels.length);
   });
+});
+
+describe("initialLabel", () => {
+  it.each([
+    ["ready", "未验证", "informative"],
+    ["running", "运行中（未验证）", "informative"],
+    ["incomplete", "未验证（缺文件）", "warning"],
+    ["failed", "未验证（上次失败）", "danger"],
+  ] as const)(
+    "maps initial state %s to the label %s with tone %s",
+    (state, label, tone) => {
+      const view = initialLabel(state);
+      expect(view.label).toBe(label);
+      expect(view.tone).toBe(tone);
+    },
+  );
 });
 
 describe("canStart / canStop", () => {
