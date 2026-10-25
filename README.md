@@ -94,7 +94,7 @@ cargo test --workspace --exclude aether-desktop
 
 ## 贡献
 
-开始编码前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请按照 [SECURITY.md](SECURITY.md) 使用 GitHub 私密漏洞报告。
+开始编码前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请按照 [SECURITY.md](SECURITY.md) 报告。
 
 ## 不接受赞助
 
