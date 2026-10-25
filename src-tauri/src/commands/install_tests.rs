@@ -121,7 +121,10 @@ fn error_summary_never_contains_download_urls() {
     let transport = FakeTransport(HashMap::new());
 
     let error = install_version(&transport, fixture.root(), "1.21.1").unwrap_err();
-    assert_eq!(error, "2 of 2 files failed to download or verify");
+    assert_eq!(
+        error,
+        "2 of 2 files failed to download or verify (HTTP 404 x2)"
+    );
     assert!(!error.contains("https://"));
 }
 
@@ -170,4 +173,31 @@ fn downloads_asset_index_and_objects_after_libraries() {
         object
     );
     assert!(fixture.root().join("assets/indexes/17.json").is_file());
+}
+
+/// Live smoke test against Mojang. Run with:
+/// `cargo test -p aether-desktop --lib live_install -- --ignored --nocapture`
+#[test]
+#[ignore = "downloads hundreds of MiB from the real Mojang servers"]
+fn live_install_of_a_real_version_verifies_end_to_end() {
+    use aether_download::transport::KernelHttpTransport;
+    use aether_download::transport::http::UreqKernel;
+
+    let version = std::env::var("AETHER_LIVE_VERSION").unwrap_or_else(|_| "1.16.5".to_owned());
+    // AETHER_LIVE_DIR keeps downloads between runs so a retry resumes.
+    let kept = std::env::var_os("AETHER_LIVE_DIR").map(PathBuf::from);
+    let fixture = Fixture::new();
+    let root: &Path = kept.as_deref().unwrap_or_else(|| fixture.root());
+    fs::create_dir_all(root).unwrap();
+    let transport = KernelHttpTransport::new(UreqKernel::new());
+    super::super::vanilla::prepare_version(&transport, root, &version).unwrap();
+    let count = install_version(&transport, root, &version).unwrap();
+    println!("installed {count} files at {}", root.display());
+
+    let resolved = load_resolved_version_manifest(root, &version).unwrap();
+    let index = resolved.manifest.asset_index.unwrap();
+    let verified =
+        aether_download::assets::verify_installed_assets(root, &index.id, &index.sha1, index.size)
+            .unwrap();
+    println!("assets verified: {}", verified.objects_verified);
 }

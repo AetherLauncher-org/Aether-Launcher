@@ -9,10 +9,10 @@ use std::path::{Path, PathBuf};
 
 use aether_download::assets::build_asset_object_plan;
 use aether_download::transport::http::UreqKernel;
-use aether_download::transport::{HttpTransport, KernelHttpTransport};
+use aether_download::transport::{HttpTransport, KernelHttpTransport, TransportError};
 use aether_download::{
-    ArtifactResult, ArtifactSource, CancellationToken, DownloadArtifact, DownloadEngine,
-    DownloadPlan, NoopProgress, is_safe_relative_path,
+    ArtifactResult, ArtifactSource, AttemptError, CancellationToken, DownloadArtifact,
+    DownloadEngine, DownloadError, DownloadPlan, NoopProgress, is_safe_relative_path,
 };
 use aether_launch::build_install_plan;
 use aether_manifest::load_resolved_version_manifest;
@@ -79,16 +79,43 @@ fn run_plan(engine: &DownloadEngine<'_>, plan: &DownloadPlan) -> Result<usize, S
     summarize(&results)
 }
 
-/// Report how many files failed without echoing URLs or response details.
+/// Report how many files failed, grouped by cause, without echoing URLs.
 fn summarize(results: &[ArtifactResult]) -> Result<usize, String> {
-    let failed = results.iter().filter(|item| item.outcome.is_err()).count();
-    if failed > 0 {
-        return Err(format!(
-            "{failed} of {} files failed to download or verify",
-            results.len()
-        ));
+    let mut causes = std::collections::BTreeMap::<String, usize>::new();
+    for item in results {
+        if let Err(error) = &item.outcome {
+            *causes.entry(describe_failure(error)).or_default() += 1;
+        }
     }
-    Ok(results.len())
+    if causes.is_empty() {
+        return Ok(results.len());
+    }
+    let failed: usize = causes.values().sum();
+    let detail: Vec<String> = causes
+        .iter()
+        .map(|(cause, count)| format!("{cause} x{count}"))
+        .collect();
+    Err(format!(
+        "{failed} of {} files failed to download or verify ({})",
+        results.len(),
+        detail.join(", ")
+    ))
+}
+
+fn describe_failure(error: &DownloadError) -> String {
+    let DownloadError::AllSourcesFailed { sources, .. } = error else {
+        return "cancelled or invalid".to_owned();
+    };
+    match sources.last().and_then(|source| source.attempts.last()) {
+        Some(AttemptError::Transport(TransportError::HttpStatus { status, .. })) => {
+            format!("HTTP {status}")
+        }
+        Some(AttemptError::Transport(TransportError::Timeout { .. })) => "timeout".to_owned(),
+        Some(AttemptError::Transport(_)) => "network error".to_owned(),
+        Some(AttemptError::Hash(_)) => "hash mismatch".to_owned(),
+        Some(AttemptError::Io(_)) => "local file error".to_owned(),
+        Some(AttemptError::Cancelled) | None => "cancelled or invalid".to_owned(),
+    }
 }
 
 /// Downloads and SHA-1-verifies the client JAR, libraries, native archives

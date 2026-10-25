@@ -168,7 +168,7 @@ fn cache_verified_metadata(
     result
 }
 
-fn prepare_version(
+pub(super) fn prepare_version(
     transport: &dyn HttpTransport,
     game_root: &Path,
     version: &str,
