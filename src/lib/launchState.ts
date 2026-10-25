@@ -1,8 +1,11 @@
-import type { GameRunStatus } from "../ipc";
+import type { GameRunStatus, InstanceState } from "../ipc";
 
 /**
  * 启动面板的纯逻辑：把「运行状态 + 忙态 + 激活错误」收敛成一个阶段，
  * 再由阶段推导徽章、按钮文案和可用性。组件只负责组装与调 IPC。
+ *
+ * 注意 `GameRunStatus` 是 activate/start/stop 命令的一次性返回值，
+ * 不是事件流——命令返回后前端不会收到进程退出等后续通知。
  */
 
 export type LaunchPhase =
@@ -60,6 +63,24 @@ const phaseViews: Record<LaunchPhase, PhaseView> = {
 
 export function describePhase(phase: LaunchPhase): PhaseView {
   return phaseViews[phase];
+}
+
+/**
+ * 面板挂载时的初始标签：`InstanceSummary.state` 来自实例清单，只说明
+ * 「上次已知」的安装情况，不是新鲜进程状态——reload 后不能假装知道
+ * 进程还活着，所以措辞一律带「未验证」。
+ */
+export function initialLabel(state: InstanceState): PhaseView {
+  switch (state) {
+    case "ready":
+      return { label: "未验证", tone: "informative" };
+    case "running":
+      return { label: "运行中（未验证）", tone: "informative" };
+    case "incomplete":
+      return { label: "未验证（缺文件）", tone: "warning" };
+    case "failed":
+      return { label: "未验证（上次失败）", tone: "danger" };
+  }
 }
 
 /** 启动按钮什么时候可点：待启动、已停止、失败或缺文件（重试=重新激活）。 */

@@ -1,7 +1,6 @@
 import {
   Badge,
   Button,
-  Input,
   SearchBox,
   Text,
   Tooltip,
@@ -24,13 +23,9 @@ import {
 } from "../components/PageState";
 import { PageHeader } from "../components/PageHeader";
 import {
-  activateInstalledInstance,
-  describeCommandError,
   emptyInstanceListing,
   isTauri,
   listInstances,
-  startInstalledInstance,
-  stopInstalledInstance,
 } from "../ipc";
 import type { InstanceListing, InstanceSummary } from "../ipc";
 import {
@@ -61,9 +56,6 @@ export function InstancesPage({ page }: InstancesPageProps) {
   const [listing, setListing] = useState<InstanceListing>(emptyInstanceListing);
   const [memoryMiB] = useState(loadMemoryMiB);
   const [javaKey] = useState(loadJavaRuntimeKey);
-  const [offlineName, setOfflineName] = useState("Player");
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [launchError, setLaunchError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const result = await listInstances();
@@ -96,37 +88,6 @@ export function InstancesPage({ page }: InstancesPageProps) {
       }));
     },
     [],
-  );
-
-  const handleInstanceAction = useCallback(
-    async (instance: InstanceSummary) => {
-      setBusyId(instance.id);
-      setLaunchError(null);
-      try {
-        let nextState: InstanceSummary["state"];
-        if (instance.state === "running") {
-          await stopInstalledInstance(instance.id);
-          nextState = "ready";
-        } else if (instance.state === "incomplete" || instance.state === "failed") {
-          await activateInstalledInstance(instance.id);
-          nextState = "ready";
-        } else {
-          await startInstalledInstance(instance.id, offlineName, memoryMiB);
-          nextState = "running";
-        }
-        setListing((previous) => ({
-          ...previous,
-          instances: previous.instances.map((item) =>
-            item.id === instance.id ? { ...item, state: nextState } : item,
-          ),
-        }));
-      } catch (error) {
-        setLaunchError(describeCommandError(error));
-      } finally {
-        setBusyId(null);
-      }
-    },
-    [offlineName, memoryMiB],
   );
 
   // 徽章只报数量，空状态标题才负责「还没有实例」这句话，避免同一句文案出现两次
@@ -188,22 +149,6 @@ export function InstancesPage({ page }: InstancesPageProps) {
           </div>
         </div>
 
-        <div className="toolbar-actions">
-          <Text>离线玩家名</Text>
-          <Input
-            value={offlineName}
-            onChange={(_, data) => setOfflineName(data.value)}
-            aria-label="离线玩家名"
-            maxLength={16}
-            disabled={!desktop}
-          />
-        </div>
-        {launchError ? (
-          <Text role="alert" className="muted">
-            启动失败：{launchError}
-          </Text>
-        ) : null}
-
         {status === "error" && error ? (
           <ErrorState
             title="读取实例失败"
@@ -244,18 +189,21 @@ export function InstancesPage({ page }: InstancesPageProps) {
             instances={visible}
             memoryMiB={memoryMiB}
             javaLabel={javaKey === null ? null : formatJavaLabel(javaKey)}
-            onAction={handleInstanceAction}
-            busyId={busyId}
           />
         )}
         {/*
           启动面板：列表行本身很紧凑，`InstanceList` 也不承载额外内容，
           所以在列表下方按实例逐个挂面板，而不是塞进行内。
+          面板是每个实例唯一的启动/停止入口。
         */}
         {visible.length > 0 ? (
           <div className="launch-panel-grid">
             {visible.map((instance) => (
-              <InstanceLaunchPanel key={instance.id} instanceId={instance.id} />
+              <InstanceLaunchPanel
+                key={instance.id}
+                instanceId={instance.id}
+                initialState={instance.state}
+              />
             ))}
           </div>
         ) : null}
