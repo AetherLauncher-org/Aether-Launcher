@@ -62,7 +62,6 @@ export function CreateInstanceDialog({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [catalog, setCatalog] = useState<MinecraftVersionCatalog | null>(null);
-  const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,9 +69,6 @@ export function CreateInstanceDialog({
       return;
     }
     let active = true;
-    setCatalog(null);
-    setCatalogError(null);
-    setCatalogLoading(true);
     void listMinecraftVersions()
       .then((result) => {
         if (active) {
@@ -85,11 +81,6 @@ export function CreateInstanceDialog({
           setCatalogError(describeCommandError(error));
         }
       })
-      .finally(() => {
-        if (active) {
-          setCatalogLoading(false);
-        }
-      });
     return () => {
       active = false;
     };
@@ -101,6 +92,8 @@ export function CreateInstanceDialog({
   const snapshots = catalog?.versions
     .filter((item) => item.type === "snapshot")
     .slice(0, 20) ?? [];
+
+  const catalogLoading = open && isTauri() && !catalog && !catalogError;
 
   const usingCustomVersion = version === customVersionValue;
   const effectiveVersion = usingCustomVersion ? customVersion : version;
@@ -116,7 +109,6 @@ export function CreateInstanceDialog({
     setSubmitting(false);
     setCatalog(null);
     setCatalogError(null);
-    setCatalogLoading(false);
   };
 
   const close = () => {
