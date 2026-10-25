@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 /// 规则要匹配的运行环境。
@@ -9,6 +10,9 @@ pub struct Environment {
     pub os_name: String,
     /// 清单里的架构名，例如 `x86`
     pub os_arch: String,
+    /// 系统版本字符串，例如 Windows 的 `10.0`。用于和系统规则里的 `version` 正则匹配；
+    /// 未知时留空（空字符串）。
+    pub os_version: String,
     /// 启用的特性，例如 `is_demo_user`、`has_custom_resolution`
     pub features: BTreeSet<String>,
 }
@@ -26,7 +30,10 @@ pub struct OsRule {
     pub name: Option<String>,
     #[serde(default)]
     pub arch: Option<String>,
-    /// 正则表达式。目前不评估，带 `version` 的系统规则一律视为不匹配。
+    /// 正则表达式，匹配 [`Environment::os_version`]（例如 `^10\.`）。
+    ///
+    /// 编译失败（非法正则）视为不匹配，绝不 panic；规则本身缺少这个字段时不做版本检查。
+    /// `os_version` 为空字符串时，除能匹配空串的正则外都不会匹配。
     #[serde(default)]
     pub version: Option<String>,
 }
@@ -52,11 +59,20 @@ impl Rule {
 
 impl OsRule {
     fn matches(&self, environment: &Environment) -> bool {
-        if self.version.is_some() {
-            return false;
-        }
         option_matches(self.name.as_deref(), &environment.os_name)
             && option_matches(self.arch.as_deref(), &environment.os_arch)
+            && version_matches(self.version.as_deref(), &environment.os_version)
+    }
+}
+
+/// 没有 `version` 时不做限制；有 `version` 时按正则匹配系统版本，非法正则视为不匹配。
+fn version_matches(pattern: Option<&str>, os_version: &str) -> bool {
+    let Some(pattern) = pattern else {
+        return true;
+    };
+    match Regex::new(pattern) {
+        Ok(regex) => regex.is_match(os_version),
+        Err(_) => false,
     }
 }
 
@@ -86,7 +102,9 @@ pub fn rules_allow(rules: &[Rule], environment: &Environment) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Environment, Rule, rules_allow};
+    use std::collections::BTreeMap;
+
+    use super::{Environment, OsRule, Rule, RuleAction, rules_allow};
 
     const ALLOW_ALL_EXCEPT_OSX: &str = r#"
     [
@@ -114,6 +132,13 @@ mod tests {
     ]
     "#;
 
+    const DISALLOW_BY_BAD_VERSION: &str = r#"
+    [
+      {"action": "allow"},
+      {"action": "disallow", "os": {"version": "("}}
+    ]
+    "#;
+
     fn environment(os_name: &str, features: &[&str]) -> Environment {
         let mut environment = Environment {
             os_name: os_name.to_owned(),
@@ -124,6 +149,14 @@ mod tests {
             environment.features.insert((*feature).to_owned());
         }
         environment
+    }
+
+    /// 在上面的环境基础上设置系统版本字符串（例如 `10.0`）。
+    fn environment_with_version(os_name: &str, os_version: &str) -> Environment {
+        Environment {
+            os_version: os_version.to_owned(),
+            ..environment(os_name, &[])
+        }
     }
 
     fn rules(json: &str) -> Vec<Rule> {
@@ -162,11 +195,52 @@ mod tests {
     fn architecture_must_match_when_given() {
         let rules = rules(ALLOW_WINDOWS_X86);
         assert!(!rules_allow(&rules, &environment("windows", &[])));
+        let mut matching = environment("windows", &[]);
+        matching.os_arch = "x86".to_owned();
+        assert!(rules_allow(&rules, &matching));
     }
 
     #[test]
-    fn system_rules_with_a_version_never_match() {
+    fn system_rules_with_a_version_match_the_os_version() {
         let rules = rules(DISALLOW_BY_VERSION);
+        // os_version 为空时，`^10\.` 匹配不到，规则不生效，于是允许。
         assert!(rules_allow(&rules, &environment("windows", &[])));
+        // Windows 10 命中正则，disallow 规则生效。
+        assert!(!rules_allow(
+            &rules,
+            &environment_with_version("windows", "10.0")
+        ));
+        // Windows 7 不命中正则，仍然允许。
+        assert!(rules_allow(
+            &rules,
+            &environment_with_version("windows", "6.1")
+        ));
+    }
+
+    #[test]
+    fn invalid_version_regex_does_not_match_and_does_not_panic() {
+        let rules = rules(DISALLOW_BY_BAD_VERSION);
+        assert!(rules_allow(
+            &rules,
+            &environment_with_version("windows", "10.0")
+        ));
+    }
+
+    #[test]
+    fn os_rule_matches_versions_directly() {
+        let rule = Rule {
+            action: RuleAction::Disallow,
+            os: Some(OsRule {
+                name: Some("windows".to_owned()),
+                arch: None,
+                version: Some("^10\\.".to_owned()),
+            }),
+            features: BTreeMap::new(),
+        };
+
+        assert!(rule.matches(&environment_with_version("windows", "10.0")));
+        assert!(!rule.matches(&environment_with_version("windows", "6.1")));
+        assert!(!rule.matches(&environment_with_version("linux", "10.0")));
+        assert!(!rule.matches(&environment("windows", &[])));
     }
 }

@@ -17,6 +17,9 @@ import { useTheme } from "./lib/useTheme";
 import { allPages } from "./navigation";
 import type { PageId } from "./navigation";
 import { HomePage } from "./pages/HomePage";
+import { AccountsPage } from "./pages/AccountsPage";
+import { InstancesPage } from "./pages/InstancesPage";
+import { LibraryPage } from "./pages/LibraryPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
@@ -69,6 +72,12 @@ function App() {
               themePreference={preference}
               onThemeChange={setPreference}
             />
+          ) : page.id === "instances" ? (
+            <InstancesPage page={page} />
+          ) : page.id === "library" ? (
+            <LibraryPage page={page} />
+          ) : page.id === "accounts" ? (
+            <AccountsPage page={page} />
           ) : (
             <PlaceholderPage page={page} />
           )}

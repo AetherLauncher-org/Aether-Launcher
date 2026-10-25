@@ -34,24 +34,26 @@ export const mainPages: readonly PageDefinition[] = [
     label: "实例",
     icon: <Box24Regular />,
     summary: "每个实例的版本、模组、Java 与启动参数相互隔离",
-    pendingTitle: "实例列表尚未实现",
-    pendingBody: "导入和扫描本地实例的功能还在开发，完成后实例会列在这里。",
+    // 这三页已经不再是占位：导入等未完成能力由页面自己的提示承担，
+    // 这里留空，避免同一句说明在 DOM 里出现两次
+    pendingTitle: "",
+    pendingBody: "",
   },
   {
     id: "library",
     label: "资源库",
     icon: <Library24Regular />,
     summary: "模组、资源包与它们的下载来源",
-    pendingTitle: "资源库尚未实现",
-    pendingBody: "下载计划和来源校验完成后，这里会列出可用资源及其来源。",
+    pendingTitle: "",
+    pendingBody: "",
   },
   {
     id: "accounts",
     label: "账户",
     icon: <Person24Regular />,
     summary: "微软正版账户与离线账户",
-    pendingTitle: "账户管理尚未实现",
-    pendingBody: "账户模型已经定义，微软登录流程还在开发中。",
+    pendingTitle: "",
+    pendingBody: "",
   },
 ];
 

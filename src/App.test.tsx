@@ -23,10 +23,10 @@ describe("Aether Launcher shell", () => {
   });
 
   it.each([
-    ["实例", "实例列表尚未实现"],
-    ["资源库", "资源库尚未实现"],
-    ["账户", "账户管理尚未实现"],
-  ])("switches to the %s page from the sidebar", (label, pendingTitle) => {
+    ["实例", "还没有实例"],
+    ["资源库", "资源来源校验完成后可用"],
+    ["账户", "离线账户"],
+  ])("switches to the %s page from the sidebar", (label, landmark) => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: label }));
@@ -35,7 +35,7 @@ describe("Aether Launcher shell", () => {
       screen.getByRole("heading", { level: 1, name: label }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: pendingTitle }),
+      screen.getByRole("heading", { name: landmark }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: label })).toHaveAttribute(
       "aria-current",
@@ -87,8 +87,9 @@ describe("settings", () => {
     expect(screen.getByRole("radio", { name: "深色" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "浅色" })).not.toBeChecked();
     expect(
-      screen.getByRole("heading", { name: "Java 与下载来源设置尚未实现" }),
+      screen.getByRole("heading", { name: "Java 运行时" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "内存" })).toBeInTheDocument();
   });
 
   it("switches the colour scheme and remembers the choice", () => {

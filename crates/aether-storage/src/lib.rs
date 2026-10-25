@@ -1,3 +1,6 @@
+pub mod instances;
+pub use instances::{InstanceLoadError, InstanceStore};
+
 use aether_core::GameInstance;
 use thiserror::Error;
 
@@ -16,3 +19,22 @@ pub enum StorageError {
     #[error("failed to deserialize game instance")]
     Deserialize(#[source] serde_json::Error),
 }
+
+pub mod create;
+pub mod import;
+pub mod list;
+pub mod update;
+
+pub use create::{CreateError, create_instance};
+pub use import::{
+    ExistingFiles, ImportCandidate, ImportError, ImportSourceKind, detect, plan_candidates,
+    scan_directory,
+};
+pub use list::{
+    InstanceListing, ListError, MAX_INSTANCE_RECORD_BYTES, SkipReason, SkippedInstance,
+    list_instances,
+};
+pub use update::{
+    UpdateError, rename_instance, set_instance_state, set_instance_version, validate_instance_name,
+    write_instance_atomic,
+};

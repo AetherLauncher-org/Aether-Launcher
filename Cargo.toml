@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/aether-auth",
   "crates/aether-core",
+  "crates/aether-diagnose",
   "crates/aether-download",
   "crates/aether-launch",
   "crates/aether-manifest",
@@ -17,13 +18,16 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/AetherLauncher-org/Aether-Launcher"
-rust-version = "1.85"
+rust-version = "1.88"
 
 [workspace.dependencies]
+regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha1 = "0.10"
 thiserror = "2"
 tracing = "0.1"
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 
 [profile.release]

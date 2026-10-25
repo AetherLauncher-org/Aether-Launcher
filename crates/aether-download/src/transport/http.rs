@@ -1,0 +1,523 @@
+//! HTTP 传输实现（策略层），网络内核由外部注入。
+//!
+//! 真实网络只出现在 [`UreqKernel`]（基于 ureq）这一个类型里；连接、TLS、DNS
+//! 之外的策略（状态分类、重定向、Range 协商、大小上限、错误脱敏）都在本文件的
+//! 纯逻辑层完成，测试全部使用内存内核，零真实外网。
+//!
+//! 与共享契约（[`super::HttpTransport`] / [`super::TransportError`]）的取舍：
+//! - 重定向后的最终 URL：`TransportResponse` 没有对应字段，共享 trait 不在本阶段
+//!   修改范围内，因此不随响应返回，仅在此处注释记录（见 `get` 实现）。
+//! - 「超出大小上限」与「Content-Range 格式错误」：共享错误枚举没有对应变体，
+//!   不改共享 enum，分别用 io 错误（`LimitedReader`）和
+//!   [`TransportError::ReadInterrupted`] 携带明确的消息表达，消息中写明原因。
+//!
+//! 分层说明：本层的大小上限（`max_bytes`）是传输层防线，在字节流交给调用方之前
+//! 就截断超限响应（包括无 Content-Length 的 chunked 流），防的是恶意镜像虚报
+//! 长度耗尽磁盘/内存；engine 层之后还会按官方清单做 SHA-1 与最终大小校验，防的
+//! 是内容被替换。两层互补，任何一层都不能替代另一层。
+
+use std::io::{self, Read};
+
+use super::{
+    ContentRange, HttpTransport, Range, TransportError, TransportRequest, TransportResponse,
+};
+
+/// 默认响应体大小上限：512 MiB。
+pub const DEFAULT_MAX_BYTES: u64 = 512 * 1024 * 1024;
+
+/// 最多跟随的重定向跳数；超过即报错。
+const MAX_REDIRECTS: usize = 3;
+
+/// 真实网络内核的抽象。
+///
+/// 内核只负责一次 GET 的原始收发，不做状态分类、重定向或限流；
+/// 生产实现是 [`UreqKernel`]，测试用内存替身，不经真实网络。
+pub trait HttpKernel: Send + Sync {
+    /// 执行一次 GET，返回原始状态码、响应头与响应体。
+    fn get(&self, request: &KernelRequest) -> Result<KernelResponse, KernelError>;
+}
+
+/// 内核请求参数。
+pub struct KernelRequest {
+    /// 目标 URL（已通过合法性校验）。
+    pub url: String,
+    /// `Range` 请求头的值，例如 `bytes=10-99`；未请求区间时为 `None`。
+    pub range_header: Option<String>,
+    /// 连接与读取超时秒数。
+    pub timeout_secs: u64,
+}
+
+/// 内核的原始响应。
+///
+/// 响应头以名值对列表原样回传（重定向策略需要读 `Location` 等头），
+/// 因此不单独设 `accept_ranges`/`content_range` 字段，统一用 [`KernelResponse::header`]
+/// 按名（大小写不敏感）取值；`content_length` 因为是纯数值，单独解析后提供。
+pub struct KernelResponse {
+    /// HTTP 状态码。
+    pub status: u16,
+    /// `Content-Length` 的值；服务器未告知时为 `None`。
+    pub content_length: Option<u64>,
+    /// 原样回传的响应头列表。
+    pub headers: Vec<(String, String)>,
+    /// 响应体。
+    pub body: Box<dyn Read + Send + 'static>,
+}
+
+impl KernelResponse {
+    /// 按名（大小写不敏感）取响应头，首个匹配生效。
+    fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+}
+
+/// 内核错误。
+pub enum KernelError {
+    /// 建立连接失败（DNS/TCP/TLS）。
+    Connection(String),
+    /// 在超时时间内未完成请求。
+    Timeout,
+    /// 读取中断。
+    Io(String),
+}
+
+/// 基于注入内核的 [`HttpTransport`] 实现：状态分类、重定向策略、大小上限。
+pub struct KernelHttpTransport<K> {
+    kernel: K,
+    max_bytes: u64,
+}
+
+impl<K: HttpKernel> KernelHttpTransport<K> {
+    /// 用给定内核创建传输，大小上限取 [`DEFAULT_MAX_BYTES`]。
+    pub fn new(kernel: K) -> Self {
+        Self {
+            kernel,
+            max_bytes: DEFAULT_MAX_BYTES,
+        }
+    }
+
+    /// 覆写响应体大小上限。
+    pub fn with_max_bytes(mut self, max_bytes: u64) -> Self {
+        self.max_bytes = max_bytes;
+        self
+    }
+
+    /// 把内核的原始响应分类成 [`TransportResponse`] 或 [`TransportError`]。
+    fn finish(
+        &self,
+        response: KernelResponse,
+        url: &str,
+        range_requested: bool,
+    ) -> Result<TransportResponse, TransportError> {
+        let _ = range_requested;
+        match response.status {
+            200 => {
+                // 请求了 Range 但得到 200：如实返回 200，supports_range 置 false，
+                // 上层据此走「不支持续传」路径（契约见 TransportResponse 文档）。
+                Ok(TransportResponse {
+                    status: 200,
+                    content_length: response.content_length,
+                    supports_range: false,
+                    content_range: None,
+                    body: Box::new(LimitedReader::new(response.body, self.max_bytes)),
+                })
+            }
+            206 => {
+                let header = response.header("Content-Range").ok_or_else(|| {
+                    TransportError::ReadInterrupted {
+                        url: url.to_owned(),
+                        source: io::Error::other("206 response without Content-Range header"),
+                    }
+                })?;
+                // 共享 enum 没有「格式错误」变体：按约定不改 enum，
+                // 用 ReadInterrupted 携带明确消息；消息不内插头的原始值，
+                // 避免不可信的头内容进入错误输出（Display/Debug/日志）。
+                let content_range =
+                    parse_content_range(header).ok_or_else(|| TransportError::ReadInterrupted {
+                        url: url.to_owned(),
+                        source: io::Error::other("malformed Content-Range header"),
+                    })?;
+                Ok(TransportResponse {
+                    status: 206,
+                    content_length: response.content_length,
+                    supports_range: true,
+                    content_range: Some(content_range),
+                    body: Box::new(LimitedReader::new(response.body, self.max_bytes)),
+                })
+            }
+            status => Err(TransportError::HttpStatus {
+                url: url.to_owned(),
+                status,
+            }),
+        }
+    }
+}
+
+impl<K: HttpKernel> HttpTransport for KernelHttpTransport<K> {
+    fn get(&self, request: &TransportRequest) -> Result<TransportResponse, TransportError> {
+        let mut url = request.url.clone();
+        validate_url(&url)?;
+        // 循环体最多执行 MAX_REDIRECTS + 1 次：前 MAX_REDIRECTS 次允许消费重定向，
+        // 最后一轮仍是重定向则视为超限。重定向后的最终 URL 不随响应返回
+        // （TransportResponse 无该字段，共享契约本阶段冻结），如需暴露应后续加字段。
+        for _ in 0..=MAX_REDIRECTS {
+            let kernel_response = self
+                .kernel
+                .get(&KernelRequest {
+                    url: url.clone(),
+                    range_header: request.range.map(Range::to_header_value),
+                    timeout_secs: request.timeout_secs,
+                })
+                .map_err(|error| map_kernel_error(error, &url, request.timeout_secs))?;
+
+            if matches!(kernel_response.status, 301 | 302 | 303 | 307 | 308) {
+                let location = kernel_response
+                    .header("Location")
+                    .ok_or_else(|| TransportError::Connect {
+                        url: url.clone(),
+                        source: io::Error::other("redirect response without Location header"),
+                    })?
+                    .to_owned();
+                // Location 可能是相对引用（多数客户端接受），先按 RFC 3986
+                // 相对当前 URL 解析成绝对 URL，再做 scheme/host/降级校验。
+                let resolved = resolve_location(&url, &location).ok_or_else(|| {
+                    TransportError::Connect {
+                        url: url.clone(),
+                        // 不内插原始 location：重定向头是不可信输入，
+                        // 可能携带 userinfo 与查询串里的凭据。
+                        source: io::Error::other("invalid redirect Location"),
+                    }
+                })?;
+                validate_url(&resolved)?;
+                if is_https(&url) && !is_https(&resolved) {
+                    // https → http 降级一律拒绝；错误消息用固定描述，
+                    // 不内插目标 URL（其 userinfo/query 可能含凭据）。
+                    return Err(TransportError::Connect {
+                        url: url.clone(),
+                        source: io::Error::other(
+                            "redirect target rejected: scheme downgrade not allowed",
+                        ),
+                    });
+                }
+                url = resolved;
+                continue;
+            }
+
+            return self.finish(kernel_response, &url, request.range.is_some());
+        }
+        Err(TransportError::Connect {
+            url: url.clone(),
+            source: io::Error::other(format!("exceeded {MAX_REDIRECTS} redirects")),
+        })
+    }
+}
+
+/// 把内核错误映射到共享错误枚举。
+fn map_kernel_error(error: KernelError, url: &str, timeout_secs: u64) -> TransportError {
+    match error {
+        KernelError::Connection(message) => TransportError::Connect {
+            url: url.to_owned(),
+            source: io::Error::other(message),
+        },
+        KernelError::Timeout => TransportError::Timeout {
+            url: url.to_owned(),
+            timeout_secs,
+        },
+        KernelError::Io(message) => TransportError::ReadInterrupted {
+            url: url.to_owned(),
+            source: io::Error::other(message),
+        },
+    }
+}
+
+/// URL 必须是 http/https 且 host 非空。
+fn validate_url(url: &str) -> Result<(), TransportError> {
+    let invalid = || TransportError::Connect {
+        url: url.to_owned(),
+        source: io::Error::other("invalid URL: expected http/https with a non-empty host"),
+    };
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return Err(invalid());
+    };
+    if !matches!(scheme, "http" | "https") {
+        return Err(invalid());
+    }
+    let host = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    if host.is_empty() {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
+fn is_https(url: &str) -> bool {
+    url.starts_with("https://")
+}
+
+/// 把 `Location` 头解析成绝对 URL（最小 RFC 3986 相对解析，不引入 url crate）。
+///
+/// 只支持四种形态：
+/// 1. 绝对 URL（含 `://`）→ 原样返回，交给 [`validate_url`] 校验 scheme/host；
+/// 2. scheme-relative（`//host/path`）→ 继承当前 scheme；
+/// 3. path（`/abs` 或 `rel`）→ 相对当前 URL 的 scheme+host 解析：
+///    `/abs` 直接替换 path，`rel` 与当前 path 的目录合并，`.`/`..` 段按
+///    RFC 3986 归一化，`..` 越出根时钳在根；
+/// 4. query-only（`?x=1`）→ 保留当前 path，query 换成新值（RFC 3986：
+///    空 path + 有 query 的相对引用）；fragment-only（`#x`）→ 当前 URL
+///    本身剥 fragment（fragment 不参与服务器请求）。
+///
+/// `Location` 自带的 query 会随 path 保留。
+fn resolve_location(base: &str, location: &str) -> Option<String> {
+    let (base_scheme, base_rest) = base.split_once("://")?;
+    if !matches!(base_scheme, "http" | "https") {
+        return None;
+    }
+    let base_authority = base_rest.split(['/', '?', '#']).next().unwrap_or_default();
+    if base_authority.is_empty() {
+        return None;
+    }
+    if let Some(query) = location.strip_prefix('?') {
+        // query-only（`?page=2`）：RFC 3986 相对引用（空 path + 有 query），
+        // 保留当前 scheme+host+path，query 换成新值；`?` 后为空视同无 query。
+        let base_suffix = base_rest.strip_prefix(base_authority).unwrap_or("");
+        let base_path = split_path_suffix(base_suffix).0;
+        let suffix = if query.is_empty() { "" } else { location };
+        return Some(format!(
+            "{base_scheme}://{base_authority}{base_path}{suffix}"
+        ));
+    }
+    if location.starts_with('#') {
+        // fragment-only（`#sec`）：fragment 不参与服务器请求，解析为当前 URL
+        // 本身（剥 fragment，保留 query）。这会对同一 URL 产生重复请求，
+        // 由 MAX_REDIRECTS 上限兜底；服务器极少发送此形态。
+        let base_suffix = base_rest.strip_prefix(base_authority).unwrap_or("");
+        let without_fragment = base_suffix.split('#').next().unwrap_or("");
+        return Some(format!(
+            "{base_scheme}://{base_authority}{without_fragment}"
+        ));
+    }
+    if let Some(rest) = location.strip_prefix("//") {
+        // scheme-relative：`//host/path`，继承当前 scheme。
+        let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+        if authority.is_empty() {
+            return None;
+        }
+        return Some(format!("{base_scheme}://{rest}"));
+    }
+    if location.contains("://") {
+        // 绝对 URL：原样返回，scheme/host 合法性由 validate_url 裁决。
+        return Some(location.to_owned());
+    }
+    // path 形态：`/abs` 或 `rel`。先剥出 Location 自带的 query/fragment 后缀。
+    let (location_path, suffix) = split_path_suffix(location);
+    let mut path = if location_path.starts_with('/') {
+        location_path.to_owned()
+    } else {
+        let base_path = base_rest.strip_prefix(base_authority).unwrap_or("");
+        let base_path = split_path_suffix(base_path).0;
+        let dir = match base_path.rfind('/') {
+            Some(index) => &base_path[..=index],
+            None => "/",
+        };
+        format!("{dir}{location_path}")
+    };
+    path = normalize_path(&path);
+    Some(format!("{base_scheme}://{base_authority}{path}{suffix}"))
+}
+
+/// 剥出 `?query` / `#fragment` 后缀，返回 `(path, suffix)`。
+fn split_path_suffix(value: &str) -> (&str, &str) {
+    match value.find(['?', '#']) {
+        Some(index) => (&value[..index], &value[index..]),
+        None => (value, ""),
+    }
+}
+
+/// 按 RFC 3986 §5.2.4（remove_dot_segments）消除路径里的 `.`/`..` 段。
+///
+/// 只动 dot 段：重复斜杠与尾斜杠原样保留（对很多服务器 `a//b`、`a/b/` 与
+/// `a/b` 是不同资源，不能折叠）。`..` 越出根时钳在根（丢弃多余 `..`，但不
+/// 丢绝对路径的前导 `/`）；输入以 `.`/`..` 结尾时保留尾斜杠语义（`/a/.` →
+/// `/a/`，`/a/..` → `/`）。
+fn normalize_path(path: &str) -> String {
+    let absolute = path.starts_with('/');
+    // 输入以 `.`/`..` 结尾：dot 段消除后该位退化为空段，结果带尾斜杠。
+    let dot_terminated = matches!(path.rsplit('/').next(), Some("." | ".."));
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in path.split('/').skip(usize::from(absolute)) {
+        match segment {
+            "." => {}
+            // 越根时 pop 到空为止即钳在根。
+            ".." => {
+                segments.pop();
+            }
+            // 空段（重复斜杠/尾斜杠）与普通段一样原样保留。
+            _ => segments.push(segment),
+        }
+    }
+    let mut result = segments.join("/");
+    if absolute {
+        result.insert(0, '/');
+    }
+    if dot_terminated && !result.is_empty() && !result.ends_with('/') {
+        result.push('/');
+    }
+    result
+}
+
+/// 解析 `Content-Range: bytes start-end/total`，`total` 为 `*` 时是 `None`。
+fn parse_content_range(value: &str) -> Option<ContentRange> {
+    let rest = value.strip_prefix("bytes")?.trim_start();
+    let (range_part, total_part) = rest.split_once('/')?;
+    let (start, end) = range_part.split_once('-')?;
+    let start = start.trim().parse::<u64>().ok()?;
+    let end = end.trim().parse::<u64>().ok()?;
+    if end < start {
+        return None;
+    }
+    let total = if total_part.trim() == "*" {
+        None
+    } else {
+        Some(total_part.trim().parse::<u64>().ok()?)
+    };
+    Some(ContentRange { start, end, total })
+}
+
+/// 超过大小上限即报错的读取包装。
+///
+/// 共享错误枚举没有「超出大小上限」变体，且响应体在返回后只能以 io::Error
+/// 报错（body 是 `dyn Read`），因此这里用 io 错误、消息中写明 `exceeds size cap`。
+///
+/// 上限语义：预算归零不代表超限——调用方（engine）会一直 read 到收到 0
+/// （真 EOF），所以恰好在 `max_bytes` 处结束的合法响应必须以 `Ok(0)` 收尾。
+/// 归零后再向底层探测 1 个字节：底层返回 0 字节说明是真 EOF；还有字节则进入
+/// sticky 溢出态并返回错误，之后的读取持续报错。探测消耗的那 1 个字节随
+/// 溢出错误一起丢弃——调用方拿到的是错误而非截断流，不存在静默丢数据。
+struct LimitedReader {
+    inner: Box<dyn Read + Send>,
+    remaining: u64,
+    overflowed: bool,
+}
+
+impl LimitedReader {
+    fn new(inner: Box<dyn Read + Send>, max_bytes: u64) -> Self {
+        Self {
+            inner,
+            remaining: max_bytes,
+            overflowed: false,
+        }
+    }
+}
+
+impl Read for LimitedReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.overflowed {
+            return Err(io::Error::other("response body exceeds size cap"));
+        }
+        // 空 buffer 的 read 是合法调用，不得消耗预算、不得触发探测。
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        if self.remaining == 0 {
+            // 预算归零：再探测 1 个字节区分「恰好等于上限」与「超限」。
+            let mut probe = [0u8; 1];
+            let read = self.inner.read(&mut probe)?;
+            if read == 0 {
+                // 真 EOF：恰好用满预算的合法响应。
+                return Ok(0);
+            }
+            self.overflowed = true;
+            return Err(io::Error::other("response body exceeds size cap"));
+        }
+        let limit = buf.len().min(self.remaining as usize);
+        let read = self.inner.read(&mut buf[..limit])?;
+        self.remaining -= read as u64;
+        Ok(read)
+    }
+}
+
+/// 生产内核：真实网络只出现在这一个类型里（内部是 ureq）。
+///
+/// 状态码与重定向不由内核裁决（`http_status_as_error(false)`、
+/// `max_redirects(0)`），统一交给 [`KernelHttpTransport`]，保证策略只有一份。
+/// 超时是每次请求的配置，因此每次调用构建独立 agent；连接复用交给 engine 层
+/// 的大块 Range 请求来摊薄，内核保持无状态。
+pub struct UreqKernel {}
+
+impl UreqKernel {
+    /// 创建内核。
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Default for UreqKernel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HttpKernel for UreqKernel {
+    fn get(&self, request: &KernelRequest) -> Result<KernelResponse, KernelError> {
+        let agent = ureq::config::Config::builder()
+            .http_status_as_error(false)
+            .max_redirects(0)
+            .max_redirects_will_error(false)
+            .user_agent(concat!("AetherLauncher/", env!("CARGO_PKG_VERSION")))
+            .timeout_global(Some(std::time::Duration::from_secs(request.timeout_secs)))
+            .build();
+        let agent = ureq::Agent::new_with_config(agent);
+        let mut call = agent.get(&request.url);
+        if let Some(range) = &request.range_header {
+            call = call.header("Range", range);
+        }
+        let response = call.call().map_err(map_ureq_error)?;
+        let status = response.status().as_u16();
+        let mut headers = Vec::new();
+        for (name, value) in response.headers().iter() {
+            if let Ok(value) = value.to_str() {
+                headers.push((name.to_string(), value.to_owned()));
+            }
+        }
+        let content_length = headers
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("Content-Length"))
+            .and_then(|(_, value)| value.parse().ok());
+        let body = response.into_parts().1.into_reader();
+        Ok(KernelResponse {
+            status,
+            content_length,
+            headers,
+            body: Box::new(body),
+        })
+    }
+}
+
+/// 把 ureq 错误映射为 [`KernelError`]。
+///
+/// ureq 错误的字符串可能携带原始 URL（含查询串），所以这里只透出类别
+/// 描述，不透出错误原文；URL 由 `TransportError` 各变体以脱敏形式补回。
+fn map_ureq_error(error: ureq::Error) -> KernelError {
+    match error {
+        ureq::Error::Timeout(_) => KernelError::Timeout,
+        ureq::Error::Io(ref io)
+            if matches!(
+                io.kind(),
+                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+            ) =>
+        {
+            KernelError::Timeout
+        }
+        ureq::Error::HostNotFound => KernelError::Connection("host not found".to_owned()),
+        ureq::Error::ConnectionFailed => KernelError::Connection("connection failed".to_owned()),
+        ureq::Error::Tls(_) => KernelError::Connection("tls error".to_owned()),
+        // 状态码错误只会在 http_status_as_error(true) 时出现，这里配置为
+        // false，状态码走 KernelResponse 原样返回；兜底归为连接错误。
+        _ => KernelError::Connection("network error".to_owned()),
+    }
+}
+
+#[cfg(test)]
+#[path = "http_tests.rs"]
+mod tests;

@@ -13,11 +13,21 @@ impl InstanceId {
     pub fn new() -> Self {
         Self(Uuid::new_v4())
     }
+
+    pub fn parse(value: &str) -> Result<Self, uuid::Error> {
+        Uuid::parse_str(value).map(Self)
+    }
 }
 
 impl Default for InstanceId {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl std::fmt::Display for InstanceId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.0, formatter)
     }
 }
 
@@ -72,3 +82,6 @@ mod tests {
         assert!(VersionId::parse("  ").is_err());
     }
 }
+
+pub mod config;
+pub use config::{ConfigError, InstanceConfig};
