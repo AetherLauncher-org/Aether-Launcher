@@ -174,7 +174,10 @@ impl TwoWorkerRendezvous {
                 .ready
                 .wait_timeout_while(arrivals, Duration::from_secs(5), |seen| *seen < 2)
                 .expect("rendezvous lock");
-            assert!(*arrivals >= 2, "second worker never started a concurrent request");
+            assert!(
+                *arrivals >= 2,
+                "second worker never started a concurrent request"
+            );
         }
     }
 }
