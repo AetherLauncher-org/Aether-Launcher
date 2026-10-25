@@ -11,7 +11,7 @@ use aether_manifest::catalog::{
 const CATALOG_TIMEOUT_SECONDS: u64 = 12;
 
 /// Fetch a bounded catalog using an injectable transport for offline tests.
-fn fetch_catalog(transport: &dyn HttpTransport) -> Result<VersionCatalog, String> {
+pub(super) fn fetch_catalog(transport: &dyn HttpTransport) -> Result<VersionCatalog, String> {
     let response = transport
         .get(&TransportRequest {
             url: VERSION_CATALOG_URL.to_owned(),

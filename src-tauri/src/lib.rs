@@ -60,6 +60,7 @@ pub fn run() {
             application_info,
             list_java_runtimes,
             commands::catalog::list_minecraft_versions,
+            commands::vanilla::cache_vanilla_version_manifest,
             commands::instances::list_instances,
             commands::instances::create_instance,
             commands::launch::activate_installed_instance,
