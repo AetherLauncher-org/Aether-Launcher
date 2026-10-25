@@ -67,7 +67,10 @@ fn rejects_duplicate_versions_and_empty_lists() {
         parse_version_catalog(duplicate.as_bytes()),
         Err(CatalogError::InvalidEntries)
     ));
-    let empty = valid.replace(&valid[valid.find("[").unwrap()..=valid.rfind("]").unwrap()], "[]");
+    let empty = valid.replace(
+        &valid[valid.find('[').unwrap()..=valid.rfind(']').unwrap()],
+        "[]",
+    );
     assert!(matches!(
         parse_version_catalog(empty.as_bytes()),
         Err(CatalogError::InvalidEntries)
