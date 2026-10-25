@@ -1,4 +1,5 @@
 pub mod arguments;
+pub mod catalog;
 mod inherit;
 pub mod loader;
 pub mod rules;
