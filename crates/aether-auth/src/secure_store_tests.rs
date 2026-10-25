@@ -156,7 +156,9 @@ fn microsoft_save_without_token_revokes_an_existing_secret() {
     let vault = MemoryVault::default();
     let store = root.store(vault.clone());
     let account = microsoft();
-    let with_token = account.clone().with_refresh(RefreshToken::parse(SECRET).unwrap());
+    let with_token = account
+        .clone()
+        .with_refresh(RefreshToken::parse(SECRET).unwrap());
     store.save(&with_token).unwrap();
     assert!(vault.contains(account.account_id));
     store.save(&account).unwrap();
@@ -176,7 +178,12 @@ fn failed_vault_write_does_not_fall_back_to_metadata_or_plaintext() {
         Err(StoreError::ProtectedStoreUnavailable)
     ));
     assert_eq!(store.load(account.account_id).unwrap(), None);
-    assert!(!root.path().join(format!("{}.json", account.account_id.as_uuid())).exists());
+    assert!(
+        !root
+            .path()
+            .join(format!("{}.json", account.account_id.as_uuid()))
+            .exists()
+    );
 }
 
 #[test]
