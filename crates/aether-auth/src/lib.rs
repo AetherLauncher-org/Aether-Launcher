@@ -21,6 +21,7 @@ pub mod device_code;
 pub mod http;
 pub mod minecraft;
 pub mod offline;
+pub mod secure_store;
 pub mod store;
 pub mod token;
 pub mod xbox;
