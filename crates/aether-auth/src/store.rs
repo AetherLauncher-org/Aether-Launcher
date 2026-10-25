@@ -441,6 +441,8 @@ pub enum StoreError {
     UntrustedContent,
     #[error("plaintext refresh token persistence requires an OS credential vault")]
     InsecurePersistence,
+    #[error("the operating system credential store is unavailable")]
+    ProtectedStoreUnavailable,
 }
 
 #[cfg(test)]
