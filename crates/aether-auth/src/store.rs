@@ -120,9 +120,7 @@ impl FileCredentialStore {
     /// Creates a metadata-only store. No token can be serialized.
     #[must_use]
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self {
-            root: root.into(),
-        }
+        Self { root: root.into() }
     }
 
     #[must_use]

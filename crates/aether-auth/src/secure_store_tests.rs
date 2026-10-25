@@ -212,13 +212,21 @@ fn failed_vault_delete_preserves_metadata_and_allows_retry() {
         store.remove(account.account_id),
         Err(StoreError::ProtectedStoreUnavailable)
     ));
-    assert!(root.path().join(format!("{}.json", account.account_id.as_uuid())).exists());
+    assert!(
+        root.path()
+            .join(format!("{}.json", account.account_id.as_uuid()))
+            .exists()
+    );
     assert!(vault.contains(account.account_id));
     vault.modify(|state| state.fail_delete = false);
-    store.remove(account.account_id).expect("retry must succeed");
+    store
+        .remove(account.account_id)
+        .expect("retry must succeed");
     assert!(!vault.contains(account.account_id));
     assert_eq!(store.load(account.account_id).unwrap(), None);
-    store.remove(account.account_id).expect("absent removal is idempotent");
+    store
+        .remove(account.account_id)
+        .expect("absent removal is idempotent");
 }
 
 #[test]
@@ -233,10 +241,17 @@ fn offline_accounts_and_absent_accounts_never_touch_the_vault() {
     let store = root.store(vault.clone());
     let account = StoredCredential::metadata_only(AccountId::new(), "Player", AccountKind::Offline);
     store.save(&account).expect("save offline without vault");
-    assert_eq!(store.load(account.account_id).unwrap(), Some(account.clone()));
-    store.remove(account.account_id).expect("remove offline without vault");
+    assert_eq!(
+        store.load(account.account_id).unwrap(),
+        Some(account.clone())
+    );
+    store
+        .remove(account.account_id)
+        .expect("remove offline without vault");
     assert_eq!(store.load(account.account_id).unwrap(), None);
-    store.remove(AccountId::new()).expect("remove unknown without vault");
+    store
+        .remove(AccountId::new())
+        .expect("remove unknown without vault");
     assert_eq!(vault.calls(), 0);
 }
 

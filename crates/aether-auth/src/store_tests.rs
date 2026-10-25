@@ -9,9 +9,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::{
-    CredentialStore, FileCredentialStore, StoreError, StoredCredential,
-};
+use super::{CredentialStore, FileCredentialStore, StoreError, StoredCredential};
 use crate::token::RefreshToken;
 use crate::{AccountId, AccountKind};
 
