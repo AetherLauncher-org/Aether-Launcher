@@ -1,47 +1,80 @@
 //! OS-backed refresh-token storage. Never writes token material to JSON.
 //!
-//! Unlike the metadata-only FileCredentialStore, this implementation stores the
-//! refresh token under a per-account key in Windows Credential Manager, macOS
-//! Keychain, or the Linux Secret Service. It fails closed if the vault is locked
-//! or unavailable: no fallback to an unencrypted file is permitted.
-//!
-//! The keyring and the metadata JSON are separate stores. They cannot be updated
-//! transactionally; if the metadata write fails after the vault write succeeds,
-//! a later retry with the same account id safely updates the same entry.
+//! Refresh tokens live only in the OS credential vault. FileCredentialStore
+//! persists metadata and strips all token fields. The two stores are not
+//! transactional: a metadata-write failure may leave an unreferenced vault entry,
+//! which can be replaced by retrying with the same account id. No unencrypted
+//! fallback is attempted when vault operations fail.
 
 use std::path::PathBuf;
 
 use keyring::{Entry, Error as KeyringError};
 
 use crate::store::{CredentialStore, FileCredentialStore, StoreError, StoredCredential};
-use crate::{AccountId, token::RefreshToken};
+use crate::{AccountId, AccountKind, token::RefreshToken};
 
-/// Dedicated namespace for Microsoft OAuth refresh credentials, not access tokens.
 const SERVICE_NAME: &str = "org.aetherlauncher.AetherLauncher.microsoft-refresh";
 
-/// Persists nonsecret account metadata in JSON and refresh tokens in the OS vault.
-pub struct KeyringCredentialStore {
-    metadata: FileCredentialStore,
+/// A narrow, mockable boundary for secure secret operations. It deliberately
+/// does not expose keyring::Entry or any credentials in errors.
+trait CredentialVault: Send + Sync {
+    fn get(&self, account: AccountId) -> Result<Option<String>, StoreError>;
+    fn set(&self, account: AccountId, token: &str) -> Result<(), StoreError>;
+    fn delete(&self, account: AccountId) -> Result<(), StoreError>;
 }
 
-impl KeyringCredentialStore {
-    /// A secure store for account records rooted at the application's data directory.
-    #[must_use]
-    pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self {
-            metadata: FileCredentialStore::new(root),
-        }
-    }
+struct OsCredentialVault;
 
+impl OsCredentialVault {
     fn entry(account: AccountId) -> Result<Entry, StoreError> {
         Entry::new(SERVICE_NAME, &account.as_uuid().to_string())
             .map_err(|_| StoreError::ProtectedStoreUnavailable)
     }
+}
 
-    fn delete_if_present(entry: &Entry) -> Result<(), StoreError> {
-        match entry.delete_credential() {
+impl CredentialVault for OsCredentialVault {
+    fn get(&self, account: AccountId) -> Result<Option<String>, StoreError> {
+        match Self::entry(account)?
+            .get_password()
+        {
+            Ok(token) => Ok(Some(token)),
+            Err(KeyringError::NoEntry) => Ok(None),
+            Err(_) => Err(StoreError::ProtectedStoreUnavailable),
+        }
+    }
+
+    fn set(&self, account: AccountId, token: &str) -> Result<(), StoreError> {
+        Self::entry(account)?
+            .set_password(token)
+            .map_err(|_| StoreError::ProtectedStoreUnavailable)
+    }
+
+    fn delete(&self, account: AccountId) -> Result<(), StoreError> {
+        match Self::entry(account)?.delete_credential() {
             Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
             Err(_) => Err(StoreError::ProtectedStoreUnavailable),
+        }
+    }
+}
+
+/// Persists nonsecret account metadata in JSON and Microsoft refresh tokens
+/// exclusively in Windows Credential Manager, macOS Keychain or Linux Secret Service.
+pub struct KeyringCredentialStore {
+    metadata: FileCredentialStore,
+    vault: Box<dyn CredentialVault>,
+}
+
+impl KeyringCredentialStore {
+    /// Construct the production store with an operating-system credential vault.
+    #[must_use]
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self::with_vault(root, OsCredentialVault)
+    }
+
+    fn with_vault(root: impl Into<PathBuf>, vault: impl CredentialVault + 'static) -> Self {
+        Self {
+            metadata: FileCredentialStore::new(root),
+            vault: Box::new(vault),
         }
     }
 }
@@ -51,37 +84,35 @@ impl CredentialStore for KeyringCredentialStore {
         let Some(mut credential) = self.metadata.load(account)? else {
             return Ok(None);
         };
-        if credential.kind == crate::AccountKind::Microsoft {
-            let entry = Self::entry(account)?;
-            credential.refresh = match entry.get_password() {
-                Ok(token) => Some(
-                    RefreshToken::parse(token)
-                        .map_err(|_| StoreError::ProtectedStoreUnavailable)?,
-                ),
-                Err(KeyringError::NoEntry) => None,
-                Err(_) => return Err(StoreError::ProtectedStoreUnavailable),
-            };
+        if credential.kind == AccountKind::Microsoft {
+            credential.refresh = self
+                .vault
+                .get(account)?
+                .map(|token| RefreshToken::parse(token).map_err(|_| StoreError::CorruptedCredential))
+                .transpose()?;
         }
         Ok(Some(credential))
     }
 
     fn save(&self, credential: &StoredCredential) -> Result<(), StoreError> {
-        if credential.kind == crate::AccountKind::Microsoft {
-            let entry = Self::entry(credential.account_id)?;
+        if credential.kind == AccountKind::Microsoft {
             match credential.refresh.as_ref() {
-                Some(refresh) => entry
-                    .set_password(refresh.expose())
-                    .map_err(|_| StoreError::ProtectedStoreUnavailable)?,
-                None => Self::delete_if_present(&entry)?,
+                Some(refresh) => self.vault.set(credential.account_id, refresh.expose())?,
+                None => self.vault.delete(credential.account_id)?,
             }
         }
-        // FileCredentialStore always strips secrets from the JSON representation.
+        // The file encoder *always* strips tokens from persisted JSON.
         self.metadata.save(credential)
     }
 
     fn remove(&self, account: AccountId) -> Result<(), StoreError> {
-        // Delete the vault entry first. If it fails, preserve metadata for retry.
-        Self::delete_if_present(&Self::entry(account)?)?;
+        // Read trusted metadata first: offline accounts and absent accounts must
+        // not require an unlocked OS vault. Never delete metadata if revoking a
+        // known Microsoft credential fails, so removal can be retried safely.
+        let previous = self.metadata.load(account)?;
+        if previous.is_some_and(|credential| credential.kind == AccountKind::Microsoft) {
+            self.vault.delete(account)?;
+        }
         self.metadata.remove(account)
     }
 
@@ -91,21 +122,5 @@ impl CredentialStore for KeyringCredentialStore {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn new_secure_store_has_a_metadata_root() {
-        let store = KeyringCredentialStore::new("aether-test-metadata");
-        assert_eq!(
-            store.metadata.root(),
-            std::path::Path::new("aether-test-metadata")
-        );
-    }
-
-    #[test]
-    fn service_name_is_dedicated_to_refresh_tokens() {
-        assert!(SERVICE_NAME.contains("AetherLauncher"));
-        assert!(SERVICE_NAME.contains("refresh"));
-    }
-}
+#[path = "secure_store_tests.rs"]
+mod tests;
