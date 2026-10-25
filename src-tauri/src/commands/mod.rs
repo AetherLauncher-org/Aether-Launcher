@@ -13,3 +13,4 @@
 pub mod catalog;
 pub mod instances;
 pub mod launch;
+pub mod vanilla;
