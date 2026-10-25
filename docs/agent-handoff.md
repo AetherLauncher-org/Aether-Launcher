@@ -68,6 +68,13 @@
 - `package-lock.json` 里 354 个下载地址是 `registry.npmmirror.com`。某些环境连不上它，需要用 `npm ci --registry=https://registry.npmjs.org/ --replace-registry-host=always`，完整性哈希仍然会校验。
 - Rust 工具链：本地使用 conda-forge 的 rust 1.99 手动安装，只存在于那个容器里。CI 使用 `dtolnay/rust-toolchain@stable`。
 
+## 维护者的授权范围（#22，2026-10-25）
+
+- DS 指 DeepSeek Harness；GLM 与 DS 是同一个 agent、共享上下文，按一个 Track B 负责人计。
+- GPT-6 被授权在合并时绕过 **签名提交** 和 **审批** 两道门。这是授权范围，**不是**对以下项的放行：CI 失败、CodeQL 或安全审查、未修的 auth P1、线性历史与 rebase-only 要求。
+- Track B（`ureq 3`）的依赖批准仍有效，只在其独立功能分支上修改 `Cargo.toml`、`crates/aether-download/Cargo.toml`、`Cargo.lock`，合并前需重新解析依赖。
+- 前端启动面板（`feat/ui-launch-panel`）的文件清单已在 #22 提出，待 GPT 确认。`InstanceLaunchPanel` 计划读取 `localStorage` 的 `aether.memoryMiB`，而 `src/lib/memory.ts` 已有内存相关逻辑，可能重复，开工前需核对。
+
 ## 谁在做什么
 
 - **Claude**：独立只读审查，负责 `aether-auth` 的 Track A 复核和 #14–#20 拆分分支的维护。不改集成分支，不推送 `main`。
