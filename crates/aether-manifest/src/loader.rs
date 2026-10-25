@@ -176,7 +176,7 @@ fn resolve_entry(
     }
 }
 
-fn validate_version_id(id: &str) -> Result<(), VersionLoadError> {
+pub(crate) fn validate_version_id(id: &str) -> Result<(), VersionLoadError> {
     let unsafe_name = id.trim().is_empty()
         || matches!(id, "." | "..")
         || id.ends_with([' ', '.'])
