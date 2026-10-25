@@ -18,10 +18,8 @@ struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
         let id = TEST_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "aether-version-cache-{}-{id}",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("aether-version-cache-{}-{id}", std::process::id()));
         fs::create_dir(&path).unwrap();
         Self(path)
     }
@@ -149,10 +147,7 @@ fn rejects_missing_versions_and_wrong_manifest_ids() {
 #[test]
 fn rejects_malformed_or_oversized_json_without_writing() {
     let fixture = Fixture::new();
-    for bytes in [
-        b"not json".to_vec(),
-        vec![b'A'; MAX_VERSION_JSON_BYTES + 1],
-    ] {
+    for bytes in [b"not json".to_vec(), vec![b'A'; MAX_VERSION_JSON_BYTES + 1]] {
         let fake = transport_with(bytes.clone(), &digest(&bytes));
         let game = fixture.root().join("game");
         assert!(prepare_version(&fake, &game, "1.21.1").is_err());

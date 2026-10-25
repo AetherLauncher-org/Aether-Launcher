@@ -62,8 +62,8 @@ fn fetch_verified_metadata(
     verify_reader(bytes.as_slice(), bytes.len() as u64, &expected_sha1)
         .map_err(|_| "official version JSON failed SHA-1 verification".to_owned())?;
 
-    let json = std::str::from_utf8(&bytes)
-        .map_err(|_| "official version JSON is not UTF-8".to_owned())?;
+    let json =
+        std::str::from_utf8(&bytes).map_err(|_| "official version JSON is not UTF-8".to_owned())?;
     let parsed = parse_version_manifest(json)
         .map_err(|_| "official version JSON has an invalid schema".to_owned())?;
     if parsed.id != version || parsed.inherits_from.is_some() {
@@ -126,8 +126,12 @@ fn cache_verified_metadata(
             }
             let cached = fs::File::open(&destination)
                 .map_err(|_| "cannot read cached version JSON".to_owned())?;
-            verify_reader(cached, bytes.len() as u64, &expected_sha1.to_ascii_lowercase())
-                .map_err(|_| "cached version JSON is damaged; repair required".to_owned())?;
+            verify_reader(
+                cached,
+                bytes.len() as u64,
+                &expected_sha1.to_ascii_lowercase(),
+            )
+            .map_err(|_| "cached version JSON is damaged; repair required".to_owned())?;
             return Ok(());
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
