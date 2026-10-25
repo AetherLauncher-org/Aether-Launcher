@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { InstanceLaunchPanel } from "../components/InstanceLaunchPanel";
 import { InstancesPage } from "./InstancesPage";
 import type { PageDefinition } from "../navigation";
 
@@ -116,5 +117,117 @@ describe("InstancesPage", () => {
     await waitFor(() =>
       expect(screen.queryByText("生存 1.21")).not.toBeInTheDocument(),
     );
+  });
+
+  it("mounts a launch panel per listed instance", async () => {
+    enableTauri();
+    vi.mocked(invoke).mockResolvedValue({
+      instances: [
+        { id: "a", name: "生存 1.21", version: "1.21.1", state: "ready" },
+        { id: "b", name: "红石实验", version: "1.20.1", state: "ready" },
+      ],
+      skipped: [],
+    });
+
+    render(<InstancesPage page={page} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("生存 1.21")).toBeInTheDocument(),
+    );
+    expect(await screen.findAllByText("可启动")).toHaveLength(2);
+  });
+});
+
+/** 按命令名分发 mock 返回值；值是 Error 时按失败处理。 */
+function mockCommands(commands: Record<string, unknown>) {
+  vi.mocked(invoke).mockImplementation(((cmd: string) => {
+    const result = commands[cmd];
+    if (result instanceof Error) {
+      return Promise.reject(result.message);
+    }
+    return Promise.resolve(result);
+  }) as unknown as typeof invoke);
+}
+
+const runningStatus = {
+  instanceId: "a",
+  state: "running",
+  pid: 4321,
+  exitCode: null,
+  discardedLogs: 0,
+} as const;
+
+const stoppedStatus = {
+  instanceId: "a",
+  state: "stopped",
+  pid: 0,
+  exitCode: 0,
+  discardedLogs: 0,
+} as const;
+
+describe("InstanceLaunchPanel", () => {
+  it("shows a desktop-only notice outside Tauri", () => {
+    render(<InstanceLaunchPanel instanceId="a" />);
+
+    expect(screen.getByText("需要桌面版才能启动实例")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "启动" })).not.toBeInTheDocument();
+  });
+
+  it("disables starting while the player name is invalid", () => {
+    enableTauri();
+
+    render(<InstanceLaunchPanel instanceId="a" />);
+
+    fireEvent.change(screen.getByLabelText("离线玩家名"), {
+      target: { value: "ab" },
+    });
+
+    expect(screen.getByRole("button", { name: "启动" })).toBeDisabled();
+    expect(screen.getByText("玩家名至少 3 个字符")).toBeInTheDocument();
+  });
+
+  it("reports an activation failure as missing files", async () => {
+    enableTauri();
+    mockCommands({
+      activate_installed_instance: new Error("版本文件缺失"),
+    });
+
+    render(<InstanceLaunchPanel instanceId="a" />);
+    fireEvent.click(screen.getByRole("button", { name: "启动" }));
+
+    expect(await screen.findByText("缺文件")).toBeInTheDocument();
+    expect(screen.getByText("版本文件缺失")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+  });
+
+  it("starts, shows the PID, and stops with the right command arguments", async () => {
+    enableTauri();
+    mockCommands({
+      activate_installed_instance: undefined,
+      start_installed_instance: runningStatus,
+      stop_installed_instance: stoppedStatus,
+    });
+
+    render(<InstanceLaunchPanel instanceId="a" />);
+    fireEvent.click(screen.getByRole("button", { name: "启动" }));
+
+    expect(await screen.findByText("运行中")).toBeInTheDocument();
+    expect(screen.getByText("PID 4321")).toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith("activate_installed_instance", {
+      id: "a",
+    });
+    expect(invoke).toHaveBeenCalledWith("start_installed_instance", {
+      id: "a",
+      offlineName: "Player",
+      memoryMib: 4096,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "停止" }));
+
+    expect(await screen.findByText("已停止")).toBeInTheDocument();
+    expect(screen.getByText("退出码 0")).toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith("stop_installed_instance", {
+      id: "a",
+    });
   });
 });
