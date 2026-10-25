@@ -10,5 +10,6 @@
 //! Rust-only APIs of `aether-launch` and `aether-diagnose` until their
 //! fail-closed preconditions are fully implemented.
 
+pub mod catalog;
 pub mod instances;
 pub mod launch;

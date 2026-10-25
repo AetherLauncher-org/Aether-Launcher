@@ -59,6 +59,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             application_info,
             list_java_runtimes,
+            commands::catalog::list_minecraft_versions,
             commands::instances::list_instances,
             commands::instances::create_instance,
             commands::launch::activate_installed_instance,

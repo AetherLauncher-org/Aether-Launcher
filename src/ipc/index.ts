@@ -63,6 +63,10 @@ export type {
   SkippedInstance,
 } from "./instances";
 
+// 官方 Minecraft 版本目录（只读）
+export { listMinecraftVersions } from "./catalog";
+export type { MinecraftCatalogVersion, MinecraftVersionCatalog } from "./catalog";
+
 // Java 运行时发现
 export { discoverJavaRuntimes } from "./java";
 export type { JavaRuntimeInfo } from "./java";

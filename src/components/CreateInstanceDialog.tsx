@@ -11,10 +11,15 @@ import {
   Select,
   Text,
 } from "@fluentui/react-components";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { createInstance } from "../ipc";
-import type { InstanceSummary } from "../ipc";
+import {
+  createInstance,
+  describeCommandError,
+  isTauri,
+  listMinecraftVersions,
+} from "../ipc";
+import type { InstanceSummary, MinecraftVersionCatalog } from "../ipc";
 import {
   suggestedVersions,
   validateInstanceName,
@@ -56,6 +61,39 @@ export function CreateInstanceDialog({
   const [versionError, setVersionError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [catalog, setCatalog] = useState<MinecraftVersionCatalog | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !isTauri()) {
+      return;
+    }
+    let active = true;
+    void listMinecraftVersions()
+      .then((result) => {
+        if (active) {
+          setCatalog(result);
+          setVersion(result.latest.release);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setCatalogError(describeCommandError(error));
+        }
+      })
+    return () => {
+      active = false;
+    };
+  }, [open]);
+
+  const releases = catalog?.versions
+    .filter((item) => item.type === "release")
+    .slice(0, 90) ?? [];
+  const snapshots = catalog?.versions
+    .filter((item) => item.type === "snapshot")
+    .slice(0, 20) ?? [];
+
+  const catalogLoading = open && isTauri() && !catalog && !catalogError;
 
   const usingCustomVersion = version === customVersionValue;
   const effectiveVersion = usingCustomVersion ? customVersion : version;
@@ -69,6 +107,8 @@ export function CreateInstanceDialog({
     setVersionError(null);
     setSubmitError(null);
     setSubmitting(false);
+    setCatalog(null);
+    setCatalogError(null);
   };
 
   const close = () => {
@@ -158,14 +198,45 @@ export function CreateInstanceDialog({
                     setVersionError(null);
                   }}
                 >
-                  {suggestedVersions.map((item) => (
-                    <option value={item} key={item}>
-                      {item}
-                    </option>
-                  ))}
+                  {catalog ? (
+                    <>
+                      <optgroup label="正式版">
+                        {releases.map((item) => (
+                          <option value={item.id} key={item.id}>
+                            {item.id}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="快照版">
+                        {snapshots.map((item) => (
+                          <option value={item.id} key={item.id}>
+                            {item.id}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </>
+                  ) : (
+                    suggestedVersions.map((item) => (
+                      <option value={item} key={item}>
+                        {item}
+                      </option>
+                    ))
+                  )}
                   <option value={customVersionValue}>手动填写…</option>
                 </Select>
               </Field>
+
+              <Text size={200}>创建只保存实例记录；游戏文件仍需单独安装。</Text>
+
+              {catalogLoading ? (
+                <Text size={200}>正在读取 Mojang 官方版本目录…</Text>
+              ) : catalogError ? (
+                <Text size={200} role="status">
+                  官方版本目录暂不可用：{catalogError}。仍可手动填写版本号。
+                </Text>
+              ) : catalog ? (
+                <Text size={200}>已从 Mojang 读取版本目录；创建实例暂不下载游戏文件。</Text>
+              ) : null}
 
               {usingCustomVersion ? (
                 <Field
