@@ -15,6 +15,7 @@ import {
 import { useCallback, useMemo, useState } from "react";
 import { CreateInstanceDialog } from "../components/CreateInstanceDialog";
 import { EmptyState } from "../components/EmptyState";
+import { InstanceLaunchPanel } from "../components/InstanceLaunchPanel";
 import { InstanceList } from "../components/InstanceList";
 import {
   DesktopOnlyNotice,
@@ -247,6 +248,17 @@ export function InstancesPage({ page }: InstancesPageProps) {
             busyId={busyId}
           />
         )}
+        {/*
+          启动面板：列表行本身很紧凑，`InstanceList` 也不承载额外内容，
+          所以在列表下方按实例逐个挂面板，而不是塞进行内。
+        */}
+        {visible.length > 0 ? (
+          <div className="launch-panel-grid">
+            {visible.map((instance) => (
+              <InstanceLaunchPanel key={instance.id} instanceId={instance.id} />
+            ))}
+          </div>
+        ) : null}
 
         {skipped.length > 0 ? (
           <div className="skipped-block">

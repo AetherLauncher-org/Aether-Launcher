@@ -688,3 +688,71 @@ button { letter-spacing: 0; }
   .runtime-option { flex-direction: column; align-items: flex-start; }
   .runtime-tags { flex-wrap: wrap; }
 }
+
+/* ── 实例启动面板 ─────────────────────────────────────────────── */
+
+.launch-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-faint);
+}
+
+.launch-panel {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.launch-panel-desktop-only { border-style: dashed; }
+
+.launch-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.launch-panel-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.launch-panel-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+}
+
+.launch-panel-field { display: grid; gap: 4px; }
+.launch-panel-field input { max-width: 200px; }
+
+.launch-panel-memory {
+  padding-bottom: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.launch-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.launch-panel-run {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .launch-panel-grid { grid-template-columns: 1fr; }
+}
