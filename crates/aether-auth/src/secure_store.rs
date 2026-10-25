@@ -34,9 +34,7 @@ impl OsCredentialVault {
 
 impl CredentialVault for OsCredentialVault {
     fn get(&self, account: AccountId) -> Result<Option<String>, StoreError> {
-        match Self::entry(account)?
-            .get_password()
-        {
+        match Self::entry(account)?.get_password() {
             Ok(token) => Ok(Some(token)),
             Err(KeyringError::NoEntry) => Ok(None),
             Err(_) => Err(StoreError::ProtectedStoreUnavailable),
