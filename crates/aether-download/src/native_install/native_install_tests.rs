@@ -101,7 +101,9 @@ fn verifies_archive_and_atomically_publishes_native_files() {
         ],
     );
     let path = install(&f, &jar, &["META-INF/".to_owned()]).unwrap();
-    assert_eq!(path, f.output);
+    // Both sides must use the same Windows canonical path representation.
+    // Some volumes return the verbatim `\\\\?\\` prefix from canonicalize.
+    assert_eq!(path, fs::canonicalize(&f.output).unwrap());
     assert_eq!(fs::read(path.join("linux/liblwjgl.so")).unwrap(), b"native");
     assert_eq!(
         fs::read(path.join("windows/lwjgl.dll")).unwrap(),
