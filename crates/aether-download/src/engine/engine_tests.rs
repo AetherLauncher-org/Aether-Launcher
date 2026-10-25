@@ -234,10 +234,8 @@ impl HttpTransport for FakeTransport {
             requests.len()
         };
         lock(&self.threads).push(thread::current().id());
-        if request_number <= 2 {
-            if let Some(rendezvous) = &self.first_two_requests {
-                rendezvous.arrive();
-            }
+        if request_number <= 2 && let Some(rendezvous) = &self.first_two_requests {
+            rendezvous.arrive();
         }
         let keyed = lock(&self.by_url).remove(&request.url);
         let script = keyed
