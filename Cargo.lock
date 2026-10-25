@@ -32,7 +32,11 @@ dependencies = [
 name = "aether-desktop"
 version = "0.1.0"
 dependencies = [
+ "aether-auth",
  "aether-core",
+ "aether-download",
+ "aether-launch",
+ "aether-manifest",
  "aether-runtime",
  "aether-storage",
  "serde",
