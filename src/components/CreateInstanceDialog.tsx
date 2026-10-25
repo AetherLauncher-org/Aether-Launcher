@@ -14,6 +14,7 @@ import {
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
+  cacheVanillaVersionManifest,
   createInstance,
   describeCommandError,
   isTauri,
@@ -61,6 +62,8 @@ export function CreateInstanceDialog({
   const [versionError, setVersionError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [caching, setCaching] = useState(false);
+  const [cacheResult, setCacheResult] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<MinecraftVersionCatalog | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
@@ -107,6 +110,8 @@ export function CreateInstanceDialog({
     setVersionError(null);
     setSubmitError(null);
     setSubmitting(false);
+    setCaching(false);
+    setCacheResult(null);
     setCatalog(null);
     setCatalogError(null);
   };
@@ -114,6 +119,24 @@ export function CreateInstanceDialog({
   const close = () => {
     reset();
     onOpenChange(false);
+  };
+
+  const handleCache = async () => {
+    const error = validateInstanceVersion(effectiveVersion);
+    if (error !== null) {
+      setVersionError(error);
+      return;
+    }
+    setCaching(true);
+    setCacheResult(null);
+    try {
+      const cached = await cacheVanillaVersionManifest(effectiveVersion.trim());
+      setCacheResult(`已校验并缓存 ${cached} 的官方版本 JSON。客户端及资源尚未安装。`);
+    } catch (error: unknown) {
+      setCacheResult(`缓存失败：${describeCommandError(error)}`);
+    } finally {
+      setCaching(false);
+    }
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -196,6 +219,7 @@ export function CreateInstanceDialog({
                   onChange={(_, data) => {
                     setVersion(data.value);
                     setVersionError(null);
+                    setCacheResult(null);
                   }}
                 >
                   {catalog ? (
@@ -227,6 +251,17 @@ export function CreateInstanceDialog({
               </Field>
 
               <Text size={200}>创建只保存实例记录；游戏文件仍需单独安装。</Text>
+              {isTauri() ? (
+                <Button
+                  type="button"
+                  appearance="secondary"
+                  disabled={caching || submitting || effectiveVersion.trim().length === 0}
+                  onClick={() => void handleCache()}
+                >
+                  {caching ? "校验并缓存中…" : "缓存此版本的官方 JSON"}
+                </Button>
+              ) : null}
+              {cacheResult ? <Text size={200} role="status">{cacheResult}</Text> : null>
 
               {catalogLoading ? (
                 <Text size={200}>正在读取 Mojang 官方版本目录…</Text>
@@ -250,6 +285,7 @@ export function CreateInstanceDialog({
                     placeholder="例如 1.21.1"
                     onChange={(_, data) => {
                       setCustomVersion(data.value);
+                      setCacheResult(null);
                       if (versionError) {
                         setVersionError(null);
                       }
