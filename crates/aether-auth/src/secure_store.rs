@@ -86,7 +86,9 @@ impl CredentialStore for KeyringCredentialStore {
             credential.refresh = self
                 .vault
                 .get(account)?
-                .map(|token| RefreshToken::parse(token).map_err(|_| StoreError::CorruptedCredential))
+                .map(|token| {
+                    RefreshToken::parse(token).map_err(|_| StoreError::CorruptedCredential)
+                })
                 .transpose()?;
         }
         Ok(Some(credential))
