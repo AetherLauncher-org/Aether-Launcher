@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, ThreadId};
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -155,6 +155,30 @@ enum Script {
     HttpStatus(u16),
 }
 
+// Make the first two HTTP requests overlap in the parallel-download test.
+// A timeout turns a broken worker pool into a test failure instead of a hang.
+#[derive(Default)]
+struct TwoWorkerRendezvous {
+    arrivals: Mutex<usize>,
+    ready: Condvar,
+}
+
+impl TwoWorkerRendezvous {
+    fn arrive(&self) {
+        let mut arrivals = lock(&self.arrivals);
+        *arrivals += 1;
+        if *arrivals >= 2 {
+            self.ready.notify_all();
+        } else {
+            let (arrivals, _) = self
+                .ready
+                .wait_timeout_while(arrivals, Duration::from_secs(5), |seen| *seen < 2)
+                .expect("rendezvous lock");
+            assert!(*arrivals >= 2, "second worker never started a concurrent request");
+        }
+    }
+}
+
 #[derive(Default)]
 struct FakeTransport {
     scripts: Mutex<VecDeque<Script>>,
@@ -162,6 +186,7 @@ struct FakeTransport {
     by_url: Mutex<HashMap<String, Script>>,
     requests: Mutex<Vec<TransportRequest>>,
     threads: Mutex<Vec<ThreadId>>,
+    first_two_requests: Option<TwoWorkerRendezvous>,
 }
 
 impl FakeTransport {
@@ -200,8 +225,17 @@ impl FakeTransport {
 
 impl HttpTransport for FakeTransport {
     fn get(&self, request: &TransportRequest) -> Result<TransportResponse, TransportError> {
-        lock(&self.requests).push(request.clone());
+        let request_number = {
+            let mut requests = lock(&self.requests);
+            requests.push(request.clone());
+            requests.len()
+        };
         lock(&self.threads).push(thread::current().id());
+        if request_number <= 2 {
+            if let Some(rendezvous) = &self.first_two_requests {
+                rendezvous.arrive();
+            }
+        }
         let keyed = lock(&self.by_url).remove(&request.url);
         let script = keyed
             .or_else(|| lock(&self.scripts).pop_front())
@@ -1284,7 +1318,8 @@ fn downloads_a_plan_in_parallel_and_in_order() {
         bodies.push(body);
     }
 
-    let transport = FakeTransport::by_url(pairs);
+    let mut transport = FakeTransport::by_url(pairs);
+    transport.first_two_requests = Some(TwoWorkerRendezvous::default());
     let sleeps = SleepRecorder::default();
     let plan = DownloadPlan { artifacts };
     let engine = engine(
