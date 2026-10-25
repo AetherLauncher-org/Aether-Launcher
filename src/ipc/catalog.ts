@@ -5,7 +5,7 @@ import { isTauri } from "./index";
 export type MinecraftCatalogVersion = {
   id: string;
   type: never;
-  kind: string;
+  type: string;
   url: string;
   sha1: string;
   releaseTime: string;
