@@ -48,7 +48,10 @@ fn rejects_missing_latest_unsafe_ids_and_untrusted_urls() {
     for broken in [
         valid.replacen("\"snapshot\": \"24w14a\"", "\"snapshot\": \"missing\"", 1),
         valid.replace("\"1.21.1\"", "\"../escape\""),
-        valid.replace("https://piston-meta.mojang.com/", "http://piston-meta.mojang.com/"),
+        valid.replace(
+            "https://piston-meta.mojang.com/",
+            "http://piston-meta.mojang.com/",
+        ),
         valid.replace("https://piston-meta.mojang.com/", "https://evil.example/"),
         valid.replace(SHA1, "not-a-sha1"),
     ] {

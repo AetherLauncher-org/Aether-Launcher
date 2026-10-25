@@ -2,8 +2,8 @@
 
 use std::io::Read;
 
-use aether_download::transport::{HttpTransport, TransportRequest};
 use aether_download::transport::http::{KernelHttpTransport, UreqKernel};
+use aether_download::transport::{HttpTransport, TransportRequest};
 use aether_manifest::catalog::{
     MAX_CATALOG_BYTES, VERSION_CATALOG_URL, VersionCatalog, parse_version_catalog,
 };
@@ -34,8 +34,8 @@ fn fetch_catalog(transport: &dyn HttpTransport) -> Result<VersionCatalog, String
 #[tauri::command]
 pub async fn list_minecraft_versions() -> Result<VersionCatalog, String> {
     tauri::async_runtime::spawn_blocking(|| {
-        let transport = KernelHttpTransport::new(UreqKernel::new())
-            .with_max_bytes(MAX_CATALOG_BYTES as u64);
+        let transport =
+            KernelHttpTransport::new(UreqKernel::new()).with_max_bytes(MAX_CATALOG_BYTES as u64);
         fetch_catalog(&transport)
     })
     .await
@@ -47,9 +47,7 @@ mod tests {
     use std::io::Cursor;
     use std::sync::Mutex;
 
-    use aether_download::transport::{
-        TransportError, TransportRequest, TransportResponse,
-    };
+    use aether_download::transport::{TransportError, TransportRequest, TransportResponse};
 
     use super::*;
 
