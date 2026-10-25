@@ -2,10 +2,8 @@
 //!
 //! This file-backed implementation stores account IDs, display names, kinds and
 //! XUIDs only. All refresh/access/Xbox/Minecraft tokens remain in memory. The
-//! legacy `RefreshTokenPersistence::Allow` option is retained for API compatibility,
-//! but attempting to persist a refresh token is refused, not written in plaintext.
-//! Plaintext tokens in pre-existing credential files are also refused on load.
-//! Use an OS-protected credential store before implementing remember-me behavior.
+//! file format has no mechanism to persist refresh tokens. Old documents with
+//! plaintext token fields are rejected. Use KeyringCredentialStore for remember-me.
 //!
 //! Writes of metadata are atomic, not encrypted. Error messages never include
 //! account secrets or their filesystem paths.
@@ -22,20 +20,6 @@ use uuid::Uuid;
 use crate::token::RefreshToken;
 use crate::{AccountId, AccountKind};
 
-/// Persistence intent. This file store never writes plaintext credentials.
-/// Until a platform credential vault is available, `Allow` fails closed for
-/// accounts carrying refresh tokens.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum RefreshTokenPersistence {
-    /// No token is ever written. Saving strips the refresh token and keeps the account
-    /// metadata only.
-    #[default]
-    Deny,
-    /// Reserved for a future protected credential store. File-backed token
-    /// persistence with this policy returns `StoreError::InsecurePersistence`.
-    Allow,
-}
-
 /// The on-disk shape of one account. **Never** contains an XSTS or Minecraft access
 /// token: there is no field for one.
 ///
@@ -46,7 +30,7 @@ pub enum RefreshTokenPersistence {
 /// make the storable shape identical to the in-memory shape and hand every holder of a
 /// `StoredCredential` a one-liner that writes the clear-text token anywhere. Encoding
 /// goes exclusively through the private `WireCredential` inside
-/// [`FileCredentialStore::save`], which applies [`RefreshTokenPersistence`] first.
+/// [`FileCredentialStore::save`], which cannot encode a secret.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredCredential {
     pub account_id: AccountId,
@@ -91,8 +75,7 @@ impl StoredCredential {
     }
 }
 
-/// The persistence seam. Implementations must honour [`RefreshTokenPersistence`]; the
-/// trait itself cannot enforce it, so every implementation documents how it does.
+/// The persistence seam. Implementations must never write plaintext tokens.
 pub trait CredentialStore {
     /// Reads one account. A missing account is `Ok(None)`, not an error.
     ///
@@ -128,38 +111,23 @@ pub trait CredentialStore {
 ///
 /// # Security
 ///
-/// Only metadata is written; an opt-in token save fails closed without an OS vault.
+/// Only metadata is written, even if a credential carries an in-memory refresh token.
 pub struct FileCredentialStore {
     root: PathBuf,
-    persistence: RefreshTokenPersistence,
 }
 
 impl FileCredentialStore {
-    /// Creates a store rooted at `root`. Nothing is created until the first save, and
-    /// nothing but account metadata is written until refresh persistence is opted into.
+    /// Creates a metadata-only store. No token can be serialized.
     #[must_use]
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             root: root.into(),
-            persistence: RefreshTokenPersistence::Deny,
         }
-    }
-
-    /// Chooses whether refresh tokens may be written to the disk.
-    #[must_use]
-    pub fn with_refresh_persistence(mut self, persistence: RefreshTokenPersistence) -> Self {
-        self.persistence = persistence;
-        self
     }
 
     #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
-    }
-
-    #[must_use]
-    pub fn persistence(&self) -> RefreshTokenPersistence {
-        self.persistence
     }
 
     /// The document path for `account`. Only the UUID is used, so a display name can
@@ -236,16 +204,13 @@ impl CredentialStore for FileCredentialStore {
         if wire.refresh_token.is_some() {
             return Err(StoreError::UntrustedContent);
         }
-        Ok(Some(wire.into_credential(self.persistence)))
+        Ok(Some(wire.into_credential()))
     }
 
     fn save(&self, credential: &StoredCredential) -> Result<(), StoreError> {
-        if self.persistence == RefreshTokenPersistence::Allow && credential.refresh.is_some() {
-            return Err(StoreError::InsecurePersistence);
-        }
         fs::create_dir_all(&self.root).map_err(StoreError::Write)?;
 
-        let wire = WireCredential::from_credential(credential, self.persistence);
+        let wire = WireCredential::from_credential(credential);
         let bytes = serde_json::to_vec_pretty(&wire).map_err(StoreError::Encode)?;
 
         self.write_atomically(
@@ -317,7 +282,7 @@ struct WireCredential {
 
 impl WireCredential {
     /// File-backed persistence intentionally never serializes tokens.
-    fn from_credential(credential: &StoredCredential, _policy: RefreshTokenPersistence) -> Self {
+    fn from_credential(credential: &StoredCredential) -> Self {
         Self {
             account_id: credential.account_id,
             display_name: credential.display_name.clone(),
@@ -328,7 +293,7 @@ impl WireCredential {
     }
 
     /// File-backed decoding never rehydrates a long-lived token.
-    fn into_credential(self, _policy: RefreshTokenPersistence) -> StoredCredential {
+    fn into_credential(self) -> StoredCredential {
         StoredCredential {
             account_id: self.account_id,
             display_name: self.display_name,
@@ -439,10 +404,10 @@ pub enum StoreError {
     Encode(#[source] serde_json::Error),
     #[error("the stored credential contains a token type this store never persists")]
     UntrustedContent,
-    #[error("plaintext refresh token persistence requires an OS credential vault")]
-    InsecurePersistence,
     #[error("the operating system credential store is unavailable")]
     ProtectedStoreUnavailable,
+    #[error("the protected credential is malformed")]
+    CorruptedCredential,
 }
 
 #[cfg(test)]
