@@ -226,6 +226,8 @@ export function CreateInstanceDialog({
                 </Select>
               </Field>
 
+              <Text size={200}>创建只保存实例记录；游戏文件仍需单独安装。</Text>
+
               {catalogLoading ? (
                 <Text size={200}>正在读取 Mojang 官方版本目录…</Text>
               ) : catalogError ? (
