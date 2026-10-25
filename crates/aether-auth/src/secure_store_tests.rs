@@ -35,7 +35,11 @@ impl MemoryVault {
     }
 
     fn contains(&self, account: AccountId) -> bool {
-        self.0.lock().expect("mock vault lock").entries.contains_key(&account)
+        self.0
+            .lock()
+            .expect("mock vault lock")
+            .entries
+            .contains_key(&account)
     }
 }
 
