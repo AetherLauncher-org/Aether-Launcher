@@ -402,10 +402,12 @@ fn allows_http_to_https_upgrade() {
 
 #[test]
 fn rejects_invalid_redirect_targets() {
+    // `example.invalid/lib.jar`（无 scheme 的相对引用）不再列入：
+    // 修复 3 之后相对 path 形态按 RFC 3986 解析，属合法重定向目标。
     for target in [
         "https:///lib.jar",
         "ftp://example.invalid/lib.jar",
-        "example.invalid/lib.jar",
+        "?query=1",
     ] {
         let (kernel, _log) = fn_kernel(move |_| Ok(redirect_response(302, target)));
         let transport = KernelHttpTransport::new(kernel);
@@ -413,11 +415,98 @@ fn rejects_invalid_redirect_targets() {
             transport.get(&request(LIB_URL)),
             "invalid redirect target must fail",
         );
+        let message = error.to_string();
         assert!(
-            error.to_string().contains("invalid URL"),
-            "{target:?}: {error}"
+            message.contains("invalid URL") || message.contains("invalid redirect Location"),
+            "{target:?}: {message}"
         );
     }
+}
+
+#[test]
+fn resolves_absolute_path_location() {
+    // `/files/new.jar`：替换当前 path。
+    let (kernel, log) = fn_kernel(|request| {
+        if request.url == LIB_URL {
+            Ok(redirect_response(302, "/files/new.jar"))
+        } else {
+            Ok(ok_response(b"rel"))
+        }
+    });
+    let transport = KernelHttpTransport::new(kernel);
+    let mut response = transport
+        .get(&request(LIB_URL))
+        .expect("relative path resolves");
+    assert_eq!(read_all(&mut response).expect("body is readable"), b"rel");
+    assert_eq!(
+        log.urls().last().map(String::as_str),
+        Some("https://example.invalid/files/new.jar")
+    );
+}
+
+#[test]
+fn resolves_scheme_relative_location() {
+    // `//cdn.example.com/x`：继承当前 scheme。
+    let (kernel, log) = fn_kernel(|request| {
+        if request.url == LIB_URL {
+            Ok(redirect_response(302, "//cdn.example.com/x"))
+        } else {
+            Ok(ok_response(b"cdn"))
+        }
+    });
+    let transport = KernelHttpTransport::new(kernel);
+    let mut response = transport
+        .get(&request(LIB_URL))
+        .expect("scheme-relative location resolves");
+    assert_eq!(read_all(&mut response).expect("body is readable"), b"cdn");
+    assert_eq!(
+        log.urls().last().map(String::as_str),
+        Some("https://cdn.example.com/x")
+    );
+}
+
+#[test]
+fn resolves_relative_path_with_dot_segments() {
+    // `../up.jar`：与当前 path 的目录合并，`..` 抵消一级。
+    let base = "https://example.invalid/dir/sub/file.jar";
+    let (kernel, log) = fn_kernel(move |request| {
+        if request.url == base {
+            Ok(redirect_response(302, "../up.jar"))
+        } else {
+            Ok(ok_response(b"up"))
+        }
+    });
+    let transport = KernelHttpTransport::new(kernel);
+    let mut response = transport
+        .get(&request(base))
+        .expect("relative location with dot segments resolves");
+    assert_eq!(read_all(&mut response).expect("body is readable"), b"up");
+    assert_eq!(
+        log.urls().last().map(String::as_str),
+        Some("https://example.invalid/dir/up.jar")
+    );
+}
+
+#[test]
+fn clamps_dot_segments_at_root() {
+    // `..` 越出根时钳在根，不报错也不出现负向路径。
+    let base = "https://example.invalid/a/b/file.jar";
+    let (kernel, log) = fn_kernel(move |request| {
+        if request.url == base {
+            Ok(redirect_response(302, "/../../../../up.jar"))
+        } else {
+            Ok(ok_response(b"root"))
+        }
+    });
+    let transport = KernelHttpTransport::new(kernel);
+    let mut response = transport
+        .get(&request(base))
+        .expect("dot segments above root are clamped");
+    assert_eq!(read_all(&mut response).expect("body is readable"), b"root");
+    assert_eq!(
+        log.urls().last().map(String::as_str),
+        Some("https://example.invalid/up.jar")
+    );
 }
 
 #[test]
@@ -441,6 +530,92 @@ fn errors_when_reading_past_size_cap() {
 #[test]
 fn default_max_bytes_is_512_mib() {
     assert_eq!(DEFAULT_MAX_BYTES, 512 * 1024 * 1024);
+}
+
+#[test]
+fn body_exactly_at_cap_downloads_fully() {
+    // body 恰好等于上限是合法响应：read_to_end（真实 reader 循环，
+    // 与 engine 一样 read 到 0）必须成功且内容完整。
+    let body = b"01234567";
+    let (kernel, _log) = fn_kernel(move |_| Ok(ok_response(body)));
+    let transport = KernelHttpTransport::new(kernel).with_max_bytes(8);
+    let mut response = transport
+        .get(&request(LIB_URL))
+        .expect("response at exactly the cap opens");
+    assert_eq!(
+        read_all(&mut response).expect("body exactly at cap reads to EOF"),
+        b"01234567"
+    );
+}
+
+#[test]
+fn body_one_byte_over_cap_errors_during_read_to_end() {
+    // body 超上限 1 字节：真实 reader 循环必须报错，而不是静默截断。
+    let body = b"012345678";
+    let (kernel, _log) = fn_kernel(move |_| Ok(ok_response(body)));
+    let transport = KernelHttpTransport::new(kernel).with_max_bytes(8);
+    let mut response = transport.get(&request(LIB_URL)).expect("response opens");
+    let error = read_all(&mut response).expect_err("one byte over the cap must fail");
+    assert!(error.to_string().contains("exceeds size cap"), "{error}");
+    // sticky：报错之后继续读仍报错。
+    let mut buffer = [0u8; 4];
+    assert!(
+        response.body.read(&mut buffer).is_err(),
+        "reader stays in overflow state"
+    );
+}
+
+#[test]
+fn empty_read_does_not_consume_budget() {
+    let (kernel, _log) = fn_kernel(|_| Ok(ok_response(b"01234567")));
+    let transport = KernelHttpTransport::new(kernel).with_max_bytes(8);
+    let mut response = transport.get(&request(LIB_URL)).expect("response opens");
+    // 空 buffer 的 read 是合法调用，不得消耗预算。
+    assert_eq!(response.body.read(&mut []).expect("empty read succeeds"), 0);
+    assert_eq!(
+        read_all(&mut response).expect("full budget remains after empty read"),
+        b"01234567"
+    );
+}
+
+#[test]
+fn downgrade_error_redacts_location_credentials() {
+    // 降级目标的 userinfo 与 query 可能携带凭据，Display 与 Debug 都不得泄漏。
+    let (kernel, _log) = fn_kernel(|_| {
+        Ok(redirect_response(
+            302,
+            "http://user:pass@mirror.example.invalid/asset?token=SECRET",
+        ))
+    });
+    let transport = KernelHttpTransport::new(kernel);
+    let error = expect_error(
+        transport.get(&request(LIB_URL)),
+        "https to http downgrade must fail",
+    );
+    for output in [error.to_string(), format!("{error:?}")] {
+        assert!(!output.contains("SECRET"), "output was {output}");
+        assert!(!output.contains("user:pass"), "output was {output}");
+        assert!(!output.contains("token="), "output was {output}");
+        assert!(output.contains("downgrade"), "output was {output}");
+    }
+}
+
+#[test]
+fn malformed_content_range_error_redacts_header_value() {
+    // 畸形头的原始值（不可信输入）不得内插进错误输出。
+    let (kernel, _log) = fn_kernel(|_| Ok(partial_response("bytes SECRET-9/100", b"")));
+    let transport = KernelHttpTransport::new(kernel);
+    let error = expect_error(
+        transport.get(&range_request(LIB_URL)),
+        "malformed Content-Range must fail",
+    );
+    for output in [error.to_string(), format!("{error:?}")] {
+        assert!(!output.contains("SECRET"), "output was {output}");
+        assert!(
+            output.contains("malformed Content-Range"),
+            "output was {output}"
+        );
+    }
 }
 
 #[test]

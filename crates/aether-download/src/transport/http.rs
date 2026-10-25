@@ -132,13 +132,12 @@ impl<K: HttpKernel> KernelHttpTransport<K> {
                     }
                 })?;
                 // 共享 enum 没有「格式错误」变体：按约定不改 enum，
-                // 用 ReadInterrupted 携带明确消息。
+                // 用 ReadInterrupted 携带明确消息；消息不内插头的原始值，
+                // 避免不可信的头内容进入错误输出（Display/Debug/日志）。
                 let content_range =
                     parse_content_range(header).ok_or_else(|| TransportError::ReadInterrupted {
                         url: url.to_owned(),
-                        source: io::Error::other(format!(
-                            "malformed Content-Range header: {header:?}"
-                        )),
+                        source: io::Error::other("malformed Content-Range header"),
                     })?;
                 Ok(TransportResponse {
                     status: 206,
@@ -181,17 +180,28 @@ impl<K: HttpKernel> HttpTransport for KernelHttpTransport<K> {
                         source: io::Error::other("redirect response without Location header"),
                     })?
                     .to_owned();
-                validate_url(&location)?;
-                if is_https(&url) && !is_https(&location) {
-                    // https → http 降级一律拒绝。
+                // Location 可能是相对引用（多数客户端接受），先按 RFC 3986
+                // 相对当前 URL 解析成绝对 URL，再做 scheme/host/降级校验。
+                let resolved = resolve_location(&url, &location).ok_or_else(|| {
+                    TransportError::Connect {
+                        url: url.clone(),
+                        // 不内插原始 location：重定向头是不可信输入，
+                        // 可能携带 userinfo 与查询串里的凭据。
+                        source: io::Error::other("invalid redirect Location"),
+                    }
+                })?;
+                validate_url(&resolved)?;
+                if is_https(&url) && !is_https(&resolved) {
+                    // https → http 降级一律拒绝；错误消息用固定描述，
+                    // 不内插目标 URL（其 userinfo/query 可能含凭据）。
                     return Err(TransportError::Connect {
                         url: url.clone(),
-                        source: io::Error::other(format!(
-                            "refusing downgrade redirect to {location}"
-                        )),
+                        source: io::Error::other(
+                            "redirect target rejected: scheme downgrade not allowed",
+                        ),
                     });
                 }
-                url = location;
+                url = resolved;
                 continue;
             }
 
@@ -245,6 +255,82 @@ fn is_https(url: &str) -> bool {
     url.starts_with("https://")
 }
 
+/// 把 `Location` 头解析成绝对 URL（最小 RFC 3986 相对解析，不引入 url crate）。
+///
+/// 只支持三种形态：
+/// 1. 绝对 URL（含 `://`）→ 原样返回，交给 [`validate_url`] 校验 scheme/host；
+/// 2. scheme-relative（`//host/path`）→ 继承当前 scheme；
+/// 3. path（`/abs` 或 `rel`）→ 相对当前 URL 的 scheme+host 解析：
+///    `/abs` 直接替换 path，`rel` 与当前 path 的目录合并，`.`/`..` 段按
+///    RFC 3986 归一化，`..` 越出根时钳在根。
+///
+/// query-only（`?x=1`）、fragment-only（`#x`）等边角形态不支持，返回 `None`
+/// （按非法 Location 拒绝）；`Location` 自带的 query 会随 path 保留。
+fn resolve_location(base: &str, location: &str) -> Option<String> {
+    let (base_scheme, base_rest) = base.split_once("://")?;
+    if !matches!(base_scheme, "http" | "https") {
+        return None;
+    }
+    let base_authority = base_rest.split(['/', '?', '#']).next().unwrap_or_default();
+    if base_authority.is_empty() {
+        return None;
+    }
+    if location.starts_with(['?', '#']) {
+        // query-only / fragment-only 边角形态不支持，按非法 Location 拒绝。
+        return None;
+    }
+    if let Some(rest) = location.strip_prefix("//") {
+        // scheme-relative：`//host/path`，继承当前 scheme。
+        let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+        if authority.is_empty() {
+            return None;
+        }
+        return Some(format!("{base_scheme}://{rest}"));
+    }
+    if location.contains("://") {
+        // 绝对 URL：原样返回，scheme/host 合法性由 validate_url 裁决。
+        return Some(location.to_owned());
+    }
+    // path 形态：`/abs` 或 `rel`。先剥出 Location 自带的 query/fragment 后缀。
+    let (location_path, suffix) = split_path_suffix(location);
+    let mut path = if location_path.starts_with('/') {
+        location_path.to_owned()
+    } else {
+        let base_path = base_rest.strip_prefix(base_authority).unwrap_or("");
+        let base_path = split_path_suffix(base_path).0;
+        let dir = match base_path.rfind('/') {
+            Some(index) => &base_path[..=index],
+            None => "/",
+        };
+        format!("{dir}{location_path}")
+    };
+    path = normalize_path(&path);
+    Some(format!("{base_scheme}://{base_authority}{path}{suffix}"))
+}
+
+/// 剥出 `?query` / `#fragment` 后缀，返回 `(path, suffix)`。
+fn split_path_suffix(value: &str) -> (&str, &str) {
+    match value.find(['?', '#']) {
+        Some(index) => (&value[..index], &value[index..]),
+        None => (value, ""),
+    }
+}
+
+/// 归一化路径里的 `.`/`..` 段；`..` 越出根时钳在根（丢弃多余 `..`）。
+fn normalize_path(path: &str) -> String {
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in path.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                let _ = segments.pop();
+            }
+            _ => segments.push(segment),
+        }
+    }
+    format!("/{}", segments.join("/"))
+}
+
 /// 解析 `Content-Range: bytes start-end/total`，`total` 为 `*` 时是 `None`。
 fn parse_content_range(value: &str) -> Option<ContentRange> {
     let rest = value.strip_prefix("bytes")?.trim_start();
@@ -267,9 +353,16 @@ fn parse_content_range(value: &str) -> Option<ContentRange> {
 ///
 /// 共享错误枚举没有「超出大小上限」变体，且响应体在返回后只能以 io::Error
 /// 报错（body 是 `dyn Read`），因此这里用 io 错误、消息中写明 `exceeds size cap`。
+///
+/// 上限语义：预算归零不代表超限——调用方（engine）会一直 read 到收到 0
+/// （真 EOF），所以恰好在 `max_bytes` 处结束的合法响应必须以 `Ok(0)` 收尾。
+/// 归零后再向底层探测 1 个字节：底层返回 0 字节说明是真 EOF；还有字节则进入
+/// sticky 溢出态并返回错误，之后的读取持续报错。探测消耗的那 1 个字节随
+/// 溢出错误一起丢弃——调用方拿到的是错误而非截断流，不存在静默丢数据。
 struct LimitedReader {
     inner: Box<dyn Read + Send>,
     remaining: u64,
+    overflowed: bool,
 }
 
 impl LimitedReader {
@@ -277,13 +370,29 @@ impl LimitedReader {
         Self {
             inner,
             remaining: max_bytes,
+            overflowed: false,
         }
     }
 }
 
 impl Read for LimitedReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.overflowed {
+            return Err(io::Error::other("response body exceeds size cap"));
+        }
+        // 空 buffer 的 read 是合法调用，不得消耗预算、不得触发探测。
+        if buf.is_empty() {
+            return Ok(0);
+        }
         if self.remaining == 0 {
+            // 预算归零：再探测 1 个字节区分「恰好等于上限」与「超限」。
+            let mut probe = [0u8; 1];
+            let read = self.inner.read(&mut probe)?;
+            if read == 0 {
+                // 真 EOF：恰好用满预算的合法响应。
+                return Ok(0);
+            }
+            self.overflowed = true;
             return Err(io::Error::other("response body exceeds size cap"));
         }
         let limit = buf.len().min(self.remaining as usize);
