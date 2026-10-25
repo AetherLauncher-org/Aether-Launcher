@@ -261,7 +261,7 @@ export function CreateInstanceDialog({
                   {caching ? "校验并缓存中…" : "缓存此版本的官方 JSON"}
                 </Button>
               ) : null}
-              {cacheResult ? <Text size={200} role="status">{cacheResult}</Text> : null>
+              {cacheResult ? <Text size={200} role="status">{cacheResult}</Text> : null}
 
               {catalogLoading ? (
                 <Text size={200}>正在读取 Mojang 官方版本目录…</Text>
