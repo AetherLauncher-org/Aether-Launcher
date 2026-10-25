@@ -89,8 +89,9 @@ impl std::fmt::Display for Redacted<'_> {
 
 /// 传输层的错误。
 ///
-/// 错误消息只含 URL 与状态信息，不含凭据或本地路径。
-#[derive(Debug, Error)]
+/// 错误消息只含 URL 与状态信息，不含凭据或本地路径；`Debug` 输出同样脱敏
+/// （见下方手写实现），避免 URL 连同查询串/凭据进入日志。
+#[derive(Error)]
 pub enum TransportError {
     /// 建立连接失败。
     #[error("failed to connect to {url}: {source}", url = Redacted(url))]
@@ -140,3 +141,42 @@ pub trait HttpTransport: Send + Sync {
 #[cfg(test)]
 #[path = "transport_tests.rs"]
 mod tests;
+
+// 以下为本阶段（零新依赖 HTTP 传输）追加的内容，未改动上方任何现有行。
+// items_after_test_module 豁免：仅追加约定要求新模块挂在文件末尾。
+#[allow(clippy::items_after_test_module)]
+pub mod http;
+
+pub use http::{
+    DEFAULT_MAX_BYTES, HttpKernel, KernelError, KernelHttpTransport, KernelRequest, KernelResponse,
+};
+
+// 手写 Debug：所有 URL 字段先经 redact 再输出，保证查询串与凭据不进
+// Debug/日志（derive(Debug) 会原样打印 url 字段，不满足脱敏要求）。
+#[allow(clippy::items_after_test_module)]
+impl std::fmt::Debug for TransportError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Connect { url, source } => formatter
+                .debug_struct("Connect")
+                .field("url", &redact(url))
+                .field("source", source)
+                .finish(),
+            Self::Timeout { url, timeout_secs } => formatter
+                .debug_struct("Timeout")
+                .field("url", &redact(url))
+                .field("timeout_secs", timeout_secs)
+                .finish(),
+            Self::HttpStatus { url, status } => formatter
+                .debug_struct("HttpStatus")
+                .field("url", &redact(url))
+                .field("status", status)
+                .finish(),
+            Self::ReadInterrupted { url, source } => formatter
+                .debug_struct("ReadInterrupted")
+                .field("url", &redact(url))
+                .field("source", source)
+                .finish(),
+        }
+    }
+}
