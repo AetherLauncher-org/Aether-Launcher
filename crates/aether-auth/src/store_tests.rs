@@ -10,7 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::{
-    CredentialStore, FileCredentialStore, RefreshTokenPersistence, StoreError, StoredCredential,
+    CredentialStore, FileCredentialStore, StoreError, StoredCredential,
 };
 use crate::token::RefreshToken;
 use crate::{AccountId, AccountKind};
@@ -67,27 +67,9 @@ fn denied_document(root: &TempRoot) -> (AccountId, String) {
 }
 
 #[test]
-fn a_new_store_denies_refresh_token_persistence() {
+fn a_new_store_has_a_metadata_root() {
     let root = TempRoot::new();
-    let store = root.store();
-
-    assert_eq!(store.persistence(), RefreshTokenPersistence::Deny);
-    assert_eq!(
-        RefreshTokenPersistence::default(),
-        RefreshTokenPersistence::Deny
-    );
-    assert_eq!(store.root(), root.path());
-}
-
-#[test]
-fn opting_in_keeps_the_chosen_policy() {
-    let root = TempRoot::new();
-    let store = root
-        .store()
-        .with_refresh_persistence(RefreshTokenPersistence::Allow);
-
-    assert_eq!(store.persistence(), RefreshTokenPersistence::Allow);
-    assert_eq!(store.root(), root.path());
+    assert_eq!(root.store().root(), root.path());
 }
 
 #[test]
@@ -108,26 +90,6 @@ fn a_denied_save_writes_no_clear_text_token() {
 }
 
 #[test]
-fn an_allowed_save_refuses_unprotected_refresh_tokens() {
-    let root = TempRoot::new();
-    let store = root
-        .store()
-        .with_refresh_persistence(RefreshTokenPersistence::Allow);
-    let account = microsoft_account("Alex").with_refresh(RefreshToken::new(SECRET));
-
-    assert!(matches!(
-        store.save(&account),
-        Err(StoreError::InsecurePersistence)
-    ));
-    assert!(
-        !root
-            .path()
-            .join(format!("{}.json", account.account_id.as_uuid()))
-            .exists()
-    );
-}
-
-#[test]
 fn existing_plaintext_refresh_token_documents_are_refused() {
     let root = TempRoot::new();
     let account = microsoft_account("Steve");
@@ -144,16 +106,10 @@ fn existing_plaintext_refresh_token_documents_are_refused() {
     )
     .unwrap();
 
-    for policy in [
-        RefreshTokenPersistence::Deny,
-        RefreshTokenPersistence::Allow,
-    ] {
-        let store = root.store().with_refresh_persistence(policy);
-        assert!(matches!(
-            store.load(account.account_id),
-            Err(StoreError::UntrustedContent)
-        ));
-    }
+    assert!(matches!(
+        root.store().load(account.account_id),
+        Err(StoreError::UntrustedContent)
+    ));
 }
 
 #[test]
