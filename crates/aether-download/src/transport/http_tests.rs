@@ -404,11 +404,8 @@ fn allows_http_to_https_upgrade() {
 fn rejects_invalid_redirect_targets() {
     // `example.invalid/lib.jar`（无 scheme 的相对引用）不再列入：
     // 修复 3 之后相对 path 形态按 RFC 3986 解析，属合法重定向目标。
-    for target in [
-        "https:///lib.jar",
-        "ftp://example.invalid/lib.jar",
-        "?query=1",
-    ] {
+    // `?query=1` 也不再列入：query-only 形态现在是合法重定向目标。
+    for target in ["https:///lib.jar", "ftp://example.invalid/lib.jar"] {
         let (kernel, _log) = fn_kernel(move |_| Ok(redirect_response(302, target)));
         let transport = KernelHttpTransport::new(kernel);
         let error = expect_error(
@@ -488,8 +485,109 @@ fn resolves_relative_path_with_dot_segments() {
 }
 
 #[test]
+fn resolves_query_only_location() {
+    // `?page=2`：RFC 3986 相对引用（空 path + 有 query）：保留当前 path，
+    // query 换成新值；解析结果仍是绝对 https URL，过 scheme/host 校验。
+    let base = "https://example.invalid/files/lib.jar?from=1#frag";
+    let (kernel, log) = fn_kernel(move |request| {
+        if request.url == base {
+            Ok(redirect_response(302, "?page=2"))
+        } else {
+            Ok(ok_response(b"paged"))
+        }
+    });
+    let transport = KernelHttpTransport::new(kernel);
+    let mut response = transport
+        .get(&request(base))
+        .expect("query-only location resolves");
+    assert_eq!(read_all(&mut response).expect("body is readable"), b"paged");
+    assert_eq!(
+        log.urls().last().map(String::as_str),
+        Some("https://example.invalid/files/lib.jar?page=2")
+    );
+}
+
+#[test]
+fn resolves_fragment_only_location_to_current_url() {
+    // `#sec`：fragment 不参与服务器请求，解析为当前 URL 本身（剥 fragment，
+    // 保留 query）。这会对同一 URL 重复请求，由 3 跳上限兜底。基准 URL 带
+    // fragment 以便观察「fragment 剥掉、query 保留」的解析结果。
+    let base = "https://example.invalid/files/lib.jar?page=1#frag";
+    let (kernel, log) = fn_kernel(move |request| {
+        if request.url == base {
+            Ok(redirect_response(302, "#sec"))
+        } else {
+            Ok(ok_response(b"same"))
+        }
+    });
+    let transport = KernelHttpTransport::new(kernel);
+    let mut response = transport
+        .get(&request(base))
+        .expect("fragment-only location resolves");
+    assert_eq!(read_all(&mut response).expect("body is readable"), b"same");
+    assert_eq!(
+        log.urls().last().map(String::as_str),
+        Some("https://example.invalid/files/lib.jar?page=1")
+    );
+}
+
+#[test]
+fn empty_query_or_fragment_only_location_keeps_current_url() {
+    // `?` / `#` 后为空：视同无值。空 query（`?`）→ 当前 URL 剥 query 与
+    // fragment；空 fragment（`#`）→ 当前 URL 剥 fragment、保留 query
+    // （fragment-only 语义）。
+    for (location, expected) in [
+        ("?", "https://example.invalid/files/lib.jar"),
+        ("#", "https://example.invalid/files/lib.jar?page=1"),
+    ] {
+        let base = "https://example.invalid/files/lib.jar?page=1#frag";
+        let (kernel, log) = fn_kernel(move |request| {
+            if request.url == base {
+                Ok(redirect_response(302, location))
+            } else {
+                Ok(ok_response(b"same"))
+            }
+        });
+        let transport = KernelHttpTransport::new(kernel);
+        let mut response = transport
+            .get(&request(base))
+            .expect("empty query/fragment location resolves");
+        assert_eq!(
+            read_all(&mut response).expect("body is readable"),
+            b"same",
+            "{location:?}"
+        );
+        assert_eq!(
+            log.urls().last().map(String::as_str),
+            Some(expected),
+            "{location:?}"
+        );
+    }
+}
+
+#[test]
+fn normalize_path_only_removes_dot_segments_per_rfc_3986() {
+    // RFC 3986 §5.2.4：只消除 `.`/`..` 段，重复斜杠与尾斜杠原样保留
+    // （对很多服务器 `a//b`、`a/b/` 与 `a/b` 是不同资源）。
+    assert_eq!(normalize_path("a//b"), "a//b");
+    assert_eq!(normalize_path("a/b/"), "a/b/");
+    assert_eq!(normalize_path("a/."), "a/");
+    assert_eq!(normalize_path("a/b/.."), "a/");
+    assert_eq!(normalize_path("g/../h"), "h");
+    // `..` 越出根时钳在根（丢弃多余 `..`，不引入新段）。
+    assert_eq!(normalize_path("../../x"), "x");
+    // 绝对路径形态（resolve_location 实际输入）：钳根后仍以 `/` 开头，
+    // 尾斜杠语义保留（RFC 3986：`/a/../` → `/`）。
+    assert_eq!(normalize_path("/a/../"), "/");
+    assert_eq!(normalize_path("/a/.."), "/");
+    assert_eq!(normalize_path("/a//b"), "/a//b");
+}
+
+#[test]
 fn clamps_dot_segments_at_root() {
-    // `..` 越出根时钳在根，不报错也不出现负向路径。
+    // `..` 越出根时钳在根，不报错也不出现负向路径。RFC 3986 §5.2.4 语义
+    // 下绝对路径钳根后保留前导 `/`（尾斜杠仅在输入带尾斜杠时保留，
+    // 见 normalize_path_only_removes_dot_segments_per_rfc_3986）。
     let base = "https://example.invalid/a/b/file.jar";
     let (kernel, log) = fn_kernel(move |request| {
         if request.url == base {
@@ -506,6 +604,27 @@ fn clamps_dot_segments_at_root() {
     assert_eq!(
         log.urls().last().map(String::as_str),
         Some("https://example.invalid/up.jar")
+    );
+}
+
+#[test]
+fn preserves_double_slashes_in_redirect_path() {
+    // 重复斜杠不折叠：`//files//new.jar` 的空段原样到达内核。
+    let (kernel, log) = fn_kernel(|request| {
+        if request.url == LIB_URL {
+            Ok(redirect_response(302, "/files//new.jar"))
+        } else {
+            Ok(ok_response(b"dup"))
+        }
+    });
+    let transport = KernelHttpTransport::new(kernel);
+    let mut response = transport
+        .get(&request(LIB_URL))
+        .expect("double-slash location resolves");
+    assert_eq!(read_all(&mut response).expect("body is readable"), b"dup");
+    assert_eq!(
+        log.urls().last().map(String::as_str),
+        Some("https://example.invalid/files//new.jar")
     );
 }
 
