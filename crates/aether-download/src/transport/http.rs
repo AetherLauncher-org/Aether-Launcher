@@ -257,15 +257,17 @@ fn is_https(url: &str) -> bool {
 
 /// 把 `Location` 头解析成绝对 URL（最小 RFC 3986 相对解析，不引入 url crate）。
 ///
-/// 只支持三种形态：
+/// 只支持四种形态：
 /// 1. 绝对 URL（含 `://`）→ 原样返回，交给 [`validate_url`] 校验 scheme/host；
 /// 2. scheme-relative（`//host/path`）→ 继承当前 scheme；
 /// 3. path（`/abs` 或 `rel`）→ 相对当前 URL 的 scheme+host 解析：
 ///    `/abs` 直接替换 path，`rel` 与当前 path 的目录合并，`.`/`..` 段按
-///    RFC 3986 归一化，`..` 越出根时钳在根。
+///    RFC 3986 归一化，`..` 越出根时钳在根；
+/// 4. query-only（`?x=1`）→ 保留当前 path，query 换成新值（RFC 3986：
+///    空 path + 有 query 的相对引用）；fragment-only（`#x`）→ 当前 URL
+///    本身剥 fragment（fragment 不参与服务器请求）。
 ///
-/// query-only（`?x=1`）、fragment-only（`#x`）等边角形态不支持，返回 `None`
-/// （按非法 Location 拒绝）；`Location` 自带的 query 会随 path 保留。
+/// `Location` 自带的 query 会随 path 保留。
 fn resolve_location(base: &str, location: &str) -> Option<String> {
     let (base_scheme, base_rest) = base.split_once("://")?;
     if !matches!(base_scheme, "http" | "https") {
@@ -275,9 +277,25 @@ fn resolve_location(base: &str, location: &str) -> Option<String> {
     if base_authority.is_empty() {
         return None;
     }
-    if location.starts_with(['?', '#']) {
-        // query-only / fragment-only 边角形态不支持，按非法 Location 拒绝。
-        return None;
+    if let Some(query) = location.strip_prefix('?') {
+        // query-only（`?page=2`）：RFC 3986 相对引用（空 path + 有 query），
+        // 保留当前 scheme+host+path，query 换成新值；`?` 后为空视同无 query。
+        let base_suffix = base_rest.strip_prefix(base_authority).unwrap_or("");
+        let base_path = split_path_suffix(base_suffix).0;
+        let suffix = if query.is_empty() { "" } else { location };
+        return Some(format!(
+            "{base_scheme}://{base_authority}{base_path}{suffix}"
+        ));
+    }
+    if location.starts_with('#') {
+        // fragment-only（`#sec`）：fragment 不参与服务器请求，解析为当前 URL
+        // 本身（剥 fragment，保留 query）。这会对同一 URL 产生重复请求，
+        // 由 MAX_REDIRECTS 上限兜底；服务器极少发送此形态。
+        let base_suffix = base_rest.strip_prefix(base_authority).unwrap_or("");
+        let without_fragment = base_suffix.split('#').next().unwrap_or("");
+        return Some(format!(
+            "{base_scheme}://{base_authority}{without_fragment}"
+        ));
     }
     if let Some(rest) = location.strip_prefix("//") {
         // scheme-relative：`//host/path`，继承当前 scheme。
@@ -316,19 +334,36 @@ fn split_path_suffix(value: &str) -> (&str, &str) {
     }
 }
 
-/// 归一化路径里的 `.`/`..` 段；`..` 越出根时钳在根（丢弃多余 `..`）。
+/// 按 RFC 3986 §5.2.4（remove_dot_segments）消除路径里的 `.`/`..` 段。
+///
+/// 只动 dot 段：重复斜杠与尾斜杠原样保留（对很多服务器 `a//b`、`a/b/` 与
+/// `a/b` 是不同资源，不能折叠）。`..` 越出根时钳在根（丢弃多余 `..`，但不
+/// 丢绝对路径的前导 `/`）；输入以 `.`/`..` 结尾时保留尾斜杠语义（`/a/.` →
+/// `/a/`，`/a/..` → `/`）。
 fn normalize_path(path: &str) -> String {
+    let absolute = path.starts_with('/');
+    // 输入以 `.`/`..` 结尾：dot 段消除后该位退化为空段，结果带尾斜杠。
+    let dot_terminated = matches!(path.rsplit('/').next(), Some("." | ".."));
     let mut segments: Vec<&str> = Vec::new();
-    for segment in path.split('/') {
+    for segment in path.split('/').skip(usize::from(absolute)) {
         match segment {
-            "" | "." => {}
+            "." => {}
+            // 越根时 pop 到空为止即钳在根。
             ".." => {
-                let _ = segments.pop();
+                segments.pop();
             }
+            // 空段（重复斜杠/尾斜杠）与普通段一样原样保留。
             _ => segments.push(segment),
         }
     }
-    format!("/{}", segments.join("/"))
+    let mut result = segments.join("/");
+    if absolute {
+        result.insert(0, '/');
+    }
+    if dot_terminated && !result.is_empty() && !result.ends_with('/') {
+        result.push('/');
+    }
+    result
 }
 
 /// 解析 `Content-Range: bytes start-end/total`，`total` 为 `*` 时是 `None`。
