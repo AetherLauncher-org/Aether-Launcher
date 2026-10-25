@@ -92,7 +92,9 @@ mod tests {
         let transport = fake(valid.into_bytes());
         let catalog = fetch_catalog(&transport).unwrap();
         assert_eq!(catalog.latest.release, "1.21.1");
-        assert_eq!(transport.urls.lock().unwrap().as_slice(), [VERSION_CATALOG_URL]);
+        let urls = transport.urls.lock().unwrap();
+        assert_eq!(urls.len(), 1);
+        assert_eq!(urls[0], VERSION_CATALOG_URL);
     }
 
     #[test]
