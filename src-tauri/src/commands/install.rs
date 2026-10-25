@@ -2,14 +2,17 @@
 //!
 //! The frontend supplies only a version ID. URLs, hashes and destinations all
 //! come from the version JSON that `cache_vanilla_version_manifest` verified
-//! against the official catalog. Assets are a separate stage.
+//! against the official catalog. Assets are fetched last, from the asset index
+//! whose hash that JSON declares.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use aether_download::assets::build_asset_object_plan;
 use aether_download::transport::http::UreqKernel;
 use aether_download::transport::{HttpTransport, KernelHttpTransport};
 use aether_download::{
-    ArtifactResult, CancellationToken, DownloadEngine, NoopProgress, is_safe_relative_path,
+    ArtifactResult, ArtifactSource, CancellationToken, DownloadArtifact, DownloadEngine,
+    DownloadPlan, NoopProgress, is_safe_relative_path,
 };
 use aether_launch::build_install_plan;
 use aether_manifest::load_resolved_version_manifest;
@@ -36,9 +39,38 @@ fn install_version(
         .map_err(|error| format!("cannot plan installation: {error}"))?;
 
     let engine = DownloadEngine::new(transport, game_root);
+    let mut total = run_plan(&engine, &plan)?;
+
+    if let Some(index) = &resolved.manifest.asset_index {
+        let index_url = index.url.clone();
+        if !index_url.starts_with("https://") {
+            return Err("asset index URL is not HTTPS".to_owned());
+        }
+        let index_plan = DownloadPlan {
+            artifacts: vec![DownloadArtifact {
+                destination: PathBuf::from("assets")
+                    .join("indexes")
+                    .join(format!("{}.json", index.id)),
+                size: index.size,
+                sha1: index.sha1.to_ascii_lowercase(),
+                sources: vec![ArtifactSource {
+                    provider: "mojang".to_owned(),
+                    url: index_url,
+                }],
+            }],
+        };
+        total += run_plan(&engine, &index_plan)?;
+        let objects = build_asset_object_plan(game_root, &index.id, &index.sha1, index.size)
+            .map_err(|error| format!("cannot plan asset download: {error}"))?;
+        total += run_plan(&engine, &objects)?;
+    }
+    Ok(total)
+}
+
+fn run_plan(engine: &DownloadEngine<'_>, plan: &DownloadPlan) -> Result<usize, String> {
     let results = engine
         .download_plan(
-            &plan,
+            plan,
             DOWNLOAD_CONCURRENCY,
             &CancellationToken::new(),
             &NoopProgress,
@@ -59,9 +91,9 @@ fn summarize(results: &[ArtifactResult]) -> Result<usize, String> {
     Ok(results.len())
 }
 
-/// Downloads and SHA-1-verifies the client JAR, libraries and native archives
-/// of an already cached Vanilla version. Returns the number of verified files.
-/// It does not extract natives, fetch assets, or mark any instance ready.
+/// Downloads and SHA-1-verifies the client JAR, libraries, native archives
+/// and assets of an already cached Vanilla version. Returns the number of
+/// verified files. Natives are extracted at launch; no instance is marked ready.
 #[tauri::command]
 pub async fn install_vanilla_client_libraries(
     app: tauri::AppHandle,

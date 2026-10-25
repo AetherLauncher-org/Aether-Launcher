@@ -8,8 +8,9 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::verify::{ArtifactVerificationError, verify_local_artifact};
-use crate::{ArtifactSource, DownloadArtifact, is_safe_relative_path};
+use crate::{ArtifactSource, DownloadArtifact, DownloadPlan, is_safe_relative_path};
 
+const OBJECT_BASE_URL: &str = "https://resources.download.minecraft.net/";
 const MAX_INDEX_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_OBJECTS: usize = 250_000;
 const MAX_OBJECT_BYTES: u64 = 1024 * 1024 * 1024;
@@ -59,15 +60,15 @@ struct AssetObject {
     size: u64,
 }
 
-/// Validate an asset index and all content-addressed objects with local SHA-1.
-/// Object destinations come exclusively from validated digests, never from
-/// untrusted logical filenames inside the index.
-pub fn verify_installed_assets(
+/// Read a locally verified asset index and return its distinct objects
+/// (lowercase SHA-1 → size). Object destinations come exclusively from
+/// validated digests, never from untrusted logical filenames in the index.
+fn load_index_objects(
     game_directory: &Path,
     index_id: &str,
     index_sha1: &str,
     index_size: u64,
-) -> Result<VerifiedAssets, AssetError> {
+) -> Result<(PathBuf, HashMap<String, u64>), AssetError> {
     if !is_safe_relative_path(Path::new(index_id)) || index_id.contains(['/', '\\']) {
         return Err(AssetError::UnsafeIndexId);
     }
@@ -85,7 +86,7 @@ pub fn verify_installed_assets(
         sha1: index_sha1.to_owned(),
         sources: vec![ArtifactSource {
             provider: "mojang".to_owned(),
-            url: "https://resources.download.minecraft.net/".to_owned(),
+            url: OBJECT_BASE_URL.to_owned(),
         }],
     };
     let index_file = verify_local_artifact(game_directory, &index_artifact)?;
@@ -122,19 +123,59 @@ pub fn verify_installed_assets(
             return Err(AssetError::ConflictingObjectSizes);
         }
     }
+    Ok((index_file, distinct))
+}
 
+fn object_destination(hash: &str) -> PathBuf {
+    PathBuf::from("assets")
+        .join("objects")
+        .join(&hash[..2])
+        .join(hash)
+}
+
+/// Plan the download of every object of an already installed, SHA-1-verified
+/// asset index. The URL is derived from the digest on the official asset host.
+pub fn build_asset_object_plan(
+    game_directory: &Path,
+    index_id: &str,
+    index_sha1: &str,
+    index_size: u64,
+) -> Result<DownloadPlan, AssetError> {
+    let (_, distinct) = load_index_objects(game_directory, index_id, index_sha1, index_size)?;
+    let mut artifacts: Vec<_> = distinct
+        .into_iter()
+        .map(|(hash, size)| DownloadArtifact {
+            destination: object_destination(&hash),
+            size,
+            sources: vec![ArtifactSource {
+                provider: "mojang".to_owned(),
+                url: format!("{OBJECT_BASE_URL}{}/{hash}", &hash[..2]),
+            }],
+            sha1: hash,
+        })
+        .collect();
+    artifacts.sort_by(|a, b| a.destination.cmp(&b.destination));
+    Ok(DownloadPlan { artifacts })
+}
+
+/// Validate an asset index and all content-addressed objects with local SHA-1.
+pub fn verify_installed_assets(
+    game_directory: &Path,
+    index_id: &str,
+    index_sha1: &str,
+    index_size: u64,
+) -> Result<VerifiedAssets, AssetError> {
+    let (index_file, distinct) =
+        load_index_objects(game_directory, index_id, index_sha1, index_size)?;
     let mut bytes_verified = 0_u64;
     for (hash, size) in &distinct {
         let object_artifact = DownloadArtifact {
-            destination: PathBuf::from("assets")
-                .join("objects")
-                .join(&hash[..2])
-                .join(hash),
+            destination: object_destination(hash),
             size: *size,
             sha1: hash.clone(),
             sources: vec![ArtifactSource {
                 provider: "mojang".to_owned(),
-                url: "https://resources.download.minecraft.net/".to_owned(),
+                url: OBJECT_BASE_URL.to_owned(),
             }],
         };
         verify_local_artifact(game_directory, &object_artifact)?;

@@ -46,9 +46,9 @@ export function cacheVanillaVersionManifest(version: string): Promise<string> {
 }
 
 /**
- * Download and SHA-1-verify the client JAR, libraries and native archives of an
- * already cached version. Resolves to the number of verified files; assets and
- * native extraction are separate stages.
+ * Download and SHA-1-verify the client JAR, libraries, native archives and
+ * assets of an already cached version. Resolves to the number of verified
+ * files. Natives are extracted at launch.
  */
 export function installVanillaClientLibraries(version: string): Promise<number> {
   if (!isTauri()) {

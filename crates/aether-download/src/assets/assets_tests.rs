@@ -184,3 +184,36 @@ fn rejects_object_symlink_outside_game_directory() {
     ));
     fs::remove_file(outside).unwrap();
 }
+
+#[test]
+fn plans_each_distinct_object_once_with_digest_derived_url() {
+    let fixture = Fixture::new();
+    let hash = fixture.put_object(b"abc");
+    let (digest, size) = fixture.put_index(json!({"objects": {
+        "a.json": {"hash":hash,"size":3},
+        "b.json": {"hash":hash,"size":3}
+    }}));
+    let plan = super::build_asset_object_plan(&fixture.root, "17", &digest, size).unwrap();
+    assert_eq!(plan.artifacts.len(), 1);
+    let artifact = &plan.artifacts[0];
+    assert_eq!(
+        artifact.sources[0].url,
+        format!(
+            "https://resources.download.minecraft.net/{}/{hash}",
+            &hash[..2]
+        )
+    );
+    assert_eq!(
+        artifact.destination,
+        PathBuf::from("assets/objects").join(&hash[..2]).join(&hash)
+    );
+    plan.validate().unwrap();
+}
+
+#[test]
+fn refuses_to_plan_from_a_tampered_index() {
+    let fixture = Fixture::new();
+    let (_, size) = fixture.put_index(json!({"objects": {}}));
+    let wrong = "0123456789abcdef0123456789abcdef01234567";
+    assert!(super::build_asset_object_plan(&fixture.root, "17", wrong, size).is_err());
+}

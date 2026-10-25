@@ -38,29 +38,18 @@ fn instance_store_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(base)
 }
 
-/// Resolve the standard official launcher game directory. It is never selected
-/// by IPC; this initial implementation intentionally does not run arbitrary imports.
-fn installed_game_directory() -> Result<PathBuf, String> {
-    #[cfg(target_os = "windows")]
-    let path = std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .map(|base| base.join(".minecraft"));
-    #[cfg(target_os = "linux")]
-    let path = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .map(|base| base.join(".minecraft"));
-    #[cfg(target_os = "macos")]
-    let path = std::env::var_os("HOME").map(PathBuf::from).map(|base| {
-        base.join("Library")
-            .join("Application Support")
-            .join("minecraft")
-    });
-    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
-    let path: Option<PathBuf> = None;
-
-    let path = path.ok_or_else(|| "cannot locate the official Minecraft directory".to_owned())?;
+/// The launcher-owned game tree that the installer fills. It is never selected
+/// by IPC and never points at an existing official `.minecraft`.
+pub(super) fn installed_game_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let path = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "application data directory is unavailable".to_owned())?
+        .join("game");
     if !path.join("versions").is_dir() {
-        return Err("no installed official Minecraft versions were found".to_owned());
+        return Err(
+            "no installed Minecraft versions were found; install a version first".to_owned(),
+        );
     }
     std::fs::canonicalize(path).map_err(|error| format!("cannot open installed Minecraft: {error}"))
 }
@@ -88,7 +77,7 @@ pub async fn activate_installed_instance(app: tauri::AppHandle, id: String) -> R
     tauri::async_runtime::spawn_blocking(move || {
         let id = parse_id(&id)?;
         let store_root = instance_store_root(&app)?;
-        let game_root = installed_game_directory()?;
+        let game_root = installed_game_directory(&app)?;
         let instance = InstanceStore::open(&store_root)
             .map_err(|error| error.to_string())?
             .load(id)
@@ -143,7 +132,7 @@ pub async fn start_installed_instance(
         let id = parse_id(&id)?;
         let uuid = offline_uuid(&offline_name).map_err(|error| error.to_string())?;
         let root = instance_store_root(&app)?;
-        let game = installed_game_directory()?;
+        let game = installed_game_directory(&app)?;
         let mut vars = BTreeMap::new();
         vars.insert("auth_player_name".to_owned(), offline_name);
         vars.insert("auth_uuid".to_owned(), uuid.simple().to_string());

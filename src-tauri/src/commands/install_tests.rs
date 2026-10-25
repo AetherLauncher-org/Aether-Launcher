@@ -124,3 +124,50 @@ fn error_summary_never_contains_download_urls() {
     assert_eq!(error, "2 of 2 files failed to download or verify");
     assert!(!error.contains("https://"));
 }
+
+#[test]
+fn downloads_asset_index_and_objects_after_libraries() {
+    let (client, object) = (b"client-bytes".to_vec(), b"sound-bytes".to_vec());
+    let object_hash = digest(&object);
+    let index = format!(
+        r#"{{"objects":{{"minecraft/sounds/a.ogg":{{"hash":"{object_hash}","size":{}}}}}}}"#,
+        object.len()
+    )
+    .into_bytes();
+    let index_url = "https://piston-meta.mojang.com/v1/packages/x/17.json";
+    let version = format!(
+        r#"{{"id":"1.21.1","mainClass":"Main",
+        "downloads":{{"client":{{"url":"{CLIENT_URL}","size":{},"sha1":"{}"}}}},
+        "assetIndex":{{"id":"17","url":"{index_url}","size":{},"sha1":"{}","totalSize":0}},
+        "libraries":[]}}"#,
+        client.len(),
+        digest(&client),
+        index.len(),
+        digest(&index),
+    );
+    let fixture = Fixture::new();
+    fixture.cache_version(&version);
+    let object_url = format!(
+        "https://resources.download.minecraft.net/{}/{object_hash}",
+        &object_hash[..2]
+    );
+    let transport = FakeTransport(HashMap::from([
+        (CLIENT_URL.to_owned(), client),
+        (index_url.to_owned(), index),
+        (object_url, object.clone()),
+    ]));
+
+    assert_eq!(install_version(&transport, fixture.root(), "1.21.1"), Ok(3));
+    assert_eq!(
+        fs::read(
+            fixture
+                .root()
+                .join("assets/objects")
+                .join(&object_hash[..2])
+                .join(&object_hash)
+        )
+        .unwrap(),
+        object
+    );
+    assert!(fixture.root().join("assets/indexes/17.json").is_file());
+}

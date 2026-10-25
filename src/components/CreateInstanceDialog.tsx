@@ -151,8 +151,10 @@ export function CreateInstanceDialog({
     setInstalling(true);
     setCacheResult(null);
     try {
-      const count = await installVanillaClientLibraries(effectiveVersion.trim());
-      setCacheResult(`已下载并校验 ${count} 个客户端与依赖库文件。资源与本地库解压尚未安装。`);
+      const id = effectiveVersion.trim();
+      await cacheVanillaVersionManifest(id);
+      const count = await installVanillaClientLibraries(id);
+      setCacheResult(`已下载并校验 ${count} 个文件（客户端、依赖库、资源）。现在可以创建实例并启动。`);
     } catch (error: unknown) {
       setCacheResult(`安装失败：${describeCommandError(error)}`);
     } finally {
@@ -271,7 +273,7 @@ export function CreateInstanceDialog({
                 </Select>
               </Field>
 
-              <Text size={200}>创建只保存实例记录；游戏文件仍需单独安装。</Text>
+              <Text size={200}>创建只保存实例记录；请先下载并安装所选版本，再创建并启动。</Text>
               {isTauri() ? (
                 <Button
                   type="button"
@@ -289,7 +291,7 @@ export function CreateInstanceDialog({
                   disabled={caching || installing || submitting || effectiveVersion.trim().length === 0}
                   onClick={() => void handleInstall()}
                 >
-                  {installing ? "下载并校验中…" : "下载客户端与依赖库（需先缓存 JSON）"}
+                  {installing ? "下载并校验中，可能需要几分钟…" : "下载并安装此版本（客户端、依赖库、资源）"}
                 </Button>
               ) : null}
               {cacheResult ? <Text size={200} role="status">{cacheResult}</Text> : null}
