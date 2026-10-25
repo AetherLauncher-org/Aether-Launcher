@@ -18,6 +18,7 @@ The project follows [Semantic Versioning](https://semver.org/) once public relea
 - Sidebar navigation between home, instances, library, accounts, and settings
 - Typed frontend IPC layer (`src/ipc`)
 - Architecture overview in `docs/architecture.md`
+- Vanilla install stage 3: planner and `install_vanilla_client_libraries` command for verified client JAR, libraries and native archives
 - Appearance setting with dark, light, and follow-system colour schemes
 - Version manifest parsing for libraries, arguments, asset index, client download and Java version, with rule evaluation
 - `inheritsFrom` merging: child libraries first, newest version wins among identical coordinates, parent arguments first

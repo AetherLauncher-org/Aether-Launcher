@@ -65,7 +65,7 @@ fn installed_game_directory() -> Result<PathBuf, String> {
     std::fs::canonicalize(path).map_err(|error| format!("cannot open installed Minecraft: {error}"))
 }
 
-fn current_environment() -> Environment {
+pub(super) fn current_environment() -> Environment {
     Environment {
         os_name: if cfg!(target_os = "windows") {
             "windows"

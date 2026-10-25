@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
   cacheVanillaVersionManifest,
+  installVanillaClientLibraries,
   createInstance,
   describeCommandError,
   isTauri,
@@ -63,6 +64,7 @@ export function CreateInstanceDialog({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [caching, setCaching] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [cacheResult, setCacheResult] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<MinecraftVersionCatalog | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -111,6 +113,7 @@ export function CreateInstanceDialog({
     setSubmitError(null);
     setSubmitting(false);
     setCaching(false);
+    setInstalling(false);
     setCacheResult(null);
     setCatalog(null);
     setCatalogError(null);
@@ -136,6 +139,24 @@ export function CreateInstanceDialog({
       setCacheResult(`缓存失败：${describeCommandError(error)}`);
     } finally {
       setCaching(false);
+    }
+  };
+
+  const handleInstall = async () => {
+    const error = validateInstanceVersion(effectiveVersion);
+    if (error !== null) {
+      setVersionError(error);
+      return;
+    }
+    setInstalling(true);
+    setCacheResult(null);
+    try {
+      const count = await installVanillaClientLibraries(effectiveVersion.trim());
+      setCacheResult(`已下载并校验 ${count} 个客户端与依赖库文件。资源与本地库解压尚未安装。`);
+    } catch (error: unknown) {
+      setCacheResult(`安装失败：${describeCommandError(error)}`);
+    } finally {
+      setInstalling(false);
     }
   };
 
@@ -255,10 +276,20 @@ export function CreateInstanceDialog({
                 <Button
                   type="button"
                   appearance="secondary"
-                  disabled={caching || submitting || effectiveVersion.trim().length === 0}
+                  disabled={caching || installing || submitting || effectiveVersion.trim().length === 0}
                   onClick={() => void handleCache()}
                 >
                   {caching ? "校验并缓存中…" : "缓存此版本的官方 JSON"}
+                </Button>
+              ) : null}
+              {isTauri() ? (
+                <Button
+                  type="button"
+                  appearance="secondary"
+                  disabled={caching || installing || submitting || effectiveVersion.trim().length === 0}
+                  onClick={() => void handleInstall()}
+                >
+                  {installing ? "下载并校验中…" : "下载客户端与依赖库（需先缓存 JSON）"}
                 </Button>
               ) : null}
               {cacheResult ? <Text size={200} role="status">{cacheResult}</Text> : null}

@@ -9,6 +9,9 @@ pub use registry::{
 pub mod process;
 pub use process::{GameProcess, LogRecord, LogStream, ProcessError};
 
+pub mod install;
+pub use install::{InstallPlanError, build_install_plan};
+
 pub mod native;
 pub use native::{NativeArchive, NativePlan, NativePlanError, build_native_plan};
 

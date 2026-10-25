@@ -1,6 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cacheVanillaVersionManifest, listMinecraftVersions } from "./catalog";
+import {
+  cacheVanillaVersionManifest,
+  installVanillaClientLibraries,
+  listMinecraftVersions,
+} from "./catalog";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -54,6 +58,25 @@ describe("cacheVanillaVersionManifest", () => {
     vi.mocked(invoke).mockResolvedValue("1.21.1");
     await expect(cacheVanillaVersionManifest("1.21.1")).resolves.toBe("1.21.1");
     expect(invoke).toHaveBeenCalledWith("cache_vanilla_version_manifest", {
+      version: "1.21.1",
+    });
+  });
+});
+
+describe("installVanillaClientLibraries", () => {
+  it("rejects browser-only invocation without calling native code", async () => {
+    await expect(installVanillaClientLibraries("1.21.1")).rejects.toThrow("需要桌面版");
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("only passes the requested version ID, never a URL or path", async () => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      value: {},
+      configurable: true,
+    });
+    vi.mocked(invoke).mockResolvedValue(42);
+    await expect(installVanillaClientLibraries("1.21.1")).resolves.toBe(42);
+    expect(invoke).toHaveBeenCalledWith("install_vanilla_client_libraries", {
       version: "1.21.1",
     });
   });
