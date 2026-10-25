@@ -4,7 +4,6 @@ import { isTauri } from "./index";
 /** Mojang Java Edition version_manifest_v2.json, validated by the Rust backend. */
 export type MinecraftCatalogVersion = {
   id: string;
-  type: never;
   type: string;
   url: string;
   sha1: string;
