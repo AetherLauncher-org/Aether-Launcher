@@ -31,12 +31,6 @@ impl Default for InstanceId {
     }
 }
 
-impl std::fmt::Display for InstanceId {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.0, formatter)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VersionId(String);
 
