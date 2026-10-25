@@ -13,8 +13,8 @@ use std::path::PathBuf;
 
 use keyring::{Entry, Error as KeyringError};
 
-use crate::{AccountId, token::RefreshToken};
 use crate::store::{CredentialStore, FileCredentialStore, StoreError, StoredCredential};
+use crate::{AccountId, token::RefreshToken};
 
 /// Dedicated namespace for Microsoft OAuth refresh credentials, not access tokens.
 const SERVICE_NAME: &str = "org.aetherlauncher.AetherLauncher.microsoft-refresh";
@@ -97,7 +97,10 @@ mod tests {
     #[test]
     fn new_secure_store_has_a_metadata_root() {
         let store = KeyringCredentialStore::new("aether-test-metadata");
-        assert_eq!(store.metadata.root(), std::path::Path::new("aether-test-metadata"));
+        assert_eq!(
+            store.metadata.root(),
+            std::path::Path::new("aether-test-metadata")
+        );
     }
 
     #[test]
