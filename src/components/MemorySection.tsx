@@ -1,34 +1,42 @@
-import { Input, Slider, Text } from "@fluentui/react-components";
+import { Radio, RadioGroup, Text } from "@fluentui/react-components";
 import { useState } from "react";
+import { getSystemMemory } from "../ipc";
 import {
   clampMemoryMiB,
-  formatMemoryMiB,
-  memorySliderStep,
+  formatMiB,
+  isMemoryMode,
+  recommendedMemoryMiB,
 } from "../lib/memory";
-import { loadMemoryMiB, memoryBounds, saveMemoryMiB } from "../lib/settings";
+import type { MemoryMode } from "../lib/memory";
+import { useQuery } from "../lib/query";
+import {
+  loadMemoryMiB,
+  loadMemoryMode,
+  saveMemoryMiB,
+  saveMemoryMode,
+} from "../lib/settings";
+import { MemoryBar } from "./MemoryBar";
 
 /**
- * 「内存」设置区块：滑块 + 数字输入，两者共用一个值。这是内存上限唯一的调整入口——
- * 创建、安装和启动实例时都不再询问，直接用这里的值。
+ * 「内存」设置区块，这是内存上限唯一的调整入口——创建、安装和启动实例时都不再询问。
  *
- * 输入框允许中间态（空串、输入到一半的数字），失焦或回车时再夹到
- * 512–131072 之间，并写进 `localStorage` 的 `aether.memoryMiB`。
+ * 滑块的范围来自本机实际安装的内存，而不是一个固定数字。
+ * 「自动」按本机当前的可用内存推荐，每次启动重新计算；「自定义」用拖出来的值。
  */
 export function MemorySection() {
-  const [memory, setMemory] = useState(loadMemoryMiB);
-  const [draft, setDraft] = useState(String(loadMemoryMiB()));
+  const [mode, setMode] = useState<MemoryMode>(loadMemoryMode);
+  const [custom, setCustom] = useState(loadMemoryMiB);
+  const { data: system } = useQuery(getSystemMemory);
 
-  const commit = (next: number) => {
-    const clamped = saveMemoryMiB(next);
-    setMemory(clamped);
-    setDraft(String(clamped));
+  const recommended = recommendedMemoryMiB(system);
+
+  const changeMode = (next: MemoryMode) => {
+    setMode(next);
+    saveMemoryMode(next);
   };
 
-  const handleSlider = (value: number) => {
-    const clamped = clampMemoryMiB(value);
-    setMemory(clamped);
-    setDraft(String(clamped));
-    saveMemoryMiB(clamped);
+  const changeCustom = (mib: number) => {
+    setCustom(saveMemoryMiB(clampMemoryMiB(mib)));
   };
 
   return (
@@ -40,46 +48,35 @@ export function MemorySection() {
         <div className="setting-copy">
           <Text weight="semibold">游戏内存上限</Text>
           <Text size={200} className="muted">
-            分配给游戏的堆内存上限，所有实例共用。范围 {formatMemoryMiB(memoryBounds.min)}–
-            {formatMemoryMiB(memoryBounds.max)}，默认 {formatMemoryMiB(memoryBounds.defaultValue)}。
-            单机整合包通常 4–8 GiB 就够。
+            分配给游戏的堆内存上限（-Xmx），所有实例共用。滑块的范围就是这台电脑实际安装的内存。
           </Text>
         </div>
 
-        <div className="memory-slider-row">
-          <Slider
-            aria-label="内存上限"
-            min={memoryBounds.min}
-            max={memoryBounds.max}
-            step={memorySliderStep}
-            value={memory}
-            onChange={(_, data) => handleSlider(data.value)}
-          />
-          <div className="memory-value">
-            <Input
-              type="number"
-              aria-label="内存上限（MiB）"
-              value={draft}
-              min={memoryBounds.min}
-              max={memoryBounds.max}
-              step={memorySliderStep}
-              onChange={(_, data) => setDraft(data.value)}
-              onBlur={() => commit(Number.parseInt(draft, 10))}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  commit(Number.parseInt(draft, 10));
-                }
-              }}
-            />
-            <Text size={200} className="muted">
-              MiB
-            </Text>
-          </div>
-        </div>
+        <RadioGroup
+          aria-label="内存分配方式"
+          value={mode}
+          onChange={(_, data) => {
+            if (isMemoryMode(data.value)) {
+              changeMode(data.value);
+            }
+          }}
+        >
+          <Radio value="auto" label={`自动（推荐，现在约 ${formatMiB(recommended)}）`} />
+          <Radio value="custom" label="自定义" />
+        </RadioGroup>
 
-        <Text size={200} className="muted memory-summary">
-          当前设置：{formatMemoryMiB(memory)}
-        </Text>
+        <MemoryBar
+          system={system}
+          valueMiB={mode === "auto" ? recommended : custom}
+          onChange={mode === "custom" ? changeCustom : undefined}
+        />
+
+        {mode === "auto" ? (
+          <Text size={200} className="muted">
+            自动模式每次启动游戏时，根据当时的可用内存重新计算：可用内存的 65%，不超过 8 GiB，
+            也不超过总内存的 75%。
+          </Text>
+        ) : null}
       </div>
     </section>
   );

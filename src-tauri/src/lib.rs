@@ -52,6 +52,17 @@ async fn list_java_runtimes() -> Result<Vec<JavaRuntimeInfo>, String> {
         .map_err(|error| format!("Java discovery task failed: {error}"))
 }
 
+/// A read-only IPC command: installed and available physical memory, so the
+/// settings page can size the game's heap against the real machine. It takes
+/// no input; `None` means the platform did not report memory.
+#[tauri::command]
+async fn system_memory() -> Option<aether_runtime::memory::SystemMemory> {
+    tauri::async_runtime::spawn_blocking(aether_runtime::memory::system_memory)
+        .await
+        .ok()
+        .flatten()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -60,6 +71,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             application_info,
             list_java_runtimes,
+            system_memory,
             commands::catalog::list_minecraft_versions,
             commands::install::install_vanilla_version,
             commands::install::cancel_vanilla_install,

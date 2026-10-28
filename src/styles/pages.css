@@ -830,21 +830,141 @@
   flex: none;
 }
 
-.memory-slider-row {
+/* 一体化内存滑块：轨道 = 本机物理内存；左边是游戏分配，右边是系统已用，相遇处变警告色 */
+.memory-bar {
+  --track-h: 10px;
+  --used-color: color-mix(in srgb, var(--colorNeutralForeground1) 32%, transparent);
+
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 20px;
+  gap: 10px;
 }
 
-.memory-value {
+.memory-range {
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+
+.memory-range:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.memory-range::-webkit-slider-runnable-track {
+  height: var(--track-h);
+  border-radius: calc(var(--track-h) / 2);
+  background:
+    linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(100% - var(--used) * 1%),
+      var(--colorStatusWarningForeground1) 0,
+      var(--colorStatusWarningForeground1) calc(var(--alloc) * 1%),
+      transparent 0
+    ),
+    linear-gradient(
+      to right,
+      var(--colorBrandBackground) 0,
+      var(--colorBrandBackground) calc(var(--alloc) * 1%),
+      transparent 0
+    ),
+    linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(100% - var(--used) * 1%),
+      var(--used-color) 0
+    ),
+    var(--colorNeutralStrokeAccessible);
+  background-blend-mode: normal;
+  transition: background var(--durationNormal) var(--curveEasyEase);
+}
+
+.memory-range::-webkit-slider-thumb {
+  width: 20px;
+  height: 20px;
+  margin-top: calc((var(--track-h) - 20px) / 2);
+  border: 2px solid var(--colorBrandBackground);
+  border-radius: 50%;
+  background: var(--colorNeutralBackground1);
+  box-shadow: var(--shadow4);
+  transition: transform var(--durationFast) var(--curveDecelerateMid);
+  appearance: none;
+}
+
+.memory-range:not(:disabled)::-webkit-slider-thumb:hover {
+  transform: scale(1.12);
+}
+
+.memory-range:disabled::-webkit-slider-thumb {
+  border-color: var(--colorNeutralStrokeAccessible);
+}
+
+.memory-range:focus-visible {
+  outline: 2px solid var(--colorStrokeFocus2);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
+.memory-bar[data-over="true"] .memory-range::-webkit-slider-thumb {
+  border-color: var(--colorStatusWarningForeground1);
+}
+
+.memory-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.memory-bar-stat {
+  display: grid;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.memory-bar-stat.end {
+  text-align: right;
+}
+
+.memory-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  color: var(--colorNeutralForeground3);
+  font-size: var(--fontSizeBase200);
+  list-style: none;
+}
+
+.memory-legend li {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.memory-value input {
-  width: 104px;
+.memory-legend .swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.memory-legend .swatch.alloc {
+  background: var(--colorBrandBackground);
+}
+
+.memory-legend .swatch.used {
+  background: var(--used-color);
+}
+
+.memory-legend .swatch.over {
+  background: var(--colorStatusWarningForeground1);
+}
+
+.memory-warning {
+  color: var(--colorStatusWarningForeground1);
 }
 
 .runtime-list {
@@ -932,10 +1052,6 @@
 
   .install-steps {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .memory-slider-row {
-    grid-template-columns: 1fr;
   }
 
   .setting-row {

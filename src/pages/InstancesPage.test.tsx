@@ -63,13 +63,13 @@ afterEach(() => {
 });
 
 describe("InstancesPage", () => {
-  it("lists the installed instances as cards with their version and default memory", async () => {
+  it("lists the installed instances as cards with their version and memory setting", async () => {
     backend();
     renderWithState(<InstancesPage page={page} />);
 
     expect(await screen.findByText("Survival")).toBeInTheDocument();
     expect(screen.getByText("Old Save")).toBeInTheDocument();
-    expect(screen.getByText("Vanilla 1.21.1 · 内存 4 GiB")).toBeInTheDocument();
+    expect(screen.getByText("Vanilla 1.21.1 · 内存 自动")).toBeInTheDocument();
     expect(screen.getByText("共 2 个实例")).toBeInTheDocument();
   });
 
@@ -117,6 +117,34 @@ describe("InstancesPage", () => {
     );
     expect(await screen.findByText("运行中")).toBeInTheDocument();
     expect(window.localStorage.getItem("aether.lastPlayed")).toBe("i1");
+  });
+
+  it("sizes the heap from the memory that is free at launch when memory is automatic", async () => {
+    seedAccount();
+    backend({
+      start_installed_instance: () => running,
+      system_memory: () => ({ totalMib: 16_384, availableMib: 10_240 }),
+    });
+    renderWithState(<InstancesPage page={page} />);
+    await screen.findByText("Survival");
+
+    fireEvent.click(within(cardOf("Survival")).getByRole("button", { name: "启动" }));
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "start_installed_instance",
+        expect.objectContaining({ id: "i1", memoryMib: 6656 }),
+      ),
+    );
+  });
+
+  it("shows a custom memory value on the cards", async () => {
+    window.localStorage.setItem("aether.memoryMode", "custom");
+    window.localStorage.setItem("aether.memoryMiB", "6144");
+    backend();
+    renderWithState(<InstancesPage page={page} />);
+
+    expect(await screen.findByText("Vanilla 1.21.1 · 内存 6 GiB")).toBeInTheDocument();
   });
 
   it("lets the backend derive the UUID for a standard account", async () => {

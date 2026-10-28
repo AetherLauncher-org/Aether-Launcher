@@ -23,6 +23,7 @@ The project follows [Semantic Versioning](https://semver.org/) once public relea
 - Frameless window with a custom title bar, Mica material on Windows 11, Fluent 2 design tokens, a Fluent motion system with a reduced-motion switch, and a new Aether logo and icon set
 - Download page that browses every official version with its metadata before installing, replacing the cache, download and create buttons
 - Offline accounts added through a dialog with standard, random or custom UUIDs, kept across restarts
+- Memory setting sized from the machine: an integrated slider whose track is the installed memory, with system use and the game's share on it, plus an automatic mode that recomputes from the free memory at every launch; system_memory reads it
 - Live smoke tests (ignored by default) that install and launch a real version
 - Appearance setting with dark, light, and follow-system colour schemes
 - Version manifest parsing for libraries, arguments, asset index, client download and Java version, with rule evaluation

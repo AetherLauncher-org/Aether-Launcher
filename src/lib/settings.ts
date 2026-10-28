@@ -1,11 +1,13 @@
 import {
   clampMemoryMiB,
+  isMemoryMode,
   defaultMemoryMiB,
   formatMemoryMiB,
   maxMemoryMiB,
   minMemoryMiB,
   parseStoredMemoryMiB,
 } from "./memory";
+import type { MemoryMode } from "./memory";
 
 /**
  * 设置的读写：内存上限与默认 Java 运行时。
@@ -123,6 +125,32 @@ export function loadNavCollapsed(): boolean {
 export function saveNavCollapsed(collapsed: boolean): void {
   try {
     window.localStorage.setItem(navCollapsedStorageKey, collapsed ? "1" : "0");
+  } catch {
+    // 存储不可用时只在本次运行内生效
+  }
+}
+
+export const memoryModeStorageKey = "aether.memoryMode";
+
+/**
+ * 内存模式。默认自动；但如果用户在加入模式之前已经手动存过一个值，
+ * 视为自定义，不要悄悄丢掉他们设过的数字。
+ */
+export function loadMemoryMode(): MemoryMode {
+  try {
+    const stored = window.localStorage.getItem(memoryModeStorageKey);
+    if (isMemoryMode(stored)) {
+      return stored;
+    }
+    return window.localStorage.getItem(memoryStorageKey) !== null ? "custom" : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+export function saveMemoryMode(mode: MemoryMode): void {
+  try {
+    window.localStorage.setItem(memoryModeStorageKey, mode);
   } catch {
     // 存储不可用时只在本次运行内生效
   }

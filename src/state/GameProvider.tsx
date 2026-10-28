@@ -15,7 +15,8 @@ import {
   statusPollIntervalMs,
 } from "../lib/game";
 import type { GameSession } from "../lib/game";
-import { loadMemoryMiB, saveLastPlayedId } from "../lib/settings";
+import { resolveLaunchMemoryMiB } from "../lib/launchMemory";
+import { saveLastPlayedId } from "../lib/settings";
 import { useAccounts } from "./accounts";
 import { GameContext } from "./game";
 import type { GameApi } from "./game";
@@ -49,7 +50,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const status = await startInstalledInstance(
           instance.id,
           account.name,
-          loadMemoryMiB(),
+          await resolveLaunchMemoryMiB(),
           account.uuid,
         );
         saveLastPlayedId(instance.id);

@@ -18,8 +18,8 @@ import {
   sortInstances,
   summariseInstances,
 } from "../lib/instances";
-import { formatMemoryMiB } from "../lib/memory";
-import { loadMemoryMiB } from "../lib/settings";
+import { describeMemorySetting } from "../lib/memory";
+import { loadMemoryMiB, loadMemoryMode } from "../lib/settings";
 import type { PageDefinition } from "../navigation";
 import { useAccounts } from "../state/accounts";
 import { useInstances } from "../state/instances";
@@ -38,7 +38,7 @@ export function InstancesPage({ page }: InstancesPageProps) {
   const { book } = useAccounts();
   const { navigate } = useNavigation();
   const [query, setQuery] = useState("");
-  const [memoryMiB] = useState(loadMemoryMiB);
+  const [memoryLabel] = useState(() => describeMemorySetting(loadMemoryMode(), loadMemoryMiB()));
 
   const visible = useMemo(
     () => sortInstances(filterInstances(instances, query)),
@@ -129,7 +129,7 @@ export function InstancesPage({ page }: InstancesPageProps) {
                   {instance.name}
                 </Text>
                 <Text className="muted instance-card-meta" size={200}>
-                  Vanilla {instance.version} · 内存 {formatMemoryMiB(memoryMiB)}
+                  Vanilla {instance.version} · 内存 {memoryLabel}
                 </Text>
                 <GameControls instance={instance} />
               </div>

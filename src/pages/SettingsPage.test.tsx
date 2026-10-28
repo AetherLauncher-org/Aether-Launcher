@@ -1,10 +1,14 @@
 import { FluentProvider, webLightTheme } from "@fluentui/react-components";
+import { invoke } from "@tauri-apps/api/core";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { pretendBrowser, pretendDesktop, routeInvoke } from "../test/support";
 import { SettingsPage } from "./SettingsPage";
 import type { MotionPreference } from "../lib/motion";
 import type { ThemePreference } from "../lib/theme";
 import type { PageDefinition } from "../navigation";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const page: PageDefinition = {
   id: "settings",
@@ -86,51 +90,116 @@ describe("SettingsPage", () => {
     expect(screen.getByText("版本 0.1.0")).toBeInTheDocument();
   });
 
-  it("shows the memory section with the default value as the only memory control", () => {
+  it("offers automatic and custom memory, defaulting to automatic with a read-only slider", () => {
     renderSettings();
 
     expect(screen.getByRole("heading", { name: "内存" })).toBeInTheDocument();
-    expect(screen.getByLabelText("内存上限（MiB）")).toHaveValue(4096);
-    expect(screen.getByText("当前设置：4 GiB")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /自动（推荐/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "自定义" })).not.toBeChecked();
+    expect(screen.getByRole("slider", { name: "游戏内存上限" })).toBeDisabled();
+    // 浏览器预览读不到本机内存：用默认值，并如实说明范围是估计的
+    expect(screen.getByText(/没能读取本机内存，范围按 16 GiB 估计/)).toBeInTheDocument();
   });
 
-  it("clamps an out-of-range memory value on blur", () => {
+  it("is the only place to change memory, as one slider and no separate number box", () => {
     renderSettings();
 
-    const input = screen.getByLabelText("内存上限（MiB）");
-    fireEvent.change(input, { target: { value: "999999999" } });
-    fireEvent.blur(input);
-
-    expect(input).toHaveValue(131072);
-    expect(window.localStorage.getItem("aether.memoryMiB")).toBe("131072");
+    expect(screen.getAllByRole("slider")).toHaveLength(1);
+    expect(screen.queryByLabelText("内存上限（MiB）")).not.toBeInTheDocument();
   });
 
-  it("pulls a tiny memory value up to the floor", () => {
+  it("switches to custom, enables the slider and saves what the user picks", () => {
     renderSettings();
 
-    const input = screen.getByLabelText("内存上限（MiB）");
-    fireEvent.change(input, { target: { value: "1" } });
-    fireEvent.blur(input);
+    fireEvent.click(screen.getByRole("radio", { name: "自定义" }));
+    const slider = screen.getByRole("slider", { name: "游戏内存上限" });
+    expect(slider).toBeEnabled();
+    fireEvent.change(slider, { target: { value: "8192" } });
 
-    expect(input).toHaveValue(512);
-  });
-
-  it("persists a valid memory value", () => {
-    renderSettings();
-
-    const input = screen.getByLabelText("内存上限（MiB）");
-    fireEvent.change(input, { target: { value: "8192" } });
-    fireEvent.blur(input);
-
+    expect(window.localStorage.getItem("aether.memoryMode")).toBe("custom");
     expect(window.localStorage.getItem("aether.memoryMiB")).toBe("8192");
-    expect(screen.getByText("当前设置：8 GiB")).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "游戏内存上限" })).toHaveAttribute("aria-valuetext", "8 GiB");
   });
 
-  it("restores a stored memory value", () => {
+  it("goes back to automatic without losing the custom value", () => {
+    renderSettings();
+    fireEvent.click(screen.getByRole("radio", { name: "自定义" }));
+    fireEvent.change(screen.getByRole("slider", { name: "游戏内存上限" }), { target: { value: "6144" } });
+
+    fireEvent.click(screen.getByRole("radio", { name: /自动（推荐/ }));
+    expect(screen.getByRole("slider", { name: "游戏内存上限" })).toBeDisabled();
+    expect(window.localStorage.getItem("aether.memoryMode")).toBe("auto");
+
+    fireEvent.click(screen.getByRole("radio", { name: "自定义" }));
+    expect(screen.getByRole("slider", { name: "游戏内存上限" })).toHaveAttribute("aria-valuetext", "6 GiB");
+  });
+
+  it("restores a value saved before modes existed as a custom setting", () => {
     window.localStorage.setItem("aether.memoryMiB", "12288");
 
     renderSettings();
 
-    expect(screen.getByLabelText("内存上限（MiB）")).toHaveValue(12288);
+    expect(screen.getByRole("radio", { name: "自定义" })).toBeChecked();
+    expect(screen.getByRole("slider", { name: "游戏内存上限" })).toHaveAttribute("aria-valuetext", "12 GiB");
+  });
+});
+
+describe("SettingsPage memory on a real machine", () => {
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset();
+    pretendDesktop();
+    routeInvoke(vi.mocked(invoke), {
+      system_memory: () => ({ totalMib: 16_284, availableMib: 2_355 }),
+      list_java_runtimes: () => [],
+    });
+  });
+
+  afterEach(() => {
+    pretendBrowser();
+  });
+
+  it("sizes the slider from the installed memory and shows used, total and available", async () => {
+    renderSettings();
+
+    expect(await screen.findByText("13.6 GiB / 15.9 GiB")).toBeInTheDocument();
+    const slider = screen.getByRole("slider", { name: "游戏内存上限" });
+    expect(slider).toHaveAttribute("max", "16128");
+    expect(slider).toHaveAttribute("min", "512");
+    expect(screen.getByText(/（可用 2.3 GiB）/)).toBeInTheDocument();
+    expect(screen.queryByText(/没能读取本机内存/)).not.toBeInTheDocument();
+  });
+
+  it("recommends from what is free right now when automatic", async () => {
+    renderSettings();
+
+    // 可用 2.3 GiB 很少，推荐值落在 2 GiB 的下限
+    expect(await screen.findByRole("radio", { name: "自动（推荐，现在约 2 GiB）" })).toBeChecked();
+    expect(screen.getByRole("slider", { name: "游戏内存上限" })).toHaveAttribute("aria-valuetext", "2 GiB");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("warns when the custom value is more than the memory that is free", async () => {
+    renderSettings();
+    await screen.findByText("13.6 GiB / 15.9 GiB");
+
+    fireEvent.click(screen.getByRole("radio", { name: "自定义" }));
+    fireEvent.change(screen.getByRole("slider", { name: "游戏内存上限" }), { target: { value: "9216" } });
+
+    expect(await screen.findByText(/超过了当前可用内存/)).toBeInTheDocument();
+    expect(screen.getByText(/9 GiB（可用 2.3 GiB）/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("slider", { name: "游戏内存上限" }), { target: { value: "2048" } });
+    expect(screen.queryByText(/超过了当前可用内存/)).not.toBeInTheDocument();
+  });
+
+  it("does not claim a used figure when the platform reports no available memory", async () => {
+    routeInvoke(vi.mocked(invoke), {
+      system_memory: () => ({ totalMib: 8192, availableMib: null }),
+      list_java_runtimes: () => [],
+    });
+    renderSettings();
+
+    expect(await screen.findByText("— / 8 GiB")).toBeInTheDocument();
+    expect(screen.queryByText(/可用/, { selector: ".memory-bar-stat *" })).not.toBeInTheDocument();
   });
 });

@@ -32,7 +32,7 @@ graph LR
 | `aether-manifest` | Minecraft 版本元数据 | `parse_version_manifest` → `VersionManifest`（`id`、`inheritsFrom`、`mainClass`、`assetIndex`、`downloads.client`、`javaVersion`、`libraries`、`arguments` / `minecraftArguments`）；`rules`（`Rule`、`Environment`、`rules_allow`）；`arguments`（`expand_arguments`）；`merge_with_parent`（继承合并），`load_version_manifest`（从本地磁盘安全加载完整继承链） |
 | `aether-download` | 下载计划与校验 | `ArtifactSource`、`DownloadArtifact`、`DownloadPlan::validate`；`native_zip::preflight_native_zip` 验证 ZIP 条目名称、文件类型、重复目标和解压大小限制 |
 | `aether-auth` | 账户模型 | `AccountId`、`AccountKind`（Microsoft / Offline）、`AccountProfile` |
-| `aether-runtime` | Java 运行时 | `JavaRuntime`、`supports`；跨平台检测 PATH / JAVA_HOME / 常见安装目录和 Minecraft runtime，探测 Java 版本、架构与厂商 |
+| `aether-runtime` | Java 运行时与本机内存 | `JavaRuntime`、`supports`；`memory::system_memory` 读取物理内存（Windows 用系统接口，Linux 读 `/proc/meminfo`，macOS 用 `sysctl` 和 `vm_stat`）；跨平台检测 PATH / JAVA_HOME / 常见安装目录和 Minecraft runtime，探测 Java 版本、架构与厂商 |
 | `aether-launch` | 启动请求与计划 | `LaunchRequest`、`LaunchPlan`；`select_java_runtime` 选 Java；`build_launch_plan` 组装 JVM / classpath / 游戏参数；`build_native_plan` 选择 native JAR 并输出下载计划；`build_install_plan` 从已校验的版本 JSON 生成客户端 JAR、Libraries 和 native 压缩包的下载计划；`GameProcess` 监督子进程并捕获有界日志；`InstanceProcessRegistry` 按实例 ID 管理进程；`InstanceLaunchCoordinator` 从可信实例文件准备启动并校验客户端 JAR |
 | `aether-modloader` | 模组加载器 | `ModLoaderKind`（Fabric / Forge / NeoForge / Quilt）、`ModLoaderVersion` |
 | `aether-storage` | 本地持久化 | `encode_instance` / `decode_instance`、`InstanceStore::load`（从受管理的 UUID 目录读取和验证实例） |
@@ -62,7 +62,7 @@ src/
 ## IPC 边界
 
 - 前端只通过 `src/ipc/` 调用后端，组件里不直接 `invoke`。
-- 命令在 `src-tauri/src/lib.rs` 里用 `#[tauri::command]` 定义，并列进 `generate_handler!`。目前有 `application_info`、`list_java_runtimes`、`list_minecraft_versions`、`list_instances`、`install_vanilla_version`、`cancel_vanilla_install`、`start_installed_instance`、`stop_installed_instance` 和 `game_status`。安装进度走 `install://progress` 事件。
+- 命令在 `src-tauri/src/lib.rs` 里用 `#[tauri::command]` 定义，并列进 `generate_handler!`。目前有 `application_info`、`list_java_runtimes`、`system_memory`、`list_minecraft_versions`、`list_instances`、`install_vanilla_version`、`cancel_vanilla_install`、`start_installed_instance`、`stop_installed_instance` 和 `game_status`。安装进度走 `install://progress` 事件。
 - 窗口权限在 `src-tauri/capabilities/default.json`：`core:default`，加上自绘标题栏需要的最小化、最大化、关闭、拖动和设置主题。这个目录在 CODEOWNERS 里单独列出。
 - 命令是窄化的领域操作（导入这个实例、启动这个实例），参数用类型表达。不提供执行任意命令、读写任意路径的入口。
 

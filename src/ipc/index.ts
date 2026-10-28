@@ -72,6 +72,10 @@ export {
 } from "./install";
 export type { InstallProgress, InstallStage } from "./install";
 
+// 本机内存（只读）
+export { getSystemMemory } from "./system";
+export type { SystemMemory } from "./system";
+
 // Java 运行时发现
 export { discoverJavaRuntimes } from "./java";
 export type { JavaRuntimeInfo } from "./java";
