@@ -830,86 +830,149 @@
   flex: none;
 }
 
-/* 一体化内存滑块：轨道 = 本机物理内存；左边是游戏分配，右边是系统已用，相遇处变警告色 */
+/* 一体化内存滑块：轨道 = 本机物理内存。左红 = 系统已用；绿 = 分配给游戏；越过分界线的橙 = 会挤爆 */
 .memory-bar {
-  --track-h: 10px;
-  --used-color: color-mix(in srgb, var(--colorNeutralForeground1) 32%, transparent);
+  --track-h: 14px;
+  --thumb: 22px;
+  --used-color: var(--colorPaletteRedBackground3);
+  --alloc-color: var(--colorPaletteGreenBackground3);
+  --over-color: var(--colorPaletteDarkOrangeBackground3);
 
   display: grid;
   gap: 10px;
 }
 
-.memory-range {
-  width: 100%;
-  height: 22px;
-  margin: 0;
-  background: transparent;
+.memory-track {
+  position: relative;
+  height: var(--thumb);
+  margin: 0 calc(var(--thumb) / 2);
   cursor: pointer;
-  appearance: none;
+  touch-action: none;
 }
 
-.memory-range:disabled {
+.memory-bar[data-disabled="true"] .memory-track {
   cursor: default;
-  opacity: 0.85;
 }
 
-.memory-range::-webkit-slider-runnable-track {
+/* 轨道本体：描边的胶囊，空闲的可用内存是底色 */
+.memory-track::before {
+  position: absolute;
+  top: calc((var(--thumb) - var(--track-h)) / 2);
+  right: calc(var(--thumb) / -2);
+  left: calc(var(--thumb) / -2);
   height: var(--track-h);
+  border: 1px solid var(--colorNeutralStroke1);
   border-radius: calc(var(--track-h) / 2);
-  background:
-    linear-gradient(
-      to right,
-      transparent 0,
-      transparent calc(100% - var(--used) * 1%),
-      var(--colorStatusWarningForeground1) 0,
-      var(--colorStatusWarningForeground1) calc(var(--alloc) * 1%),
-      transparent 0
-    ),
-    linear-gradient(
-      to right,
-      var(--colorBrandBackground) 0,
-      var(--colorBrandBackground) calc(var(--alloc) * 1%),
-      transparent 0
-    ),
-    linear-gradient(
-      to right,
-      transparent 0,
-      transparent calc(100% - var(--used) * 1%),
-      var(--used-color) 0
-    ),
-    var(--colorNeutralStrokeAccessible);
-  background-blend-mode: normal;
-  transition: background var(--durationNormal) var(--curveEasyEase);
-}
-
-.memory-range::-webkit-slider-thumb {
-  width: 20px;
-  height: 20px;
-  margin-top: calc((var(--track-h) - 20px) / 2);
-  border: 2px solid var(--colorBrandBackground);
-  border-radius: 50%;
   background: var(--colorNeutralBackground1);
+  content: "";
+}
+
+.memory-seg {
+  position: absolute;
+  top: calc((var(--thumb) - var(--track-h)) / 2 + 1px);
+  height: calc(var(--track-h) - 2px);
+  transition:
+    left var(--durationFaster) var(--curveLinear),
+    width var(--durationFaster) var(--curveLinear);
+}
+
+/* 系统已用：从最左边到分界线，左端圆角贴合胶囊 */
+.memory-seg.used {
+  left: calc(var(--thumb) / -2 + 1px);
+  width: calc(var(--used) * 1% + var(--thumb) / 2 - 1px);
+  border-radius: calc(var(--track-h) / 2) 0 0 calc(var(--track-h) / 2);
+  background: var(--used-color);
+}
+
+/* 分配：从分界线到右手柄 */
+.memory-seg.alloc {
+  left: calc(var(--used) * 1%);
+  width: calc((var(--right) - var(--used)) * 1%);
+  background: var(--alloc-color);
+}
+
+/* 越过可用内存的那段，盖在红区上，从第二个手柄到分界线 */
+.memory-seg.over {
+  left: calc(var(--left) * 1%);
+  width: calc((var(--used) - var(--left)) * 1%);
+  background: var(--over-color);
+}
+
+.memory-divider {
+  position: absolute;
+  top: calc((var(--thumb) - var(--track-h)) / 2 - 2px);
+  left: calc(var(--used) * 1%);
+  width: 2px;
+  height: calc(var(--track-h) + 4px);
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--colorNeutralForeground1);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.memory-thumb {
+  position: absolute;
+  top: 0;
+  width: var(--thumb);
+  height: var(--thumb);
+  margin-left: calc(var(--thumb) / -2);
+  border: 3px solid var(--colorNeutralBackground1);
+  border-radius: 50%;
+  background: var(--colorBrandBackground);
   box-shadow: var(--shadow4);
-  transition: transform var(--durationFast) var(--curveDecelerateMid);
-  appearance: none;
+  transition:
+    left var(--durationFaster) var(--curveLinear),
+    transform var(--durationFast) var(--curveDecelerateMid);
 }
 
-.memory-range:not(:disabled)::-webkit-slider-thumb:hover {
-  transform: scale(1.12);
+.memory-thumb.right {
+  left: calc(var(--right) * 1%);
 }
 
-.memory-range:disabled::-webkit-slider-thumb {
-  border-color: var(--colorNeutralStrokeAccessible);
+.memory-thumb.left {
+  left: calc(var(--left) * 1%);
+  background: var(--over-color);
+  animation: thumb-pop var(--durationNormal) var(--curveDecelerateMid) both;
 }
 
-.memory-range:focus-visible {
+.memory-bar:not([data-disabled="true"]) .memory-thumb:hover,
+.memory-thumb.dragging {
+  transform: scale(1.14);
+}
+
+.memory-bar[data-disabled="true"] .memory-thumb {
+  background: var(--colorNeutralForegroundDisabled);
+  box-shadow: none;
+}
+
+/* 真正的滑块：看不见，但键盘和读屏都靠它；获得焦点时给轨道画焦点环 */
+.memory-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.memory-track:has(.memory-input:focus-visible) {
   outline: 2px solid var(--colorStrokeFocus2);
-  outline-offset: 4px;
-  border-radius: 6px;
+  outline-offset: 6px;
+  border-radius: 8px;
 }
 
-.memory-bar[data-over="true"] .memory-range::-webkit-slider-thumb {
-  border-color: var(--colorStatusWarningForeground1);
+@keyframes thumb-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .memory-bar-labels {
@@ -952,7 +1015,7 @@
 }
 
 .memory-legend .swatch.alloc {
-  background: var(--colorBrandBackground);
+  background: var(--alloc-color);
 }
 
 .memory-legend .swatch.used {

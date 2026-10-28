@@ -12,7 +12,7 @@ export default defineConfig(() => ({
     setupFiles: "./src/test/setup.ts",
     // 每个 jsdom + Fluent 的 worker 都要占几百 MB；默认按核数并行，内存紧的机器上
     // 会因为 V8 堆耗尽而整个 worker 异常退出（exit code 134）。限制并行数换稳定。
-    maxWorkers: 3,
+    maxWorkers: 2,
     css: true,
   },
 

@@ -1,14 +1,14 @@
 import { Text } from "@fluentui/react-components";
-import type { CSSProperties } from "react";
+import { useRef, useState } from "react";
+import type { CSSProperties, PointerEvent } from "react";
 import type { SystemMemory } from "../ipc";
+import { exceedsAvailable, formatMiB, memorySliderStep, minMemoryMiB, sliderMaxMiB } from "../lib/memory";
 import {
-  exceedsAvailable,
-  formatMiB,
-  memorySliderStep,
-  minMemoryMiB,
-  sliderMaxMiB,
-  usedMiB,
-} from "../lib/memory";
+  barGeometry,
+  thumbForTrackPress,
+  valueFromLeftThumb,
+  valueFromRightThumb,
+} from "../lib/memoryBar";
 
 type MemoryBarProps = {
   system: SystemMemory | null;
@@ -18,42 +18,124 @@ type MemoryBarProps = {
   disabled?: boolean;
 };
 
+type Thumb = "right" | "left";
+
 /**
  * 一体化的内存滑块：整条轨道就是本机的物理内存。
  *
- * - 从左边铺开的是分配给游戏的部分，滑块的手柄就在它的末端；
- * - 从右边铺开的是其他程序已经占用的部分；
- * - 两段在中间相遇就变成警告色——这说明分配的内存已经超过当前能用的。
+ * 左边红色是系统已经用掉的，不能拖；分界线右边是可用内存，右手柄在里面滑动，
+ * 绿色从分界线铺到手柄，就是分配给游戏的量。右手柄推到底（「满」）之后，
+ * 分界线上出现第二个手柄，可以继续往左拖进红区——那一段变橙色，表示分配得
+ * 比可用内存还多，会把内存挤爆。两个手柄控制同一个值。
  *
- * 轨道、已用量和手柄是同一个控件，不是一根进度条加一根滑块。
+ * 屏幕上的手柄用指针拖动；真正的 `<input type="range">` 在旁边，只是看不见：
+ * 键盘方向键、读屏和表单语义都由它承担，值和手柄始终一致。
  */
 export function MemoryBar({ system, valueMiB, onChange, disabled = false }: MemoryBarProps) {
-  const max = sliderMaxMiB(system);
-  const total = system?.totalMib ?? max;
-  const used = usedMiB(system);
-  const value = Math.min(Math.max(valueMiB, minMemoryMiB), max);
-  const over = exceedsAvailable(value, system);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState<Thumb | null>(null);
+  const interactive = !disabled && onChange !== undefined;
 
-  const percent = (mib: number) => Math.min(100, Math.max(0, (mib / total) * 100));
+  const geometry = barGeometry(valueMiB, system);
+  const max = sliderMaxMiB(system);
+  const over = exceedsAvailable(geometry.valueMiB, system);
+  const free = system?.availableMib;
+
   const style = {
-    "--alloc": percent(value),
-    "--used": used === null ? 0 : percent(used),
+    "--used": geometry.usedPct,
+    "--right": geometry.rightPct,
+    "--left": geometry.leftPct ?? geometry.usedPct,
   } as CSSProperties;
 
+  const pressedPercent = (event: PointerEvent): number | null => {
+    const rect = trackRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) {
+      return null;
+    }
+    return Math.min(100, Math.max(0, ((event.clientX - rect.left) / rect.width) * 100));
+  };
+
+  const apply = (thumb: Thumb, pct: number) => {
+    onChange?.(thumb === "right" ? valueFromRightThumb(pct, system) : valueFromLeftThumb(pct, system));
+  };
+
+  const handleDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (!interactive) {
+      return;
+    }
+    const pct = pressedPercent(event);
+    if (pct === null) {
+      return;
+    }
+    const target = event.target as HTMLElement;
+    const thumb: Thumb | null = target.closest(".memory-thumb.left")
+      ? "left"
+      : target.closest(".memory-thumb.right")
+        ? "right"
+        : thumbForTrackPress(pct, geometry);
+    if (thumb === null) {
+      return;
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setDragging(thumb);
+    apply(thumb, pct);
+  };
+
+  const handleMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (dragging === null) {
+      return;
+    }
+    const pct = pressedPercent(event);
+    if (pct !== null) {
+      apply(dragging, pct);
+    }
+  };
+
+  const stopDragging = () => setDragging(null);
+
   return (
-    <div className="memory-bar" style={style} data-over={over === true}>
-      <input
-        type="range"
-        className="memory-range"
-        aria-label="游戏内存上限"
-        min={minMemoryMiB}
-        max={max}
-        step={memorySliderStep}
-        value={value}
-        disabled={disabled || onChange === undefined}
-        aria-valuetext={formatMiB(value)}
-        onChange={(event) => onChange?.(Number(event.target.value))}
-      />
+    <div className="memory-bar" style={style} data-over={over === true} data-disabled={!interactive}>
+      <div
+        ref={trackRef}
+        className="memory-track"
+        onPointerDown={handleDown}
+        onPointerMove={handleMove}
+        onPointerUp={stopDragging}
+        onPointerCancel={stopDragging}
+      >
+        {geometry.usedMib !== null ? (
+          <>
+            <span className="memory-seg used" />
+            <span className="memory-divider" />
+          </>
+        ) : null}
+        <span className="memory-seg alloc" />
+        {geometry.leftPct !== null && geometry.overMiB > 0 ? <span className="memory-seg over" /> : null}
+
+        <span
+          className={`memory-thumb right${dragging === "right" ? " dragging" : ""}`}
+          aria-hidden="true"
+        />
+        {geometry.leftPct !== null ? (
+          <span
+            className={`memory-thumb left${dragging === "left" ? " dragging" : ""}`}
+            aria-hidden="true"
+          />
+        ) : null}
+
+        <input
+          type="range"
+          className="memory-input"
+          aria-label="游戏内存上限"
+          min={minMemoryMiB}
+          max={max}
+          step={memorySliderStep}
+          value={geometry.valueMiB}
+          disabled={!interactive}
+          aria-valuetext={formatMiB(geometry.valueMiB)}
+          onChange={(event) => onChange?.(Number(event.target.value))}
+        />
+      </div>
 
       <div className="memory-bar-labels">
         <div className="memory-bar-stat">
@@ -61,7 +143,7 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
             系统已用 / 总内存
           </Text>
           <Text weight="semibold">
-            {used === null ? "—" : formatMiB(used)} / {formatMiB(total)}
+            {geometry.usedMib === null ? "—" : formatMiB(geometry.usedMib)} / {formatMiB(geometry.totalMib)}
           </Text>
         </div>
         <div className="memory-bar-stat end">
@@ -69,8 +151,8 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
             游戏分配
           </Text>
           <Text weight="semibold">
-            {formatMiB(value)}
-            {system?.availableMib != null ? `（可用 ${formatMiB(system.availableMib)}）` : ""}
+            {formatMiB(geometry.valueMiB)}
+            {free != null ? `（可用 ${formatMiB(free)}）` : ""}
           </Text>
         </div>
       </div>
@@ -80,7 +162,7 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
           <span className="swatch alloc" aria-hidden="true" />
           游戏分配
         </li>
-        {used !== null ? (
+        {geometry.usedMib !== null ? (
           <li>
             <span className="swatch used" aria-hidden="true" />
             系统已用
@@ -94,6 +176,11 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
         ) : null}
       </ul>
 
+      {geometry.usedMib !== null && interactive && geometry.leftPct === null ? (
+        <Text size={200} className="muted">
+          红色是系统已经占用的内存，不能拖。把右边的手柄拖到底，就可以继续往左分配更多。
+        </Text>
+      ) : null}
       {over === true ? (
         <Text size={200} className="memory-warning" role="status">
           分配的内存超过了当前可用内存，游戏可能变慢甚至崩溃。可以先关闭一些程序，或调低这个值。
