@@ -1,6 +1,6 @@
 import { Text } from "@fluentui/react-components";
 import { useRef, useState } from "react";
-import type { CSSProperties, PointerEvent } from "react";
+import type { CSSProperties, DragEvent, PointerEvent } from "react";
 import type { SystemMemory } from "../ipc";
 import { exceedsAvailable, formatMiB, memorySliderStep, minMemoryMiB, sliderMaxMiB } from "../lib/memory";
 import {
@@ -39,6 +39,7 @@ type LeftDrag = { startPct: number; startValue: number };
  */
 export function MemoryBar({ system, valueMiB, onChange, disabled = false }: MemoryBarProps) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const leftDrag = useRef<LeftDrag | null>(null);
   const [dragging, setDragging] = useState<Thumb | null>(null);
   const interactive = !disabled && onChange !== undefined;
@@ -70,6 +71,10 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
     if (pct === null) {
       return;
     }
+    // 不拦住默认行为，浏览器会把这次按下当成选中文字或拖拽元素的开头：
+    // 指针立刻变成「禁止」图标，后面的 pointermove 也就收不到了
+    event.preventDefault();
+    inputRef.current?.focus({ preventScroll: true });
     const target = event.target as HTMLElement;
     const onLeftThumb = target.closest(".memory-thumb.left") !== null;
     const onRightThumb = target.closest(".memory-thumb.right") !== null;
@@ -114,6 +119,8 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
     setDragging(null);
   };
 
+  const cancelNativeDrag = (event: DragEvent) => event.preventDefault();
+
   return (
     <div className="memory-bar" style={style} data-over={over === true} data-disabled={!interactive}>
       <div
@@ -123,6 +130,8 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
         onPointerMove={handleMove}
         onPointerUp={stopDragging}
         onPointerCancel={stopDragging}
+        onLostPointerCapture={stopDragging}
+        onDragStart={cancelNativeDrag}
       >
         {geometry.usedMib !== null ? (
           <>
@@ -145,6 +154,7 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
         ) : null}
 
         <input
+          ref={inputRef}
           type="range"
           className="memory-input"
           aria-label="游戏内存上限"

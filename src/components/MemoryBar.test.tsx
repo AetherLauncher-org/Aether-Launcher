@@ -36,10 +36,12 @@ function barGeometryOver(valueMiB: number): number {
 }
 
 /** jsdom 的指针事件不带坐标，用带 clientX 的鼠标事件冒充同名事件。 */
-function pointer(target: Element, type: string, clientX: number) {
+function pointer(target: Element, type: string, clientX: number): MouseEvent {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX });
   act(() => {
-    target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX }));
+    target.dispatchEvent(event);
   });
+  return event;
 }
 
 afterEach(() => {
@@ -191,6 +193,38 @@ describe("MemoryBar dragging", () => {
     pointer(orange, "pointerdown", 750);
     pointer(orange, "pointerup", 750);
     pointer(orange, "pointermove", 500);
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("takes over the press so the browser never starts a text selection or native drag", () => {
+    const { track, container } = renderBar({ valueMiB: 1024 });
+
+    // 否则指针会变成「禁止」图标，后面的移动也收不到
+    expect(pointer(track, "pointerdown", 900).defaultPrevented).toBe(true);
+    expect(pointer(container.querySelector(".memory-thumb.left") as Element, "pointerdown", 750).defaultPrevented).toBe(true);
+    const dragStart = new Event("dragstart", { bubbles: true, cancelable: true });
+    act(() => {
+      track.dispatchEvent(dragStart);
+    });
+    expect(dragStart.defaultPrevented).toBe(true);
+  });
+
+  it("leaves the press alone when the bar is read-only", () => {
+    const { track } = renderBar({ disabled: true });
+
+    expect(pointer(track, "pointerdown", 900).defaultPrevented).toBe(false);
+  });
+
+  it("stops following the pointer when the browser takes the pointer away", () => {
+    const { onChange, track } = renderBar({ valueMiB: 1024 });
+
+    pointer(track, "pointerdown", 800);
+    onChange.mockClear();
+    act(() => {
+      track.dispatchEvent(new Event("lostpointercapture", { bubbles: true }));
+    });
+    pointer(track, "pointermove", 950);
 
     expect(onChange).not.toHaveBeenCalled();
   });

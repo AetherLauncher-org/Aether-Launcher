@@ -848,6 +848,8 @@
 .memory-track {
   position: relative;
   height: var(--thumb);
+  user-select: none;
+  -webkit-user-select: none;
   margin: 0 calc(var(--thumb) / 2);
   cursor: pointer;
   touch-action: none;
@@ -913,6 +915,13 @@
   opacity: 0.85;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 18%);
   pointer-events: none;
+}
+
+.memory-seg,
+.memory-thumb,
+.memory-divider {
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 .memory-thumb {
