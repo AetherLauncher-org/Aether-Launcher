@@ -130,7 +130,7 @@ pub fn build_native_plan(
                 library: library.name.clone(),
                 classifier: classifier.clone(),
             })?;
-        let exclusions = library
+        let mut exclusions = library
             .extract
             .as_ref()
             .map(|extract| extract.exclude.clone())
@@ -140,6 +140,15 @@ pub fn build_native_plan(
             if prefix.is_empty() || !is_safe_relative_path(Path::new(prefix)) {
                 return Err(NativePlanError::InvalidExclusion(exclusion.clone()));
             }
+        }
+        // Modern LWJGL native JARs declare no exclusions but each carries its own
+        // META-INF; merging several into one directory would collide, and the
+        // metadata is never a native binary.
+        if !exclusions
+            .iter()
+            .any(|item| item.trim_end_matches('/') == "META-INF")
+        {
+            exclusions.push("META-INF/".to_owned());
         }
         archives.push(NativeArchive {
             library: library.name.clone(),

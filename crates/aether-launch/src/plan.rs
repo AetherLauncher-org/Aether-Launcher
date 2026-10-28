@@ -105,9 +105,9 @@ pub fn build_launch_plan(
         if !canonical.starts_with(&canonical_root) {
             return Err(LaunchBuildError::EscapedLibraryPath(absolute));
         }
-        library_jars.push(absolute);
+        library_jars.push(plain_path(&absolute));
     }
-    library_jars.push(options.client_jar.clone());
+    library_jars.push(plain_path(&options.client_jar));
 
     let classpath = std::env::join_paths(&library_jars)
         .map_err(|error| LaunchBuildError::InvalidClasspath(error.to_string()))?
@@ -122,21 +122,23 @@ pub fn build_launch_plan(
     );
     variables.insert(
         "natives_directory".to_owned(),
-        options.natives_directory.to_string_lossy().into_owned(),
+        plain_path(&options.natives_directory)
+            .to_string_lossy()
+            .into_owned(),
     );
     variables.insert(
         "library_directory".to_owned(),
-        library_root.to_string_lossy().into_owned(),
+        plain_path(&library_root).to_string_lossy().into_owned(),
     );
     variables.insert(
         "game_directory".to_owned(),
-        options.working_directory.to_string_lossy().into_owned(),
+        plain_path(&options.working_directory)
+            .to_string_lossy()
+            .into_owned(),
     );
     variables.insert(
         "assets_root".to_owned(),
-        options
-            .game_directory
-            .join("assets")
+        plain_path(&options.game_directory.join("assets"))
             .to_string_lossy()
             .into_owned(),
     );
@@ -173,6 +175,16 @@ pub fn build_launch_plan(
         working_directory: options.working_directory.clone(),
         arguments,
     })
+}
+
+/// Drop the Windows verbatim prefix (\\\\?\\) that canonicalize adds. The JVM
+/// does not resolve classpath entries or library paths written that way.
+fn plain_path(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if !rest.starts_with("UNC\\") => PathBuf::from(rest),
+        _ => path.to_path_buf(),
+    }
 }
 
 fn ensure_file(path: &Path) -> Result<(), LaunchBuildError> {
@@ -252,3 +264,22 @@ fn substitute(
 #[cfg(test)]
 #[path = "plan/plan_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod plain_path_tests {
+    use super::plain_path;
+    use std::path::Path;
+
+    #[test]
+    fn strips_only_the_drive_verbatim_prefix() {
+        assert_eq!(
+            plain_path(Path::new(r"\\?\C:\game\libs")),
+            Path::new(r"C:\game\libs")
+        );
+        assert_eq!(
+            plain_path(Path::new(r"\\?\UNC\server\share")),
+            Path::new(r"\\?\UNC\server\share")
+        );
+        assert_eq!(plain_path(Path::new("/game/libs")), Path::new("/game/libs"));
+    }
+}

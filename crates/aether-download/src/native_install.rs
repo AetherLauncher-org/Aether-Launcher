@@ -251,7 +251,7 @@ pub fn verify_installed_native_archives(
             if byte_budget > MAX_NATIVE_UNCOMPRESSED_BYTES {
                 return Err(NativeInstallError::TooLarge);
             }
-            let key = entry.relative_path.to_string_lossy().to_ascii_lowercase();
+            let key = entry_key(&entry.relative_path);
             if !expected.insert(key) {
                 return Err(NativeInstallError::DuplicateOutput(entry.relative_path));
             }
@@ -314,7 +314,7 @@ pub fn verify_installed_native_archives(
                 let relative = path
                     .strip_prefix(&native_root)
                     .map_err(|_| NativeInstallError::UnsafeDestination)?;
-                if !expected.contains(&relative.to_string_lossy().to_ascii_lowercase()) {
+                if !expected.contains(&entry_key(relative)) {
                     return Err(NativeInstallError::UnexpectedInstalledFile(path));
                 }
             } else {
@@ -323,6 +323,14 @@ pub fn verify_installed_native_archives(
         }
     }
     Ok(())
+}
+
+/// Case-insensitive key with / separators, so zip-style entry paths and
+/// platform paths from a directory walk compare equal on Windows.
+fn entry_key(path: &Path) -> String {
+    path.to_string_lossy()
+        .replace('\\', "/")
+        .to_ascii_lowercase()
 }
 
 #[cfg(test)]

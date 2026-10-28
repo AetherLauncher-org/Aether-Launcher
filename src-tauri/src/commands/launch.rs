@@ -141,6 +141,7 @@ pub async fn start_installed_instance(
         vars.insert("version_type".to_owned(), "release".to_owned());
         vars.insert("clientid".to_owned(), String::new());
         vars.insert("xuid".to_owned(), String::new());
+        vars.insert("auth_xuid".to_owned(), String::new());
         vars.insert("launcher_name".to_owned(), "Aether".to_owned());
         vars.insert(
             "launcher_version".to_owned(),

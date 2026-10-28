@@ -191,3 +191,19 @@ fn unknown_architecture_does_not_guess_a_legacy_classifier() {
         ))
     );
 }
+
+#[test]
+fn modern_natives_always_skip_their_own_meta_inf() {
+    let json = format!(
+        r#"{{
+        "id":"1.21",
+        "libraries":[{{"name":"org.lwjgl:lwjgl:3.3.3:natives-windows","downloads":{{"artifact":{{
+            "path":"org/lwjgl/lwjgl-3.3.3-natives-windows.jar",
+            "sha1":"{SHA}","size":42,"url":"https://example.invalid/windows"
+        }}}}}}]
+    }}"#
+    );
+    let manifest = parse_version_manifest(&json).unwrap();
+    let plan = build_native_plan(&manifest, &environment("windows", "x86_64")).unwrap();
+    assert_eq!(plan.archives[0].exclusions, ["META-INF/"]);
+}

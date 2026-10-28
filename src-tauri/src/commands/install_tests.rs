@@ -201,3 +201,58 @@ fn live_install_of_a_real_version_verifies_end_to_end() {
             .unwrap();
     println!("assets verified: {}", verified.objects_verified);
 }
+
+/// Launch a version previously installed by `live_install...` (same
+/// `AETHER_LIVE_DIR` / `AETHER_LIVE_VERSION`). Opens a real game window.
+#[test]
+#[ignore = "starts a real Minecraft process"]
+fn live_launch_of_an_installed_version_stays_running() {
+    use std::collections::BTreeMap;
+    use std::time::Duration;
+
+    use aether_core::InstanceState;
+    use aether_launch::InstanceLaunchCoordinator;
+
+    let version = std::env::var("AETHER_LIVE_VERSION").unwrap_or_else(|_| "1.16.5".to_owned());
+    let game = PathBuf::from(std::env::var_os("AETHER_LIVE_DIR").expect("AETHER_LIVE_DIR"));
+    let store = Fixture::new();
+    let instance = aether_storage::create_instance(store.root(), "live", &version).unwrap();
+    aether_storage::set_instance_state(&instance.root, &instance, InstanceState::Ready).unwrap();
+
+    let vars = BTreeMap::from([
+        ("auth_player_name".to_owned(), "Player".to_owned()),
+        ("auth_uuid".to_owned(), "0".repeat(32)),
+        ("auth_access_token".to_owned(), "0".to_owned()),
+        ("user_type".to_owned(), "legacy".to_owned()),
+        ("version_type".to_owned(), "release".to_owned()),
+        ("clientid".to_owned(), String::new()),
+        ("xuid".to_owned(), String::new()),
+        ("auth_xuid".to_owned(), String::new()),
+        ("launcher_name".to_owned(), "Aether".to_owned()),
+        ("launcher_version".to_owned(), "0".to_owned()),
+    ]);
+    let runtimes = aether_runtime::discover_java_runtimes();
+    let mut coordinator = InstanceLaunchCoordinator::open(store.root(), &game).unwrap();
+    let started = coordinator
+        .start(
+            instance.id,
+            2048,
+            &runtimes,
+            &super::super::launch::current_environment(),
+            &vars,
+            &[],
+        )
+        .unwrap();
+    println!("started: {started:?}");
+    std::thread::sleep(Duration::from_secs(30));
+    let status = coordinator.status(instance.id).unwrap();
+    let logs = coordinator.drain_logs(instance.id).unwrap();
+    for record in logs.iter().rev().take(15).rev() {
+        println!("log: {record:?}");
+    }
+    let _ = coordinator.stop(instance.id);
+    assert!(
+        format!("{:?}", status.state).contains("Running"),
+        "game did not stay running: {status:?}"
+    );
+}

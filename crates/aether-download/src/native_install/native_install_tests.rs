@@ -263,3 +263,27 @@ fn rejects_symlinked_native_directory_members() {
         Err(NativeInstallError::InvalidInstalledFile(_))
     ));
 }
+
+#[test]
+fn verifies_nested_native_files_with_platform_separators() {
+    let f = Fixture::new();
+    let artifact = f.jar(
+        "native.jar",
+        &[
+            ("META-INF/MANIFEST.MF", b"metadata"),
+            ("windows/x64/org/lwjgl/lwjgl.dll", b"deep"),
+        ],
+    );
+    let archives = [NativeInstallArchive {
+        artifact: &artifact,
+        exclusions: &["META-INF/".to_owned()],
+    }];
+    install_native_archives(&f.game, &f.output, &archives).unwrap();
+    verify_installed_native_archives(&f.game, &f.output, &archives).unwrap();
+
+    fs::write(f.output.join("windows/x64/org/lwjgl/extra.dll"), b"x").unwrap();
+    assert!(matches!(
+        verify_installed_native_archives(&f.game, &f.output, &archives),
+        Err(NativeInstallError::UnexpectedInstalledFile(_))
+    ));
+}
