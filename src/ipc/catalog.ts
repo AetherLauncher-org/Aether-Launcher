@@ -18,14 +18,10 @@ export type MinecraftVersionCatalog = {
 declare module "./call" {
   interface CommandArgs {
     list_minecraft_versions: void;
-    cache_vanilla_version_manifest: { version: string };
-    install_vanilla_client_libraries: { version: string };
   }
 
   interface CommandResults {
     list_minecraft_versions: MinecraftVersionCatalog;
-    cache_vanilla_version_manifest: string;
-    install_vanilla_client_libraries: number;
   }
 }
 
@@ -35,24 +31,4 @@ export function listMinecraftVersions(): Promise<MinecraftVersionCatalog> {
     return Promise.reject(new Error("需要桌面版才能读取官方版本目录"));
   }
   return callCommand("list_minecraft_versions");
-}
-
-/** Cache only the SHA-1-verified official version JSON; this does not install Minecraft. */
-export function cacheVanillaVersionManifest(version: string): Promise<string> {
-  if (!isTauri()) {
-    return Promise.reject(new Error("需要桌面版才能缓存官方版本清单"));
-  }
-  return callCommand("cache_vanilla_version_manifest", { version });
-}
-
-/**
- * Download and SHA-1-verify the client JAR, libraries, native archives and
- * assets of an already cached version. Resolves to the number of verified
- * files. Natives are extracted at launch.
- */
-export function installVanillaClientLibraries(version: string): Promise<number> {
-  if (!isTauri()) {
-    return Promise.reject(new Error("需要桌面版才能安装客户端与依赖库"));
-  }
-  return callCommand("install_vanilla_client_libraries", { version });
 }

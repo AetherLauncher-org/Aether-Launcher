@@ -1,69 +1,70 @@
 import {
+  ArrowDownload24Filled,
+  ArrowDownload24Regular,
+  Box24Filled,
   Box24Regular,
   Home24Filled,
-  Library24Regular,
+  Home24Regular,
+  Person24Filled,
   Person24Regular,
+  Settings24Filled,
   Settings24Regular,
 } from "@fluentui/react-icons";
 import type { ReactElement } from "react";
 
-export type PageId = "home" | "instances" | "library" | "accounts" | "settings";
+export type PageId = "home" | "instances" | "download" | "accounts" | "settings";
 
 export type PageDefinition = {
   id: PageId;
   label: string;
-  icon: ReactElement;
-  /** 页头下方的一句话说明 */
+  /** 页头标题下方的一句话说明 */
   summary: string;
-  /** 功能还没做时，页面里显示的标题和说明 */
-  pendingTitle: string;
-  pendingBody: string;
+  icon: ReactElement;
+  /** 选中时用实心图标，Fluent 的导航惯例 */
+  activeIcon: ReactElement;
 };
 
 export const mainPages: readonly PageDefinition[] = [
   {
     id: "home",
     label: "主页",
-    icon: <Home24Filled />,
-    summary: "实例仍属于你，下载链路也应该看得见",
-    pendingTitle: "",
-    pendingBody: "",
+    summary: "继续上次的游戏，或开始新的冒险",
+    icon: <Home24Regular />,
+    activeIcon: <Home24Filled />,
   },
   {
     id: "instances",
     label: "实例",
+    summary: "每个实例的版本与存档相互独立",
     icon: <Box24Regular />,
-    summary: "每个实例的版本、模组、Java 与启动参数相互隔离",
-    // 这三页已经不再是占位：导入等未完成能力由页面自己的提示承担，
-    // 这里留空，避免同一句说明在 DOM 里出现两次
-    pendingTitle: "",
-    pendingBody: "",
+    activeIcon: <Box24Filled />,
   },
   {
-    id: "library",
-    label: "资源库",
-    icon: <Library24Regular />,
-    summary: "模组、资源包与它们的下载来源",
-    pendingTitle: "",
-    pendingBody: "",
+    id: "download",
+    label: "下载",
+    summary: "从 Mojang 官方安装游戏版本，每个文件都会校验",
+    icon: <ArrowDownload24Regular />,
+    activeIcon: <ArrowDownload24Filled />,
   },
   {
     id: "accounts",
     label: "账户",
+    summary: "用哪个身份进入游戏",
     icon: <Person24Regular />,
-    summary: "微软正版账户与离线账户",
-    pendingTitle: "",
-    pendingBody: "",
+    activeIcon: <Person24Filled />,
   },
 ];
 
 export const settingsPage: PageDefinition = {
   id: "settings",
   label: "设置",
+  summary: "外观、内存、Java 与下载来源",
   icon: <Settings24Regular />,
-  summary: "外观、Java 运行时、内存与下载来源",
-  pendingTitle: "Java 与下载来源设置尚未实现",
-  pendingBody: "Java 运行时选择、内存上限和下载来源的配置还在开发。",
+  activeIcon: <Settings24Filled />,
 };
 
 export const allPages: readonly PageDefinition[] = [...mainPages, settingsPage];
+
+export function findPage(id: PageId): PageDefinition {
+  return allPages.find((page) => page.id === id) ?? allPages[0];
+}

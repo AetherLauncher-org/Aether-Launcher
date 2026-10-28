@@ -133,27 +133,14 @@ export function validateInstanceName(raw: string): string | null {
   return null;
 }
 
-/** 版本校验：不能为空。真正的版本解析在后端，这里只挡住明显的手误。 */
-export function validateInstanceVersion(raw: string): string | null {
-  if (raw.trim().length === 0) {
-    return "请填写游戏版本";
-  }
-  return null;
-}
-
 /**
- * 新建对话框里可选的版本。等下载源与版本清单接上以后换成后端返回的列表；
- * 现在列出几个常见版本，并且允许手动填写。
+ * 封面色相（0–359）。由版本号的字符累加得到，同一个版本永远得到同一个值，
+ * 乘一个质数让相邻版本（1.21 与 1.21.1）的颜色拉开距离。
  */
-export const suggestedVersions: readonly string[] = [
-  "1.21.4",
-  "1.21.1",
-  "1.20.6",
-  "1.20.4",
-  "1.20.1",
-  "1.19.4",
-  "1.18.2",
-  "1.16.5",
-  "1.12.2",
-  "1.8.9",
-];
+export function coverHue(version: string): number {
+  let hash = 7;
+  for (const character of version) {
+    hash = (hash * 31 + character.codePointAt(0)!) % 360;
+  }
+  return (hash * 47) % 360;
+}

@@ -1,28 +1,35 @@
+import { FluentProvider, webLightTheme } from "@fluentui/react-components";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { SettingsPage } from "./SettingsPage";
+import type { MotionPreference } from "../lib/motion";
 import type { ThemePreference } from "../lib/theme";
 import type { PageDefinition } from "../navigation";
 
 const page: PageDefinition = {
   id: "settings",
   label: "设置",
+  summary: "外观、内存、Java 与下载来源",
   icon: <span />,
-  summary: "外观、Java 运行时、内存与下载来源",
-  pendingTitle: "",
-  pendingBody: "",
+  activeIcon: <span />,
 };
 
-function renderSettings(preference: ThemePreference = "dark") {
-  const changes: ThemePreference[] = [];
+function renderSettings(preference: ThemePreference = "dark", motion: MotionPreference = "full") {
+  const themeChanges: ThemePreference[] = [];
+  const motionChanges: MotionPreference[] = [];
   render(
-    <SettingsPage
-      page={page}
-      themePreference={preference}
-      onThemeChange={(next) => changes.push(next)}
-    />,
+    <FluentProvider theme={webLightTheme}>
+      <SettingsPage
+        page={page}
+        themePreference={preference}
+        onThemeChange={(next) => themeChanges.push(next)}
+        motion={motion}
+        onMotionChange={(next) => motionChanges.push(next)}
+        version="0.1.0"
+      />
+    </FluentProvider>,
   );
-  return changes;
+  return { themeChanges, motionChanges };
 }
 
 afterEach(() => {
@@ -39,24 +46,47 @@ describe("SettingsPage", () => {
   });
 
   it("still reports colour scheme changes", () => {
-    const changes = renderSettings();
+    const { themeChanges } = renderSettings();
 
     fireEvent.click(screen.getByRole("radio", { name: "浅色" }));
 
-    expect(changes).toEqual(["light"]);
+    expect(themeChanges).toEqual(["light"]);
   });
 
-  it("shows the Java section with an empty state outside Tauri", () => {
+  it("has a switch for interface animation that reflects and changes the preference", () => {
+    const { motionChanges } = renderSettings("dark", "full");
+
+    const toggle = screen.getByRole("switch", { name: "界面动画" });
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+
+    expect(motionChanges).toEqual(["reduced"]);
+  });
+
+  it("shows animation as off when reduced", () => {
+    renderSettings("dark", "reduced");
+
+    expect(screen.getByRole("switch", { name: "界面动画" })).not.toBeChecked();
+  });
+
+  it("shows the Java section with an empty state outside Tauri, without promising it affects launch", () => {
     renderSettings();
 
-    expect(
-      screen.getByRole("heading", { name: "Java 运行时" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Java 运行时" })).toBeInTheDocument();
     expect(screen.getByText("暂未检测到 Java")).toBeInTheDocument();
     expect(screen.getByText(/需要桌面版才能扫描本机的 Java 安装/)).toBeInTheDocument();
+    expect(screen.getByText(/暂不影响启动/)).toBeInTheDocument();
   });
 
-  it("shows the memory section with the default value", () => {
+  it("states the download source and the app version", () => {
+    renderSettings();
+
+    expect(screen.getByRole("heading", { name: "下载来源" })).toBeInTheDocument();
+    expect(screen.getByText("Mojang 官方")).toBeInTheDocument();
+    expect(screen.getByText("版本 0.1.0")).toBeInTheDocument();
+  });
+
+  it("shows the memory section with the default value as the only memory control", () => {
     renderSettings();
 
     expect(screen.getByRole("heading", { name: "内存" })).toBeInTheDocument();

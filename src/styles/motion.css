@@ -1,0 +1,122 @@
+/*
+ * 动效。时长和曲线用 Fluent 的动效令牌（--durationNormal、--curveDecelerateMid 等），
+ * 和组件库自带的过渡保持同一套节奏：进入用减速曲线（先快后慢），位置变化用缓入缓出。
+ *
+ * 关闭方式有两个：设置里的「界面动画」开关（html[data-motion="reduced"]），
+ * 以及系统的「减少动态效果」。两者都把所有动画和过渡压到几乎瞬间，但保留最终状态。
+ */
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--colorBrandBackground) 45%, transparent);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.page {
+  animation: page-enter var(--durationSlow) var(--curveDecelerateMid) both;
+}
+
+/* 卡片依次浮现：--i 是它在列表里的序号 */
+.instance-card,
+.account-card,
+.featured-card,
+.stat-card {
+  animation: rise var(--durationSlow) var(--curveDecelerateMid) both;
+  animation-delay: calc(var(--i, 0) * 45ms + 60ms);
+}
+
+/* 版本列表有几百行，不逐行错开，整体淡入即可 */
+.version-list {
+  animation: fade-in var(--durationSlow) var(--curveEasyEase) both;
+}
+
+.detail {
+  animation: slide-in var(--durationSlow) var(--curveDecelerateMid) both;
+}
+
+.hero-card,
+.install-card,
+.success-card {
+  animation: rise var(--durationSlow) var(--curveDecelerateMid) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+html[data-motion="reduced"] *,
+html[data-motion="reduced"] *::before,
+html[data-motion="reduced"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}

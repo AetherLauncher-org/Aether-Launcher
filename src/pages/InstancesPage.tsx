@@ -1,33 +1,17 @@
+import { Button, MessageBar, MessageBarActions, MessageBarBody, SearchBox, Text } from "@fluentui/react-components";
 import {
-  Badge,
-  Button,
-  SearchBox,
-  Text,
-  Tooltip,
-} from "@fluentui/react-components";
-import {
-  Add24Regular,
-  ArrowSync24Regular,
-  BoxMultiple24Regular,
+  ArrowDownload20Regular,
+  ArrowSync20Regular,
+  Box24Regular,
   Warning24Regular,
 } from "@fluentui/react-icons";
-import { useCallback, useMemo, useState } from "react";
-import { CreateInstanceDialog } from "../components/CreateInstanceDialog";
+import { useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { EmptyState } from "../components/EmptyState";
-import { InstanceLaunchPanel } from "../components/InstanceLaunchPanel";
-import { InstanceList } from "../components/InstanceList";
-import {
-  DesktopOnlyNotice,
-  ErrorState,
-  ListSkeleton,
-} from "../components/PageState";
+import { GameControls } from "../components/GameControls";
+import { InstanceCover } from "../components/InstanceCover";
 import { PageHeader } from "../components/PageHeader";
-import {
-  emptyInstanceListing,
-  isTauri,
-  listInstances,
-} from "../ipc";
-import type { InstanceListing, InstanceSummary } from "../ipc";
+import { DesktopOnlyNotice, ErrorState } from "../components/PageState";
 import {
   describeSkippedReason,
   filterInstances,
@@ -35,94 +19,58 @@ import {
   summariseInstances,
 } from "../lib/instances";
 import { formatMemoryMiB } from "../lib/memory";
-import { useQuery } from "../lib/query";
-import { loadJavaRuntimeKey, loadMemoryMiB } from "../lib/settings";
+import { loadMemoryMiB } from "../lib/settings";
 import type { PageDefinition } from "../navigation";
+import { useAccounts } from "../state/accounts";
+import { useInstances } from "../state/instances";
+import { useNavigation } from "../state/navigation";
 
 type InstancesPageProps = {
   page: PageDefinition;
 };
 
 /**
- * 实例页。
- *
- * 数据来自 `list_instances`；浏览器预览里没有 Tauri，返回空列表并显示
- * 「需要桌面版」的提示，不把环境差异当成错误。
+ * 实例页：卡片网格。每张卡片有封面、名称、版本和启动／停止按钮。
+ * 实例由「下载」页的安装流程创建，这里不提供空实例的创建入口。
  */
 export function InstancesPage({ page }: InstancesPageProps) {
-  const desktop = isTauri();
+  const { desktop, status, instances, skipped, error, reload } = useInstances();
+  const { book } = useAccounts();
+  const { navigate } = useNavigation();
   const [query, setQuery] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [listing, setListing] = useState<InstanceListing>(emptyInstanceListing);
   const [memoryMiB] = useState(loadMemoryMiB);
-  const [javaKey] = useState(loadJavaRuntimeKey);
-
-  const load = useCallback(async () => {
-    const result = await listInstances();
-    setListing(result);
-    return result;
-  }, []);
-
-  const { status, error, reload } = useQuery(load, desktop);
-
-  // 浏览器预览下 useQuery 不运行，直接用空列表展示
-  const instances = useMemo(
-    () => (desktop ? listing.instances : []),
-    [desktop, listing.instances],
-  );
-  const skipped = useMemo(
-    () => (desktop ? listing.skipped : []),
-    [desktop, listing.skipped],
-  );
 
   const visible = useMemo(
     () => sortInstances(filterInstances(instances, query)),
     [instances, query],
   );
 
-  const handleCreated = useCallback(
-    (created: InstanceSummary) => {
-      setListing((previous) => ({
-        ...previous,
-        instances: [...previous.instances, created],
-      }));
-    },
-    [],
+  const toDownload = (
+    <Button appearance="primary" icon={<ArrowDownload20Regular />} onClick={() => navigate("download")}>
+      安装新版本
+    </Button>
   );
-
-  // 徽章只报数量，空状态标题才负责「还没有实例」这句话，避免同一句文案出现两次
-  const badgeText = instances.length === 0 ? "0 个实例" : summariseInstances(instances);
 
   return (
     <>
-      <PageHeader
-        title={page.label}
-        description={page.summary}
-        action={
-          <Button
-            appearance="primary"
-            icon={<Add24Regular />}
-            disabled={!desktop}
-            onClick={() => setDialogOpen(true)}
-          >
-            创建实例
-          </Button>
-        }
-      />
+      <PageHeader title={page.label} description={page.summary} action={toDownload} />
 
-      {!desktop ? (
-        <DesktopOnlyNotice body="浏览器预览读不到本机实例。用桌面版可以扫描、创建和启动实例。" />
+      {!desktop ? <DesktopOnlyNotice body="浏览器预览读不到本机实例。用桌面版可以安装、管理和启动实例。" /> : null}
+
+      {desktop && instances.length > 0 && book.accounts.length === 0 ? (
+        <MessageBar intent="info" className="page-notice">
+          <MessageBarBody>还没有账户，添加一个离线账户后才能启动游戏。</MessageBarBody>
+          <MessageBarActions>
+            <Button size="small" onClick={() => navigate("accounts")}>
+              去添加
+            </Button>
+          </MessageBarActions>
+        </MessageBar>
       ) : null}
 
-      <section className="status-panel list-panel" aria-labelledby="instances-heading">
-        <div className="list-toolbar">
-          <div className="toolbar-heading">
-            <Text id="instances-heading" as="h2" size={400} weight="semibold">
-              本机实例
-            </Text>
-            <Badge appearance="outline">{badgeText}</Badge>
-          </div>
-
+      {instances.length > 0 ? (
+        <div className="toolbar">
+          <Text className="muted">{summariseInstances(instances)}</Text>
           <div className="toolbar-actions">
             <SearchBox
               className="filter-field"
@@ -131,114 +79,79 @@ export function InstancesPage({ page }: InstancesPageProps) {
               value={query}
               onChange={(_, data) => setQuery(data.value)}
             />
-            <Tooltip
-              content="导入现有 .minecraft 或其他启动器的实例还在开发，完成后这里可以一键导入"
-              relationship="description"
-            >
-              <Button icon={<Add24Regular />} disabled aria-label="导入实例">
-                导入
-              </Button>
-            </Tooltip>
             <Button
-              icon={<ArrowSync24Regular />}
+              appearance="subtle"
+              icon={<ArrowSync20Regular />}
+              aria-label="刷新实例列表"
+              disabled={status === "loading"}
               onClick={reload}
-              disabled={!desktop || status === "loading"}
-            >
-              刷新
-            </Button>
+            />
           </div>
         </div>
+      ) : null}
 
-        {status === "error" && error ? (
-          <ErrorState
-            title="读取实例失败"
-            message={error}
-            onRetry={reload}
-            retryLabel="重新读取"
-          />
-        ) : status === "loading" && instances.length === 0 ? (
-          <ListSkeleton rows={3} />
-        ) : instances.length === 0 ? (
-          <EmptyState
-            icon={<BoxMultiple24Regular />}
-            title="还没有实例"
-            body={
-              desktop
-                ? "创建一个实例开始，或者等导入功能上线后从现有启动器导入。"
-                : "浏览器预览里无法读取本机实例，打开桌面版即可看到列表。"
-            }
-            action={
-              <Button
-                appearance="primary"
-                icon={<Add24Regular />}
-                disabled={!desktop}
-                onClick={() => setDialogOpen(true)}
-              >
-                创建实例
-              </Button>
-            }
-          />
-        ) : visible.length === 0 ? (
-          <EmptyState
-            icon={<Warning24Regular />}
-            title="没有匹配的实例"
-            body={`没有名称或版本包含「${query.trim()}」的实例，换个关键词试试。`}
-          />
-        ) : (
-          <InstanceList
-            instances={visible}
-            memoryMiB={memoryMiB}
-            javaLabel={javaKey === null ? null : formatJavaLabel(javaKey)}
-          />
-        )}
-        {/*
-          启动面板：列表行本身很紧凑，`InstanceList` 也不承载额外内容，
-          所以在列表下方按实例逐个挂面板，而不是塞进行内。
-          面板是每个实例唯一的启动/停止入口。
-        */}
-        {visible.length > 0 ? (
-          <div className="launch-panel-grid">
-            {visible.map((instance) => (
-              <InstanceLaunchPanel
-                key={instance.id}
-                instanceId={instance.id}
-                initialState={instance.state}
-              />
+      {status === "error" && error ? (
+        <ErrorState title="读取实例失败" message={error} onRetry={reload} retryLabel="重新读取" />
+      ) : status === "loading" && instances.length === 0 ? (
+        <div className="instance-grid" aria-hidden="true">
+          {[0, 1, 2].map((index) => (
+            <div className="instance-card skeleton-card" key={index} />
+          ))}
+        </div>
+      ) : instances.length === 0 ? (
+        <EmptyState
+          icon={<Box24Regular />}
+          title="还没有实例"
+          body={
+            desktop
+              ? "到「下载」页选一个游戏版本，安装完成后会自动创建实例。"
+              : "浏览器预览里无法读取本机实例，打开桌面版即可看到列表。"
+          }
+          action={desktop ? toDownload : undefined}
+        />
+      ) : visible.length === 0 ? (
+        <EmptyState
+          icon={<Warning24Regular />}
+          title="没有匹配的实例"
+          body={`没有名称或版本包含「${query.trim()}」的实例，换个关键词试试。`}
+        />
+      ) : (
+        <ul className="instance-grid">
+          {visible.map((instance, index) => (
+            <li
+              className="instance-card"
+              key={instance.id}
+              style={{ "--i": index } as CSSProperties}
+            >
+              <InstanceCover version={instance.version} />
+              <div className="instance-card-body">
+                <Text weight="semibold" size={400} className="instance-card-name" truncate wrap={false}>
+                  {instance.name}
+                </Text>
+                <Text className="muted instance-card-meta" size={200}>
+                  Vanilla {instance.version} · 内存 {formatMemoryMiB(memoryMiB)}
+                </Text>
+                <GameControls instance={instance} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {skipped.length > 0 ? (
+        <div className="skipped-block">
+          <Text weight="semibold">有 {skipped.length} 条记录没读出来</Text>
+          <ul className="skipped-list">
+            {skipped.map((item) => (
+              <li key={item.id}>
+                <Text className="muted">
+                  {item.id}：{describeSkippedReason(item.reason)}
+                </Text>
+              </li>
             ))}
-          </div>
-        ) : null}
-
-        {skipped.length > 0 ? (
-          <div className="skipped-block">
-            <Text weight="semibold">有 {skipped.length} 条记录没读出来</Text>
-            <ul className="skipped-list">
-              {skipped.map((item) => (
-                <li key={item.id}>
-                  <Text className="muted">
-                    {item.id}：{describeSkippedReason(item.reason)}
-                  </Text>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </section>
-
-      <CreateInstanceDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onCreated={handleCreated}
-      />
-
-      <Text className="page-footnote muted">
-        默认内存 {formatMemoryMiB(memoryMiB)}。当前仅支持启动官方 .minecraft 中已安装且已验证的现代版本（离线单人模式）；验证安装后再点击启动。
-      </Text>
+          </ul>
+        </div>
+      ) : null}
     </>
   );
-}
-
-/** `localStorage` 里存的是完整路径，这里只取文件名所在的最后一段。 */
-function formatJavaLabel(key: string): string {
-  const parts = key.split(/[\\/]/).filter((part) => part.length > 0);
-  return parts.length > 0 ? parts[parts.length - 1] : key;
 }

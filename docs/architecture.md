@@ -44,23 +44,26 @@ graph LR
 ```text
 src/
 ├── main.tsx          入口
-├── App.tsx           外壳：主题、侧边栏、页面切换
+├── App.tsx           根：主题、Provider、页面切换
 ├── navigation.tsx    页面清单（id、名称、图标、说明）
-├── components/       Sidebar、PageHeader、PendingPanel（「尚未实现」提示）
-├── pages/            HomePage、SettingsPage；功能未做的页面共用 PlaceholderPage
-├── ipc/              对后端命令的类型化封装
-└── lib/              纯函数与小 hook（问候语、配色方案）
+├── shell/            自绘标题栏、可收起的导航栏、Logo
+├── state/            应用层状态：导航、账户、实例列表、安装任务、游戏会话
+├── pages/            主页、实例、下载、账户、设置
+├── components/       版本总览与详情、安装进度、启动控件、对话框等
+├── ipc/              对后端命令和事件的类型化封装
+├── lib/              纯函数与小 hook（版本、安装进度、账户、动效、品牌主题）
+└── styles/           base / shell / pages / motion 四份样式
 ```
 
-没有路由库，页面切换就是 `App` 里的一个 state。
+没有路由库，页面切换就是 `App` 里的一个 state（`state/navigation.ts` 把它共享给页面）。窗口是无边框的，标题栏、导航栏、动效和 Mica 的细节见 [`docs/design/ui-shell.md`](design/ui-shell.md)。
 
-配色方案有深色、浅色、跟随系统三种，默认深色。选择保存在 `localStorage` 的 `aether.theme`。`App` 把解析后的结果同时交给 Fluent 的 `FluentProvider`（组件配色）和 `.app-shell` 的 `data-theme`（`App.css` 里的颜色变量）。新增样式时颜色走 `App.css` 顶部的变量，不要写死色值。
+配色方案有深色、浅色、跟随系统三种，默认深色。选择保存在 `localStorage` 的 `aether.theme`。`App` 把解析后的结果交给 Fluent 的 `FluentProvider`（组件配色），同时写到 `<html>` 的 `data-theme`。样式里的颜色、圆角、间距、动效时长全部取自 Fluent 的设计令牌（`var(--colorNeutralBackground1)` 之类），不要写死色值。`FluentProvider` 的 `className` 会同时落到它挂 Tooltip、Dialog 的门户根上，所以那个类只能定义变量，不能带尺寸和背景。
 
 ## IPC 边界
 
 - 前端只通过 `src/ipc/` 调用后端，组件里不直接 `invoke`。
-- 命令在 `src-tauri/src/lib.rs` 里用 `#[tauri::command]` 定义，并列进 `generate_handler!`。目前有 `application_info` 和 `list_java_runtimes`。
-- 窗口权限在 `src-tauri/capabilities/default.json`，目前只有 `core:default`。这个目录在 CODEOWNERS 里单独列出。
+- 命令在 `src-tauri/src/lib.rs` 里用 `#[tauri::command]` 定义，并列进 `generate_handler!`。目前有 `application_info`、`list_java_runtimes`、`list_minecraft_versions`、`list_instances`、`install_vanilla_version`、`cancel_vanilla_install`、`start_installed_instance`、`stop_installed_instance` 和 `game_status`。安装进度走 `install://progress` 事件。
+- 窗口权限在 `src-tauri/capabilities/default.json`：`core:default`，加上自绘标题栏需要的最小化、最大化、关闭、拖动和设置主题。这个目录在 CODEOWNERS 里单独列出。
 - 命令是窄化的领域操作（导入这个实例、启动这个实例），参数用类型表达。不提供执行任意命令、读写任意路径的入口。
 
 新增一个命令：
@@ -70,7 +73,7 @@ src/
 3. 需要新权限时修改 `capabilities/`。
 4. 在 `src/ipc/index.ts` 的 `CommandResults` 里登记命令名和返回类型，再加一个封装函数和测试。
 
-`call` 目前只支持无参数命令，第一个带参数的命令出现时一起扩展。
+`callCommand`（`src/ipc/call.ts`）按 `CommandArgs` / `CommandResults` 两张登记表检查命令名、参数和返回值，各领域的命令登记在自己的文件里。
 
 Java 发现命令 `list_java_runtimes` 是只读且无参数的 IPC：Tauri 使用 `spawn_blocking` 调用 `aether_runtime::discover_java_runtimes`，避免阻塞窗口线程。返回字段统一采用 camelCase（`executable`、`majorVersion`、`architecture`、`vendor`），未识别到安装时返回空数组；任务内部失败则返回错误。前端仅通过 `src/ipc/index.ts` 的 `listJavaRuntimes()` 调用。该命令不会接受来自前端的任意可执行文件路径。
 

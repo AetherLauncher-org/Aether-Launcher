@@ -88,3 +88,42 @@ export function saveJavaRuntimeKey(key: string): void {
     // 存储不可用时只在本次运行内生效
   }
 }
+
+const lastPlayedStorageKey = "aether.lastPlayed";
+
+/** 最近一次启动的实例 ID，主页用它决定「继续游戏」显示哪个实例。 */
+export function loadLastPlayedId(): string | null {
+  try {
+    const stored = window.localStorage.getItem(lastPlayedStorageKey);
+    return stored !== null && stored.length > 0 ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastPlayedId(id: string): void {
+  try {
+    window.localStorage.setItem(lastPlayedStorageKey, id);
+  } catch {
+    // 存储不可用时只在本次运行内生效
+  }
+}
+
+const navCollapsedStorageKey = "aether.navCollapsed";
+
+/** 侧边栏是否收起。默认展开。 */
+export function loadNavCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(navCollapsedStorageKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveNavCollapsed(collapsed: boolean): void {
+  try {
+    window.localStorage.setItem(navCollapsedStorageKey, collapsed ? "1" : "0");
+  } catch {
+    // 存储不可用时只在本次运行内生效
+  }
+}

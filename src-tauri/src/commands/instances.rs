@@ -1,9 +1,9 @@
-//! Instance listing and creation commands.
+//! Instance listing command.
 //!
 //! The store root is resolved by the backend from the application data
 //! directory, so the frontend never chooses a path on disk. Listing tolerates
-//! individual broken records and reports why they were skipped; creation only
-//! accepts a display name and a version identifier.
+//! individual broken records and reports why they were skipped. Instances are
+//! created by the installer (`install::install_vanilla_version`).
 
 use std::path::PathBuf;
 
@@ -25,7 +25,7 @@ pub struct InstanceSummary {
 }
 
 impl InstanceSummary {
-    fn from_instance(instance: &GameInstance) -> Self {
+    pub(super) fn from_instance(instance: &GameInstance) -> Self {
         Self {
             id: instance.id.to_string(),
             name: instance.name.clone(),
@@ -98,23 +98,6 @@ pub(crate) async fn list_instances(app: tauri::AppHandle) -> Result<InstanceList
     })
     .await
     .map_err(|error| format!("instance listing task failed: {error}"))?
-}
-
-#[tauri::command]
-pub(crate) async fn create_instance(
-    app: tauri::AppHandle,
-    name: String,
-    version: String,
-) -> Result<InstanceSummary, String> {
-    let root = instance_store_root(&app)?;
-
-    tauri::async_runtime::spawn_blocking(move || {
-        aether_storage::create_instance(&root, &name, &version)
-            .map(|instance| InstanceSummary::from_instance(&instance))
-            .map_err(|error| format!("cannot create instance: {error}"))
-    })
-    .await
-    .map_err(|error| format!("instance creation task failed: {error}"))?
 }
 
 #[cfg(test)]

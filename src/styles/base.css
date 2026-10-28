@@ -1,0 +1,112 @@
+/*
+ * 基础样式。颜色、圆角、间距、字号、动效时长全部取自 Fluent 的设计令牌
+ * （FluentProvider 会把它们注入为 CSS 变量，例如 --colorNeutralBackground1），
+ * 这里不写死任何色值，唯一的例外是实色回退时的窗口底色和关闭按钮的红色。
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+html {
+  color-scheme: light dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+body {
+  min-width: 320px;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* 实色回退：不是 Windows 11（没有 Mica）时窗口底色由我们自己铺 */
+html[data-material="solid"][data-theme="light"],
+html[data-material="solid"][data-theme="light"] body {
+  background: #f3f3f3;
+}
+
+html[data-material="solid"][data-theme="dark"],
+html[data-material="solid"][data-theme="dark"] body {
+  background: #202020;
+}
+
+.app-root {
+  --card-bg: color-mix(in srgb, var(--colorNeutralForeground1) 4%, transparent);
+  --card-bg-hover: color-mix(in srgb, var(--colorNeutralForeground1) 7%, transparent);
+  --card-stroke: color-mix(in srgb, var(--colorNeutralForeground1) 10%, transparent);
+  --layer-bg: var(--colorNeutralBackground1);
+  --mono: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+
+  /*
+   * FluentProvider 会把 className 同样加到它挂 Tooltip、Dialog 的「门户根」上。
+   * 这里只定义变量，并且不生成盒子（display: contents）：自定义变量和字体、前景色
+   * 照样沿 DOM 继承给所有子元素，但门户根不会因为宽高 100% 盖住整个窗口。
+   * 真正占满窗口的是里面的 .app-shell。
+   */
+  display: contents;
+}
+
+/* Mica：内容层半透明，让材质透出一点点 */
+html[data-material="mica"] .app-root {
+  --layer-bg: color-mix(in srgb, var(--colorNeutralBackground1) 62%, transparent);
+}
+
+.muted {
+  color: var(--colorNeutralForeground3);
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 细滚动条，悬停时才加深，贴近 Windows 11 的覆盖式滚动条 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--colorNeutralForeground1) 28%, transparent) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--colorNeutralForeground1) 28%, transparent);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--colorNeutralForeground1) 48%, transparent);
+  background-clip: padding-box;
+}

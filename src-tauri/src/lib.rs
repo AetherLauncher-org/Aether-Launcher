@@ -56,17 +56,17 @@ async fn list_java_runtimes() -> Result<Vec<JavaRuntimeInfo>, String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(commands::launch::LaunchState::default())
+        .manage(commands::install::InstallState::default())
         .invoke_handler(tauri::generate_handler![
             application_info,
             list_java_runtimes,
             commands::catalog::list_minecraft_versions,
-            commands::vanilla::cache_vanilla_version_manifest,
-            commands::install::install_vanilla_client_libraries,
+            commands::install::install_vanilla_version,
+            commands::install::cancel_vanilla_install,
             commands::instances::list_instances,
-            commands::instances::create_instance,
-            commands::launch::activate_installed_instance,
             commands::launch::start_installed_instance,
             commands::launch::stop_installed_instance,
+            commands::launch::game_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

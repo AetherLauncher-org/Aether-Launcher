@@ -18,12 +18,10 @@ import { isTauri } from "./index";
 declare module "./call" {
   interface CommandArgs {
     list_instances: void;
-    create_instance: { name: string; version: string };
   }
 
   interface CommandResults {
     list_instances: InstanceListing;
-    create_instance: InstanceSummary;
   }
 }
 
@@ -53,11 +51,6 @@ export const emptyInstanceListing: InstanceListing = {
   skipped: [],
 };
 
-export type CreateInstanceInput = {
-  name: string;
-  version: string;
-};
-
 /**
  * 列出本机实例。
  *
@@ -69,14 +62,4 @@ export async function listInstances(): Promise<InstanceListing> {
     return emptyInstanceListing;
   }
   return callCommand("list_instances");
-}
-
-/** 新建一个实例。非桌面版会 reject，调用方负责把提示显示出来。 */
-export async function createInstance(
-  input: CreateInstanceInput,
-): Promise<InstanceSummary> {
-  return callCommand("create_instance", {
-    name: input.name.trim(),
-    version: input.version.trim(),
-  });
 }

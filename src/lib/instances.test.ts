@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { InstanceSummary } from "../ipc";
 import {
+  coverHue,
   describeInstanceState,
   describeSkippedReason,
   filterInstances,
   sortInstances,
   summariseInstances,
   validateInstanceName,
-  validateInstanceVersion,
 } from "./instances";
 
 function instance(overrides: Partial<InstanceSummary> = {}): InstanceSummary {
@@ -171,12 +171,18 @@ describe("validateInstanceName", () => {
   });
 });
 
-describe("validateInstanceVersion", () => {
-  it("accepts a version identifier", () => {
-    expect(validateInstanceVersion("1.21.1")).toBeNull();
+describe("coverHue", () => {
+  it("is stable for one version and inside the hue range", () => {
+    expect(coverHue("1.21.1")).toBe(coverHue("1.21.1"));
+    for (const version of ["1.21.1", "24w14a", "1.8.9", "a"]) {
+      const hue = coverHue(version);
+      expect(hue).toBeGreaterThanOrEqual(0);
+      expect(hue).toBeLessThan(360);
+    }
   });
 
-  it("rejects a blank version", () => {
-    expect(validateInstanceVersion("  ")).not.toBeNull();
+  it("separates neighbouring versions", () => {
+    expect(coverHue("1.21")).not.toBe(coverHue("1.21.1"));
+    expect(coverHue("1.20.1")).not.toBe(coverHue("1.20.4"));
   });
 });

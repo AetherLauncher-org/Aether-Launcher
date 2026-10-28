@@ -13,7 +13,6 @@ use aether_download::transport::{HttpTransport, TransportRequest};
 use aether_download::verify_reader;
 use aether_manifest::catalog::VersionCatalog;
 use aether_manifest::parse_version_manifest;
-use tauri::Manager;
 
 use super::catalog::fetch_catalog;
 
@@ -183,31 +182,6 @@ pub(super) fn prepare_version(
     let bytes = fetch_verified_metadata(transport, &catalog, version)?;
     cache_verified_metadata(game_root, version, &bytes, &digest)?;
     Ok(version.to_owned())
-}
-
-/// Caches only a verified version JSON under the launcher-owned game directory.
-/// It does not download the client, mark an instance ready, or touch .minecraft.
-#[tauri::command]
-pub async fn cache_vanilla_version_manifest(
-    app: tauri::AppHandle,
-    version: String,
-) -> Result<String, String> {
-    let base = app
-        .path()
-        .app_data_dir()
-        .map_err(|_| "application data directory is unavailable".to_owned())?;
-    tauri::async_runtime::spawn_blocking(move || {
-        fs::create_dir_all(&base)
-            .map_err(|_| "cannot prepare application data directory".to_owned())?;
-        let game_root = base.join("game");
-        let transport = aether_download::transport::KernelHttpTransport::new(
-            aether_download::transport::http::UreqKernel::new(),
-        )
-        .with_max_bytes(MAX_VERSION_JSON_BYTES as u64);
-        prepare_version(&transport, &game_root, &version)
-    })
-    .await
-    .map_err(|_| "official version caching task failed".to_owned())?
 }
 
 #[cfg(test)]

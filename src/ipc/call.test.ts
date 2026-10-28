@@ -23,21 +23,20 @@ describe("callCommand", () => {
   });
 
   it("passes the arguments as a single camelCase object", async () => {
-    vi.mocked(invoke).mockResolvedValue({
+    vi.mocked(invoke).mockResolvedValue(null);
+
+    await callCommand("start_installed_instance", {
       id: "a",
-      name: "Survival",
-      version: "1.21.1",
-      state: "ready",
+      offlineName: "Steve",
+      memoryMib: 4096,
+      accountUuid: null,
     });
 
-    await callCommand("create_instance", {
-      name: "Survival",
-      version: "1.21.1",
-    });
-
-    expect(invoke).toHaveBeenCalledWith("create_instance", {
-      name: "Survival",
-      version: "1.21.1",
+    expect(invoke).toHaveBeenCalledWith("start_installed_instance", {
+      id: "a",
+      offlineName: "Steve",
+      memoryMib: 4096,
+      accountUuid: null,
     });
   });
 

@@ -1,190 +1,205 @@
 import {
   Badge,
   Button,
-  Field,
-  Input,
+  Dialog,
+  DialogActions,
+  DialogBody,
+  DialogContent,
+  DialogSurface,
+  DialogTitle,
   Text,
   Tooltip,
 } from "@fluentui/react-components";
 import {
-  Add24Regular,
-  Delete24Regular,
+  Add20Regular,
+  Checkmark16Filled,
+  Delete20Regular,
   Person24Regular,
   ShieldLock24Regular,
 } from "@fluentui/react-icons";
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type { CSSProperties } from "react";
+import { AccountAvatar } from "../components/AccountAvatar";
+import { AddOfflineAccountDialog } from "../components/AddOfflineAccountDialog";
+import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
 import { describeLoginStatus, startMicrosoftLogin } from "../ipc";
 import type { MicrosoftLoginStatus } from "../ipc";
-import {
-  addOfflineAccount,
-  maxPlayerNameLength,
-  minPlayerNameLength,
-  removeOfflineAccount,
-  summariseOfflineAccounts,
-} from "../lib/accounts";
+import { describeUuidMode, formatUuid, summariseAccounts } from "../lib/accounts";
 import type { OfflineAccount } from "../lib/accounts";
 import type { PageDefinition } from "../navigation";
+import { useAccounts } from "../state/accounts";
 
 type AccountsPageProps = {
   page: PageDefinition;
 };
 
 /**
- * 账户页。
- *
- * 微软账户：按钮会问 `startMicrosoftLogin()` 现在能不能登录，并把结果
- * 作为一条说明显示出来——不会出现「点了没反应」。
- * 离线账户：纯前端状态，可以真的添加和删除，刷新页面后不保留。
- *
- * 界面上不显示任何令牌。微软登录流程完成后，这里也只应该显示用户名与头像。
+ * 账户页。离线账户保存在本机并在重启后保留；点「添加」弹出对话框，
+ * 在里面填用户名并选择 UUID 格式。微软正版登录的流程还没接通，
+ * 按钮会如实说明状态，而不是点了没反应。界面不显示任何令牌。
  */
 export function AccountsPage({ page }: AccountsPageProps) {
-  const [accounts, setAccounts] = useState<OfflineAccount[]>([]);
-  const [draft, setDraft] = useState("");
-  const [draftError, setDraftError] = useState<string | null>(null);
-  const [loginStatus, setLoginStatus] = useState<MicrosoftLoginStatus | null>(
-    null,
-  );
+  const { book, active, select, remove } = useAccounts();
+  const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<OfflineAccount | null>(null);
+  const [loginStatus, setLoginStatus] = useState<MicrosoftLoginStatus | null>(null);
   const [loginPending, setLoginPending] = useState(false);
-
-  const handleAdd = (event: FormEvent) => {
-    event.preventDefault();
-    const result = addOfflineAccount(accounts, draft);
-    if (!result.ok) {
-      setDraftError(result.error);
-      return;
-    }
-    setAccounts(result.accounts);
-    setDraft("");
-    setDraftError(null);
-  };
 
   const handleMicrosoft = async () => {
     setLoginPending(true);
-    const status = await startMicrosoftLogin();
-    setLoginStatus(status);
+    setLoginStatus(await startMicrosoftLogin());
     setLoginPending(false);
   };
 
+  const addButton = (
+    <Button appearance="primary" icon={<Add20Regular />} onClick={() => setAdding(true)}>
+      添加离线账户
+    </Button>
+  );
+
   return (
     <>
-      <PageHeader title={page.label} description={page.summary} />
+      <PageHeader title={page.label} description={page.summary} action={addButton} />
 
-      <section className="account-grid" aria-label="账户">
-        <article className="status-panel account-card">
-          <div className="panel-heading">
-            <Text as="h2" size={400} weight="semibold">
-              微软账户
-            </Text>
-            <Badge appearance="tint" color="informative">
-              正版
-            </Badge>
-          </div>
-          <Text className="muted">
-            使用微软账户登录，可以在正版服务器上验证身份。令牌只保存在本机，
-            不会显示在界面上。
+      <section aria-labelledby="accounts-heading" className="section">
+        <div className="section-heading">
+          <Text id="accounts-heading" as="h2" size={500} weight="semibold">
+            本机账户
           </Text>
+          <Text className="muted">{summariseAccounts(book.accounts)}</Text>
+        </div>
 
-          <div className="account-actions">
-            <Button
-              appearance="primary"
-              onClick={() => void handleMicrosoft()}
-              disabled={loginPending}
-            >
+        {book.accounts.length === 0 ? (
+          <EmptyState
+            icon={<Person24Regular />}
+            title="还没有账户"
+            body="添加一个离线账户，就可以启动游戏了。离线账户只在本机使用，适合单机和局域网。"
+            action={addButton}
+          />
+        ) : (
+          <ul className="account-grid">
+            {book.accounts.map((account, index) => {
+              const isActive = active?.id === account.id;
+              return (
+                <li
+                  key={account.id}
+                  className={`account-card${isActive ? " active" : ""}`}
+                  style={{ "--i": index } as CSSProperties}
+                >
+                  <AccountAvatar name={account.name} size={48} />
+                  <div className="account-card-body">
+                    <div className="account-card-title">
+                      <Text weight="semibold" size={400} truncate wrap={false}>
+                        {account.name}
+                      </Text>
+                      <Badge appearance="outline" size="small">
+                        离线
+                      </Badge>
+                      {isActive ? (
+                        <Badge appearance="tint" color="brand" size="small">
+                          当前使用
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <Text size={200} className="muted">
+                      UUID：{describeUuidMode(account.uuidMode).label}
+                    </Text>
+                    {account.uuid ? (
+                      <Text size={200} className="muted mono account-uuid" title={formatUuid(account.uuid)}>
+                        {formatUuid(account.uuid)}
+                      </Text>
+                    ) : null}
+                  </div>
+                  <div className="account-card-actions">
+                    {isActive ? (
+                      <Button size="small" appearance="subtle" icon={<Checkmark16Filled />} disabled>
+                        使用中
+                      </Button>
+                    ) : (
+                      <Button size="small" appearance="secondary" onClick={() => select(account.id)}>
+                        使用此账户
+                      </Button>
+                    )}
+                    <Tooltip content="移除此账户" relationship="label">
+                      <Button
+                        size="small"
+                        appearance="subtle"
+                        icon={<Delete20Regular />}
+                        aria-label={`移除 ${account.name}`}
+                        onClick={() => setRemoving(account)}
+                      />
+                    </Tooltip>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section aria-labelledby="microsoft-heading" className="section">
+        <div className="section-heading">
+          <Text id="microsoft-heading" as="h2" size={500} weight="semibold">
+            微软账户
+          </Text>
+          <Badge appearance="tint" color="informative">
+            正版
+          </Badge>
+        </div>
+        <div className="status-panel microsoft-card">
+          <Text className="muted">
+            使用微软账户登录，可以进入正版服务器。令牌只会保存在本机的系统凭据库里，不会显示在界面上。
+          </Text>
+          <div>
+            <Button appearance="secondary" onClick={() => void handleMicrosoft()} disabled={loginPending}>
               {loginPending ? "请稍候…" : "使用微软账户登录"}
             </Button>
           </div>
-
-          {loginStatus ? (
-            <div className="inline-note" role="status">
-              <ShieldLock24Regular aria-hidden="true" />
-              <Text className="muted">{describeLoginStatus(loginStatus)}</Text>
-            </div>
-          ) : (
-            <div className="inline-note">
-              <ShieldLock24Regular aria-hidden="true" />
-              <Text className="muted">
-                还没有登录。登录流程完成后这里会显示账户名。
-              </Text>
-            </div>
-          )}
-        </article>
-
-        <article className="status-panel account-card">
-          <div className="panel-heading">
-            <Text as="h2" size={400} weight="semibold">
-              离线账户
+          <div className="inline-note" role="status">
+            <ShieldLock24Regular aria-hidden="true" />
+            <Text className="muted">
+              {loginStatus ? describeLoginStatus(loginStatus) : "还没有登录。登录流程完成后这里会显示账户名。"}
             </Text>
-            <Badge appearance="outline">
-              {accounts.length === 0
-                ? "未添加"
-                : summariseOfflineAccounts(accounts)}
-            </Badge>
           </div>
-          <Text className="muted">
-            离线账户只在本地使用，适合单机或局域网。玩家名 {minPlayerNameLength}–
-            {maxPlayerNameLength} 位，只能使用字母、数字和下划线。
-          </Text>
-
-          <form className="offline-form" onSubmit={handleAdd}>
-            <Field
-              label="玩家名"
-              validationMessage={draftError ?? undefined}
-              validationState={draftError ? "error" : "none"}
-            >
-              <Input
-                value={draft}
-                placeholder="例如 Steve"
-                maxLength={maxPlayerNameLength + 4}
-                onChange={(_, data) => {
-                  setDraft(data.value);
-                  if (draftError) {
-                    setDraftError(null);
-                  }
-                }}
-              />
-            </Field>
-            <Button appearance="secondary" type="submit" icon={<Add24Regular />}>
-              添加
-            </Button>
-          </form>
-
-          {accounts.length === 0 ? (
-            <div className="empty-state compact">
-              <Person24Regular aria-hidden="true" />
-              <Text weight="semibold">还没有离线账户</Text>
-              <Text className="muted">填入玩家名即可添加一个本地账户。</Text>
-            </div>
-          ) : (            <ul className="account-list">
-              {accounts.map((account) => (
-                <li key={account.id}>
-                  <Person24Regular aria-hidden="true" />
-                  <Text className="account-name">{account.name}</Text>
-                  <Badge appearance="outline">离线</Badge>
-                  <Tooltip content="移除此账户" relationship="label">
-                    <Button
-                      appearance="subtle"
-                      icon={<Delete24Regular />}
-                      aria-label={`移除 ${account.name}`}
-                      onClick={() =>
-                        setAccounts((previous) =>
-                          removeOfflineAccount(previous, account.id),
-                        )
-                      }
-                    />
-                  </Tooltip>
-                </li>
-              ))}
-            </ul>
-          )}
-        </article>
+        </div>
       </section>
 
-      <Text className="page-footnote muted">
-        离线账户只保存在本次会话里，重启启动器后需要重新添加。
-      </Text>
+      <AddOfflineAccountDialog open={adding} onOpenChange={setAdding} />
+
+      <Dialog open={removing !== null} onOpenChange={(_, data) => !data.open && setRemoving(null)}>
+        <DialogSurface aria-describedby={undefined}>
+          <DialogBody>
+            <DialogTitle>移除账户「{removing?.name}」？</DialogTitle>
+            <DialogContent>
+              {removing?.uuidMode === "standard" ? (
+                <Text>之后可以用同样的用户名重新添加，UUID 不会变，存档不受影响。</Text>
+              ) : (
+                <Text>
+                  这个账户的 UUID 只保存在这里，移除后无法找回。如果存档依赖它，请先记下 UUID：
+                  <span className="mono"> {removing?.uuid ? formatUuid(removing.uuid) : ""}</span>
+                </Text>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={() => setRemoving(null)}>
+                取消
+              </Button>
+              <Button
+                appearance="primary"
+                onClick={() => {
+                  if (removing) {
+                    remove(removing.id);
+                  }
+                  setRemoving(null);
+                }}
+              >
+                移除
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
     </>
   );
 }

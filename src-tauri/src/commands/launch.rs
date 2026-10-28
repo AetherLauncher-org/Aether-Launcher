@@ -1,17 +1,19 @@
-//! Offline launch of an already installed official Minecraft game.
+//! Offline launch of an instance installed into the launcher-owned game tree.
 //! IPC accepts typed instance IDs and an offline player name, never executable
 //! paths, JVM arguments, URLs or filesystem roots from the frontend.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use aether_auth::offline::offline_uuid;
+use aether_auth::offline::{offline_uuid, validate_player_name};
 use aether_core::{InstanceId, InstanceState};
 use aether_download::assets::verify_installed_assets;
 use aether_download::verify::verify_local_artifact;
 use aether_download::{ArtifactSource, DownloadArtifact};
-use aether_launch::{InstanceLaunchCoordinator, InstanceProcessStatus};
+use aether_launch::{
+    CoordinatorError, InstanceLaunchCoordinator, InstanceProcessStatus, RegistryError,
+};
 use aether_manifest::load_resolved_version_manifest;
 use aether_manifest::rules::Environment;
 use aether_storage::{InstanceStore, set_instance_state};
@@ -40,7 +42,7 @@ fn instance_store_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 /// The launcher-owned game tree that the installer fills. It is never selected
 /// by IPC and never points at an existing official `.minecraft`.
-pub(super) fn installed_game_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+fn installed_game_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let path = app
         .path()
         .app_data_dir()
@@ -70,72 +72,100 @@ pub(super) fn current_environment() -> Environment {
     }
 }
 
-/// Verify the client JAR and assets before considering a previously created
-/// instance installed. Library/native verification happens again when launching.
-#[tauri::command]
-pub async fn activate_installed_instance(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let id = parse_id(&id)?;
-        let store_root = instance_store_root(&app)?;
-        let game_root = installed_game_directory(&app)?;
-        let instance = InstanceStore::open(&store_root)
-            .map_err(|error| error.to_string())?
-            .load(id)
+/// Verify the client JAR and assets of an instance and mark it ready.
+/// Library and native verification happens again when launching.
+pub(super) fn activate_instance(
+    store_root: &Path,
+    game_root: &Path,
+    id: InstanceId,
+) -> Result<(), String> {
+    let game_root = std::fs::canonicalize(game_root)
+        .map_err(|error| format!("cannot open installed Minecraft: {error}"))?;
+    let instance = InstanceStore::open(store_root)
+        .map_err(|error| error.to_string())?
+        .load(id)
+        .map_err(|error| error.to_string())?;
+    let resolved = load_resolved_version_manifest(&game_root, instance.version.as_str())
+        .map_err(|error| error.to_string())?;
+    let client_version = resolved
+        .client_jar_version
+        .ok_or_else(|| "installed version has no verified client JAR metadata".to_owned())?;
+    let client = resolved
+        .manifest
+        .downloads
+        .as_ref()
+        .and_then(|download| download.client.as_ref())
+        .ok_or_else(|| "installed version has no client metadata".to_owned())?;
+    let artifact = DownloadArtifact {
+        destination: PathBuf::from("versions")
+            .join(&client_version)
+            .join(format!("{client_version}.jar")),
+        size: client.size,
+        sha1: client.sha1.clone(),
+        sources: vec![ArtifactSource {
+            provider: "mojang".to_owned(),
+            url: client.url.clone(),
+        }],
+    };
+    verify_local_artifact(&game_root, &artifact).map_err(|error| error.to_string())?;
+    if let Some(index) = &resolved.manifest.asset_index {
+        verify_installed_assets(&game_root, &index.id, &index.sha1, index.size)
             .map_err(|error| error.to_string())?;
-        let resolved = load_resolved_version_manifest(&game_root, instance.version.as_str())
+    }
+    if instance.state != InstanceState::Ready {
+        set_instance_state(&instance.root, &instance, InstanceState::Ready)
             .map_err(|error| error.to_string())?;
-        let client_version = resolved
-            .client_jar_version
-            .ok_or_else(|| "installed version has no verified client JAR metadata".to_owned())?;
-        let client = resolved
-            .manifest
-            .downloads
-            .as_ref()
-            .and_then(|download| download.client.as_ref())
-            .ok_or_else(|| "installed version has no client metadata".to_owned())?;
-        let artifact = DownloadArtifact {
-            destination: PathBuf::from("versions")
-                .join(&client_version)
-                .join(format!("{client_version}.jar")),
-            size: client.size,
-            sha1: client.sha1.clone(),
-            sources: vec![ArtifactSource {
-                provider: "mojang".to_owned(),
-                url: client.url.clone(),
-            }],
-        };
-        verify_local_artifact(&game_root, &artifact).map_err(|error| error.to_string())?;
-        if let Some(index) = &resolved.manifest.asset_index {
-            verify_installed_assets(&game_root, &index.id, &index.sha1, index.size)
-                .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+/// Normalise a user-supplied account UUID to 32 lowercase hex digits. Accepts
+/// the plain 32-digit form and the 8-4-4-4-12 dashed form.
+pub(super) fn normalize_uuid(text: &str) -> Result<String, String> {
+    let text = text.trim();
+    let compact: String = if text.len() == 36 {
+        let groups: Vec<&str> = text.split('-').collect();
+        let lengths: Vec<usize> = groups.iter().map(|group| group.len()).collect();
+        if lengths != [8, 4, 4, 4, 12] {
+            return Err("invalid account UUID".to_owned());
         }
-        if instance.state != InstanceState::Ready {
-            set_instance_state(&instance.root, &instance, InstanceState::Ready)
-                .map_err(|error| error.to_string())?;
-        }
-        Ok(())
-    })
-    .await
-    .map_err(|error| format!("installation validation task failed: {error}"))?
+        groups.concat()
+    } else {
+        text.to_owned()
+    };
+    if compact.len() != 32 || !compact.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("invalid account UUID".to_owned());
+    }
+    Ok(compact.to_ascii_lowercase())
 }
 
 /// Launch only a verified managed instance, using backend-discovered Java.
 /// This MVP supports offline single-player only; Microsoft auth is not faked.
+/// `account_uuid` is optional: without it the standard offline UUID for the
+/// player name is used.
 #[tauri::command]
 pub async fn start_installed_instance(
     app: tauri::AppHandle,
     id: String,
     offline_name: String,
     memory_mib: u32,
+    account_uuid: Option<String>,
 ) -> Result<InstanceProcessStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let id = parse_id(&id)?;
-        let uuid = offline_uuid(&offline_name).map_err(|error| error.to_string())?;
+        validate_player_name(&offline_name).map_err(|error| error.to_string())?;
+        let uuid = match account_uuid {
+            Some(text) => normalize_uuid(&text)?,
+            None => offline_uuid(&offline_name)
+                .map_err(|error| error.to_string())?
+                .simple()
+                .to_string(),
+        };
         let root = instance_store_root(&app)?;
         let game = installed_game_directory(&app)?;
         let mut vars = BTreeMap::new();
         vars.insert("auth_player_name".to_owned(), offline_name);
-        vars.insert("auth_uuid".to_owned(), uuid.simple().to_string());
+        vars.insert("auth_uuid".to_owned(), uuid);
         vars.insert("auth_access_token".to_owned(), "0".to_owned());
         vars.insert("user_type".to_owned(), "legacy".to_owned());
         vars.insert("version_type".to_owned(), "release".to_owned());
@@ -176,6 +206,29 @@ pub async fn start_installed_instance(
     .map_err(|error| format!("game launch task failed: {error}"))?
 }
 
+/// Current state of a game started in this session; `None` when this session
+/// never started the instance. Lets the UI notice when the game exits.
+#[tauri::command]
+pub async fn game_status(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<Option<InstanceProcessStatus>, String> {
+    let id = parse_id(&id)?;
+    let state = app.state::<LaunchState>();
+    let mut guard = state
+        .coordinator
+        .lock()
+        .map_err(|_| "game process registry is unavailable".to_owned())?;
+    let Some(coordinator) = guard.as_mut() else {
+        return Ok(None);
+    };
+    match coordinator.status(id) {
+        Ok(status) => Ok(Some(status)),
+        Err(CoordinatorError::Registry(RegistryError::UnknownInstance)) => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 /// Stop only a game process launched by this application session.
 #[tauri::command]
 pub async fn stop_installed_instance(
@@ -198,3 +251,7 @@ pub async fn stop_installed_instance(
     .await
     .map_err(|error| format!("game stop task failed: {error}"))?
 }
+
+#[cfg(test)]
+#[path = "launch_tests.rs"]
+mod tests;

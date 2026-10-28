@@ -66,7 +66,7 @@ export function JavaRuntimeSection() {
   };
 
   return (
-    <section className="status-panel settings-panel" aria-labelledby="java-heading">
+    <section className="status-panel setting-group" aria-labelledby="java-heading">
       <div className="panel-heading">
         <Text id="java-heading" as="h2" size={400} weight="semibold">
           Java 运行时
@@ -81,7 +81,8 @@ export function JavaRuntimeSection() {
         </Button>
       </div>
       <Text className="muted">
-        选择默认运行时。每个实例以后可以单独覆盖这一项。
+        本机检测到的 Java。启动时会按游戏版本的要求自动挑选合适的一个；
+        手动指定默认运行时的功能还在开发，这里的选择暂不影响启动。
       </Text>
 
       {loading ? (

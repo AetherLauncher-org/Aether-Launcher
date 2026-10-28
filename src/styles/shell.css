@@ -1,0 +1,264 @@
+/* ── 外壳：标题栏 + 导航栏 + 内容层 ─────────────────────────────── */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  color: var(--colorNeutralForeground1);
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 标题栏 */
+.titlebar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 36px;
+  user-select: none;
+}
+
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  padding-left: 14px;
+}
+
+/* 让按下的目标落在带 data-tauri-drag-region 的父元素上，整块都能拖动 */
+.titlebar-brand > * {
+  pointer-events: none;
+}
+
+.titlebar-title {
+  color: var(--colorNeutralForeground2);
+}
+
+.titlebar-spacer {
+  flex: 1;
+  height: 100%;
+}
+
+.titlebar-install {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  margin-right: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--borderRadiusMedium);
+  color: var(--colorNeutralForeground1);
+  background: var(--card-bg);
+  font: inherit;
+  font-size: var(--fontSizeBase200);
+  cursor: pointer;
+  transition: background var(--durationFast) var(--curveEasyEase);
+}
+
+.titlebar-install:hover {
+  background: var(--card-bg-hover);
+}
+
+.titlebar-install-text {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.titlebar-install-bar {
+  width: 64px;
+}
+
+.caption-buttons {
+  display: flex;
+  height: 100%;
+}
+
+.caption-button {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  color: var(--colorNeutralForeground1);
+  background: transparent;
+  cursor: default;
+  transition: background var(--durationFaster) var(--curveLinear);
+}
+
+.caption-button:hover {
+  background: var(--colorSubtleBackgroundHover);
+}
+
+.caption-button:active {
+  background: var(--colorSubtleBackgroundPressed);
+}
+
+.caption-close:hover,
+.caption-close:active {
+  color: #fff;
+  background: #c42b1c;
+}
+
+.caption-close:active {
+  background: #b22a1b;
+}
+
+/* 导航栏（NavigationView）：展开 240、收起 52，宽度有过渡，图标位置不动 */
+.navpane {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 240px;
+  padding: 4px 0 8px;
+  overflow: hidden;
+  transition: width var(--durationGentle) var(--curveEasyEase);
+}
+
+.navpane.collapsed {
+  width: 52px;
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.nav-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: auto;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  width: calc(100% - 12px);
+  height: 40px;
+  margin: 0 6px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--borderRadiusMedium);
+  color: var(--colorNeutralForeground1);
+  background: transparent;
+  font: inherit;
+  font-size: var(--fontSizeBase300);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--durationFaster) var(--curveLinear);
+}
+
+.nav-item:hover {
+  background: var(--colorSubtleBackgroundHover);
+}
+
+.nav-item:active {
+  background: var(--colorSubtleBackgroundPressed);
+}
+
+.nav-item.selected {
+  background: var(--colorSubtleBackgroundSelected);
+}
+
+/* 选中指示条：切换时从中心向上下展开 */
+.nav-item::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--colorBrandForeground1);
+  content: "";
+  transform: translateY(-50%) scaleY(0);
+  transition: transform var(--durationNormal) var(--curveDecelerateMid);
+}
+
+.nav-item.selected::before {
+  transform: translateY(-50%) scaleY(1);
+}
+
+.nav-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+}
+
+.nav-item.selected .nav-icon {
+  color: var(--colorBrandForeground1);
+}
+
+.nav-label {
+  min-width: 0;
+  overflow: hidden;
+  opacity: 1;
+  text-overflow: ellipsis;
+  transition: opacity var(--durationNormal) var(--curveEasyEase);
+}
+
+.navpane.collapsed .nav-label {
+  opacity: 0;
+}
+
+.nav-account-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.nav-account-kind {
+  color: var(--colorNeutralForeground3);
+}
+
+.nav-version {
+  padding: 6px 14px 0;
+  color: var(--colorNeutralForeground4);
+  opacity: 1;
+  white-space: nowrap;
+  transition: opacity var(--durationNormal) var(--curveEasyEase);
+}
+
+.navpane.collapsed .nav-version {
+  opacity: 0;
+}
+
+/* 内容层：圆角、描边的一层，浮在 Mica 之上 */
+.content-layer {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--card-stroke);
+  border-left: 1px solid var(--card-stroke);
+  border-top-left-radius: var(--borderRadiusXLarge);
+  background: var(--layer-bg);
+}
+
+.page {
+  height: 100%;
+  padding: 24px 32px 40px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+@media (max-width: 960px) {
+  .page {
+    padding: 20px 20px 32px;
+  }
+}

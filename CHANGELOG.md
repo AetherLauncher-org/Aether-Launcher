@@ -15,10 +15,15 @@ The project follows [Semantic Versioning](https://semver.org/) once public relea
 - Rust formatting, linting, and unit-test checks
 - Issue Forms, Discussion Forms, pull request template, and CODEOWNERS
 - Dependabot, CodeQL, dependency review, labeling, CI, and draft release workflows
-- Sidebar navigation between home, instances, library, accounts, and settings
+- Navigation between home, instances, download, accounts, and settings; the navigation pane collapses to icons
 - Typed frontend IPC layer (`src/ipc`)
 - Architecture overview in `docs/architecture.md`
-- Vanilla install stage 3: planner and `install_vanilla_client_libraries` command for verified client JAR, libraries, native archives and assets; launch now uses the launcher-owned game directory
+- One-click Vanilla install (`install_vanilla_version`): official catalog, verified client JAR, libraries, native archives and assets, then a ready instance; already-verified files are skipped, progress arrives as `install://progress` events, and the install can be cancelled
+- Launch uses the launcher-owned game directory, an optional account UUID, and a `game_status` query so the UI notices when the game exits
+- Frameless window with a custom title bar, Mica material on Windows 11, Fluent 2 design tokens, a Fluent motion system with a reduced-motion switch, and a new Aether logo and icon set
+- Download page that browses every official version with its metadata before installing, replacing the cache, download and create buttons
+- Offline accounts added through a dialog with standard, random or custom UUIDs, kept across restarts
+- Live smoke tests (ignored by default) that install and launch a real version
 - Appearance setting with dark, light, and follow-system colour schemes
 - Version manifest parsing for libraries, arguments, asset index, client download and Java version, with rule evaluation
 - `inheritsFrom` merging: child libraries first, newest version wins among identical coordinates, parent arguments first
