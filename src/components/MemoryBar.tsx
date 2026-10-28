@@ -6,6 +6,7 @@ import { exceedsAvailable, formatMiB, memorySliderStep, minMemoryMiB, sliderMaxM
 import {
   barGeometry,
   thumbForTrackPress,
+  valueFromLeftDrag,
   valueFromLeftThumb,
   valueFromRightThumb,
 } from "../lib/memoryBar";
@@ -20,19 +21,25 @@ type MemoryBarProps = {
 
 type Thumb = "right" | "left";
 
+/** 橙色手柄是相对拖动的：记下按下时的位置和分配值。 */
+type LeftDrag = { startPct: number; startValue: number };
+
 /**
  * 一体化的内存滑块：整条轨道就是本机的物理内存。
  *
- * 左边红色是系统已经用掉的，不能拖；分界线右边是可用内存，右手柄在里面滑动，
- * 绿色从分界线铺到手柄，就是分配给游戏的量。右手柄推到底（「满」）之后，
- * 分界线上出现第二个手柄，可以继续往左拖进红区——那一段变橙色，表示分配得
- * 比可用内存还多，会把内存挤爆。两个手柄控制同一个值。
+ * 左边红色是系统已经用掉的，不能拖；分界线右边是可用内存，蓝色手柄在里面滑动，
+ * 蓝色从分界线铺到手柄，就是分配给游戏的量。橙色手柄一直停在分界线上：
+ * 往左拖是「多分配」——蓝色没到底时，是蓝色往右增加；蓝色到底之后，橙色才真的往左
+ * 走进红区，那一段是橙色，**不推荐**，因为分配得比可用内存还多，会把内存挤爆。
+ * 往右拖则是「少分配」：橙色先退回分界线，再往右，蓝色就直接减少。
+ * 两个手柄控制同一个值。
  *
  * 屏幕上的手柄用指针拖动；真正的 `<input type="range">` 在旁边，只是看不见：
  * 键盘方向键、读屏和表单语义都由它承担，值和手柄始终一致。
  */
 export function MemoryBar({ system, valueMiB, onChange, disabled = false }: MemoryBarProps) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const leftDrag = useRef<LeftDrag | null>(null);
   const [dragging, setDragging] = useState<Thumb | null>(null);
   const interactive = !disabled && onChange !== undefined;
 
@@ -55,10 +62,6 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
     return Math.min(100, Math.max(0, ((event.clientX - rect.left) / rect.width) * 100));
   };
 
-  const apply = (thumb: Thumb, pct: number) => {
-    onChange?.(thumb === "right" ? valueFromRightThumb(pct, system) : valueFromLeftThumb(pct, system));
-  };
-
   const handleDown = (event: PointerEvent<HTMLDivElement>) => {
     if (!interactive) {
       return;
@@ -68,17 +71,26 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
       return;
     }
     const target = event.target as HTMLElement;
-    const thumb: Thumb | null = target.closest(".memory-thumb.left")
-      ? "left"
-      : target.closest(".memory-thumb.right")
-        ? "right"
-        : thumbForTrackPress(pct, geometry);
-    if (thumb === null) {
-      return;
-    }
+    const onLeftThumb = target.closest(".memory-thumb.left") !== null;
+    const onRightThumb = target.closest(".memory-thumb.right") !== null;
+    const thumb: Thumb = onLeftThumb ? "left" : onRightThumb ? "right" : thumbForTrackPress(pct, geometry);
+
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setDragging(thumb);
-    apply(thumb, pct);
+
+    if (thumb === "right") {
+      onChange?.(valueFromRightThumb(pct, system));
+      return;
+    }
+    if (onLeftThumb) {
+      // 抓住手柄：什么都不变，之后相对于这里拖
+      leftDrag.current = { startPct: pct, startValue: geometry.valueMiB };
+      return;
+    }
+    // 直接点在红区：把橙色手柄放到那里，再从那里接着拖
+    const placed = valueFromLeftThumb(pct, system);
+    leftDrag.current = { startPct: pct, startValue: placed };
+    onChange?.(placed);
   };
 
   const handleMove = (event: PointerEvent<HTMLDivElement>) => {
@@ -86,12 +98,21 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
       return;
     }
     const pct = pressedPercent(event);
-    if (pct !== null) {
-      apply(dragging, pct);
+    if (pct === null) {
+      return;
+    }
+    if (dragging === "right") {
+      onChange?.(valueFromRightThumb(pct, system));
+    } else if (leftDrag.current !== null) {
+      const { startPct, startValue } = leftDrag.current;
+      onChange?.(valueFromLeftDrag(startValue, startPct - pct, system));
     }
   };
 
-  const stopDragging = () => setDragging(null);
+  const stopDragging = () => {
+    leftDrag.current = null;
+    setDragging(null);
+  };
 
   return (
     <div className="memory-bar" style={style} data-over={over === true} data-disabled={!interactive}>
@@ -110,7 +131,7 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
           </>
         ) : null}
         <span className="memory-seg alloc" />
-        {geometry.leftPct !== null && geometry.overMiB > 0 ? <span className="memory-seg over" /> : null}
+        {geometry.overMiB > 0 ? <span className="memory-seg over" /> : null}
 
         <span
           className={`memory-thumb right${dragging === "right" ? " dragging" : ""}`}
@@ -136,6 +157,12 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
           onChange={(event) => onChange?.(Number(event.target.value))}
         />
       </div>
+
+      {geometry.overMiB > 0 ? (
+        <div className="memory-over-label" aria-hidden="true">
+          <span>不推荐</span>
+        </div>
+      ) : null}
 
       <div className="memory-bar-labels">
         <div className="memory-bar-stat">
@@ -168,22 +195,21 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
             系统已用
           </li>
         ) : null}
-        {over === true ? (
+        {geometry.usedMib !== null ? (
           <li>
             <span className="swatch over" aria-hidden="true" />
-            超出可用内存
+            超出可用内存（不推荐）
           </li>
         ) : null}
       </ul>
 
-      {geometry.usedMib !== null && interactive && geometry.leftPct === null ? (
-        <Text size={200} className="muted">
-          红色是系统已经占用的内存，不能拖。把右边的手柄拖到底，就可以继续往左分配更多。
-        </Text>
-      ) : null}
       {over === true ? (
         <Text size={200} className="memory-warning" role="status">
-          分配的内存超过了当前可用内存，游戏可能变慢甚至崩溃。可以先关闭一些程序，或调低这个值。
+          不推荐：分配的内存超过了当前可用内存，游戏可能变慢甚至崩溃。可以先关闭一些程序，或调低这个值。
+        </Text>
+      ) : geometry.usedMib !== null && interactive ? (
+        <Text size={200} className="muted">
+          蓝色是分配给游戏的内存。往左拖橙色手柄可以多分配；超过可用内存的部分会变成橙色，不推荐。
         </Text>
       ) : null}
       {system === null ? (

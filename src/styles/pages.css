@@ -936,8 +936,8 @@
 
 .memory-thumb.left {
   left: calc(var(--left) * 1%);
+  z-index: 2;
   border-color: var(--ring-over);
-  animation: thumb-pop var(--durationNormal) var(--curveDecelerateMid) both;
 }
 
 .memory-bar:not([data-disabled="true"]) .memory-thumb:hover,
@@ -977,6 +977,26 @@
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* 橙区下面直接写明「不推荐」，位置跟着橙区走 */
+.memory-over-label {
+  position: relative;
+  height: 16px;
+  margin: -4px calc(var(--thumb) / 2) 0;
+  pointer-events: none;
+}
+
+.memory-over-label span {
+  position: absolute;
+  left: calc(var(--left) * 1%);
+  width: calc((var(--used) - var(--left)) * 1%);
+  min-width: 3.5em;
+  color: var(--colorStatusWarningForeground1);
+  font-size: var(--fontSizeBase200);
+  font-weight: var(--fontWeightSemibold);
+  text-align: center;
+  white-space: nowrap;
 }
 
 .memory-bar-labels {

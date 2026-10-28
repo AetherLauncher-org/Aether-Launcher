@@ -25,7 +25,10 @@ export type BarGeometry = {
   /** 超出可用内存的部分 */
   overMiB: number;
   rightPct: number;
-  /** 第二个手柄的位置；分配值还没到「满」时为 null */
+  /**
+   * 橙色手柄的位置：永远在分界线上或分界线左边（分配值越界越多，越往左）。
+   * 不知道已用内存时没有分界线，也就没有这个手柄，为 null。
+   */
   leftPct: number | null;
 };
 
@@ -57,7 +60,7 @@ export function barGeometry(valueMiB: number, system: SystemMemory | null): BarG
     valueMiB: value,
     overMiB,
     rightPct: used === null ? pct(value) : clamp(usedPct + pct(Math.min(value, fullMib)), 0, 100),
-    leftPct: used === null || value < fullMib ? null : clamp(usedPct - pct(overMiB), 0, 100),
+    leftPct: used === null ? null : clamp(usedPct - pct(overMiB), 0, 100),
   };
 }
 
@@ -81,15 +84,24 @@ export function valueFromLeftThumb(pct: number, system: SystemMemory | null): nu
 }
 
 /**
- * 点在轨道上（不是手柄）时该动哪个手柄：点在红区里只有在已经「满」的时候才有意义，
- * 否则红区不可滑动，返回 null。
+ * 拖橙色手柄：相对的。`leftwardPct` 是指针从按下处向左移动的百分比（向右为负），
+ * 每向左一格就多分配一格，向右就少分配。蓝色没到底时多出来的部分让蓝色往右增加，
+ * 到底之后才轮到橙色往左走——因为位置都是由同一个分配值算出来的。
  */
-export function thumbForTrackPress(
-  pct: number,
-  geometry: BarGeometry,
-): "right" | "left" | null {
-  if (geometry.usedMib === null || pct >= geometry.usedPct) {
-    return "right";
-  }
-  return geometry.leftPct !== null ? "left" : null;
+export function valueFromLeftDrag(
+  startValueMiB: number,
+  leftwardPct: number,
+  system: SystemMemory | null,
+): number {
+  const geometry = barGeometry(minMemoryMiB, system);
+  const max = sliderMaxMiB(system);
+  return clamp(roundToStep(startValueMiB + (leftwardPct / 100) * geometry.totalMib), minMemoryMiB, max);
+}
+
+/**
+ * 点在轨道上（不是手柄）时该动哪个手柄：点在分界线左边（红区）就是想直接把橙色手柄
+ * 放到那里；其余位置动蓝色手柄。不知道已用内存时只有蓝色手柄。
+ */
+export function thumbForTrackPress(pct: number, geometry: BarGeometry): "right" | "left" {
+  return geometry.usedMib !== null && pct < geometry.usedPct ? "left" : "right";
 }

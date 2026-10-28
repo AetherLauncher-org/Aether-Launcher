@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   barGeometry,
   thumbForTrackPress,
+  valueFromLeftDrag,
   valueFromLeftThumb,
   valueFromRightThumb,
 } from "./memoryBar";
@@ -16,7 +17,8 @@ describe("barGeometry", () => {
     expect(geometry.usedPct).toBeCloseTo(75);
     expect(geometry.fullMib).toBe(4096);
     expect(geometry.rightPct).toBeCloseTo(75 + 6.25);
-    expect(geometry.leftPct).toBeNull();
+    // 橙色手柄一直在：没越界时就停在分界线上
+    expect(geometry.leftPct).toBeCloseTo(75);
     expect(geometry.overMiB).toBe(0);
   });
 
@@ -100,14 +102,57 @@ describe("dragging the second thumb", () => {
   });
 });
 
+describe("valueFromLeftDrag", () => {
+  // 1% 的轨道 = 163.84 MiB；步长 256
+  it("allocates more for every step dragged left, and less for every step dragged right", () => {
+    expect(valueFromLeftDrag(1024, 0, machine)).toBe(1024);
+    expect(valueFromLeftDrag(1024, 5, machine)).toBe(1792);
+    // 4096 少掉 25%（4096）就到了下限，不会变成 0 或负数
+    expect(valueFromLeftDrag(4096, -25, machine)).toBe(512);
+  });
+
+  it("grows the blue share first: below full a leftward drag only raises the value, with the orange thumb still on the divider", () => {
+    const value = valueFromLeftDrag(1024, 10, machine);
+    const geometry = barGeometry(value, machine);
+
+    expect(value).toBeGreaterThan(1024);
+    expect(geometry.overMiB).toBe(0);
+    expect(geometry.leftPct).toBeCloseTo(75);
+  });
+
+  it("carries on past full into the red area, where the orange thumb really moves left", () => {
+    const value = valueFromLeftDrag(1024, 25, machine);
+    const geometry = barGeometry(value, machine);
+
+    expect(value).toBe(1024 + 4096);
+    expect(geometry.overMiB).toBe(1024);
+    expect(geometry.leftPct).toBeLessThan(75);
+  });
+
+  it("brings the orange thumb back to the divider first and then shrinks the blue share", () => {
+    const start = 8192; // 比「满」多出 4096
+    expect(barGeometry(valueFromLeftDrag(start, -25, machine), machine).overMiB).toBe(0);
+    expect(valueFromLeftDrag(start, -25, machine)).toBe(4096);
+
+    const further = valueFromLeftDrag(start, -30, machine);
+    expect(further).toBeLessThan(4096);
+    expect(barGeometry(further, machine).rightPct).toBeLessThan(100);
+  });
+
+  it("stays between the minimum and the installed memory", () => {
+    expect(valueFromLeftDrag(1024, -100, machine)).toBe(512);
+    expect(valueFromLeftDrag(1024, 500, machine)).toBe(16_384);
+  });
+});
+
 describe("thumbForTrackPress", () => {
-  it("moves the right thumb when the press is in the free area or nothing is known", () => {
+  it("moves the blue thumb when the press is right of the divider or nothing is known", () => {
     expect(thumbForTrackPress(90, barGeometry(1024, machine))).toBe("right");
     expect(thumbForTrackPress(10, barGeometry(1024, null))).toBe("right");
   });
 
-  it("ignores a press in the red area until the allocation is full, then moves the second thumb", () => {
-    expect(thumbForTrackPress(40, barGeometry(1024, machine))).toBeNull();
+  it("puts the orange thumb where the press is in the red area, whatever the allocation", () => {
+    expect(thumbForTrackPress(40, barGeometry(1024, machine))).toBe("left");
     expect(thumbForTrackPress(40, barGeometry(4096, machine))).toBe("left");
   });
 });
