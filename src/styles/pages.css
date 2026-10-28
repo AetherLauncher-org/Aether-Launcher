@@ -834,9 +834,12 @@
 .memory-bar {
   --track-h: 14px;
   --thumb: 22px;
-  --used-color: var(--colorPaletteRedBackground3);
-  --alloc-color: var(--colorPaletteGreenBackground3);
-  --over-color: var(--colorPaletteDarkOrangeBackground3);
+  /* 配色：游戏分配用 Logo 的青到蓝，系统已用是柔和的珊瑚红，越界是琥珀色，都不刺眼 */
+  --used-color: linear-gradient(90deg, hsl(352 66% 62%), hsl(358 62% 58%));
+  --alloc-color: linear-gradient(90deg, #2fc0dc, #3b78ff);
+  --over-color: linear-gradient(90deg, hsl(36 96% 56%), hsl(28 94% 54%));
+  --ring-alloc: #3b78ff;
+  --ring-over: hsl(30 94% 52%);
 
   display: grid;
   gap: 10px;
@@ -906,8 +909,9 @@
   height: calc(var(--track-h) + 4px);
   margin-left: -1px;
   border-radius: 1px;
-  background: var(--colorNeutralForeground1);
-  opacity: 0.55;
+  background: #fff;
+  opacity: 0.85;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 18%);
   pointer-events: none;
 }
 
@@ -917,9 +921,9 @@
   width: var(--thumb);
   height: var(--thumb);
   margin-left: calc(var(--thumb) / -2);
-  border: 3px solid var(--colorNeutralBackground1);
+  border: 3px solid var(--ring-alloc);
   border-radius: 50%;
-  background: var(--colorBrandBackground);
+  background: #fff;
   box-shadow: var(--shadow4);
   transition:
     left var(--durationFaster) var(--curveLinear),
@@ -932,7 +936,7 @@
 
 .memory-thumb.left {
   left: calc(var(--left) * 1%);
-  background: var(--over-color);
+  border-color: var(--ring-over);
   animation: thumb-pop var(--durationNormal) var(--curveDecelerateMid) both;
 }
 
@@ -942,7 +946,7 @@
 }
 
 .memory-bar[data-disabled="true"] .memory-thumb {
-  background: var(--colorNeutralForegroundDisabled);
+  border-color: var(--colorNeutralStrokeAccessible);
   box-shadow: none;
 }
 
