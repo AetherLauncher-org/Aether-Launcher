@@ -1,0 +1,324 @@
+//! Unit tests for the import commands.
+//!
+//! The file is pulled in with `#[path = "import_tests.rs"] mod tests;` from
+//! `commands/import.rs`, so it is the *body* of the `tests` module and `super::*`
+//! refers to `commands::import`. Do not wrap the contents in another
+//! `mod tests { ... }`.
+//!
+//! Only the pure helpers are covered here: the Tauri commands themselves need a
+//! running application handle and a native folder picker. Every test builds its
+//! own directory below `std::env::temp_dir()` and removes it on drop.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
+
+use aether_core::{GameInstance, InstanceId, InstanceState, VersionId};
+use aether_storage::ImportSourceKind;
+
+use super::{
+    ImportCandidateDto, ImportResultDto, ImportSkippedDto, ImportSourceDto, ImportState,
+    LauncherInstallationDto, PendingSource, describe_scan_error, installation_at, listing_of,
+    pcl2_game_directories, plan_source,
+};
+use crate::commands::instances::InstanceSummary;
+
+/// Monotonic counter that keeps temporary directory names unique per process.
+static TEMP_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+/// A temporary directory removed when it goes out of scope.
+struct TempDir {
+    path: PathBuf,
+}
+
+impl TempDir {
+    fn new(label: &str) -> Self {
+        let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "aether-import-command-{label}-{}-{counter}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+        Self { path }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn touch(&self, relative: &str, contents: &str) -> PathBuf {
+        let path = self.path.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(&path, contents).unwrap();
+        path
+    }
+
+    fn mkdir(&self, relative: &str) -> PathBuf {
+        let path = self.path.join(relative);
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+#[test]
+fn a_plain_game_folder_is_labelled_folder() {
+    let temp = TempDir::new("plain");
+    temp.touch("versions/1.20.1/1.20.1.json", r#"{"id":"1.20.1"}"#);
+
+    let (kind, candidates) = plan_source(temp.path(), None).unwrap();
+
+    assert_eq!(kind, ImportSourceKind::Folder);
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].version_id, "1.20.1");
+}
+
+#[test]
+fn a_hmcl_marker_is_detected() {
+    let temp = TempDir::new("hmcl");
+    temp.touch(".hmcl.json", "{}");
+    temp.touch("versions/1.20.1/1.20.1.json", r#"{"id":"1.20.1"}"#);
+
+    let (kind, _) = plan_source(temp.path(), None).unwrap();
+
+    assert_eq!(kind, ImportSourceKind::Hmcl);
+}
+
+#[test]
+fn a_forced_kind_overrides_detection() {
+    let temp = TempDir::new("forced");
+    temp.touch(".hmcl.json", "{}");
+    temp.touch("versions/1.20.1/1.20.1.json", r#"{"id":"1.20.1"}"#);
+
+    let (kind, _) = plan_source(temp.path(), Some(ImportSourceKind::Pcl2)).unwrap();
+
+    assert_eq!(kind, ImportSourceKind::Pcl2);
+}
+
+#[test]
+fn a_missing_folder_is_reported_without_a_path() {
+    let temp = TempDir::new("missing");
+    let error = plan_source(&temp.path().join("nope"), None).unwrap_err();
+
+    assert!(!error.contains(temp.path().to_string_lossy().as_ref()));
+    assert!(error.contains("not a readable directory"));
+}
+
+#[test]
+fn scan_errors_never_echo_a_path() {
+    let temp = TempDir::new("scan-error");
+    let file = temp.touch("file", "{}");
+    let error = plan_source(&file, None).unwrap_err();
+
+    assert!(!error.contains(file.to_string_lossy().as_ref()));
+}
+#[test]
+fn only_game_folders_with_versions_survive() {
+    let temp = TempDir::new("pcl2-dirs");
+    temp.mkdir("configured/versions/1.20.1");
+    temp.mkdir("empty");
+    temp.mkdir(".minecraft/versions/1.21");
+
+    let config = vec![
+        ("LaunchFolderSelect".to_owned(), "$/configured".to_owned()),
+        ("LaunchFolderSelect".to_owned(), "$/empty".to_owned()),
+    ];
+    let directories = pcl2_game_directories(temp.path(), &config);
+
+    assert_eq!(
+        directories,
+        vec![
+            temp.path().join("configured"),
+            temp.path().join(".minecraft"),
+        ]
+    );
+}
+
+#[test]
+fn the_launcher_folder_is_offered_when_it_holds_versions() {
+    let temp = TempDir::new("pcl2-self");
+    temp.mkdir("versions/1.20.1");
+
+    let directories = pcl2_game_directories(temp.path(), &[]);
+
+    assert_eq!(directories, vec![temp.path().to_path_buf()]);
+}
+
+#[test]
+fn import_state_hands_out_single_use_tokens() {
+    let temp = TempDir::new("tokens");
+    let state = ImportState::default();
+
+    let token = state
+        .remember(PendingSource::GameDirectory {
+            root: temp.path().to_path_buf(),
+        })
+        .unwrap();
+    assert!(state.take(&token).is_ok());
+    assert!(state.take(&token).is_err(), "a token must not be reusable");
+}
+
+#[test]
+fn an_unknown_token_is_rejected() {
+    let state = ImportState::default();
+    assert!(state.take("not-a-token").is_err());
+}
+
+#[test]
+fn source_dto_uses_camel_case_and_hides_no_fields() {
+    let dto = ImportSourceDto {
+        token: "t".to_owned(),
+        source_kind: "pcl2",
+        source_path: "D:\\MC".to_owned(),
+        candidates: vec![ImportCandidateDto {
+            id: "1.20.1".to_owned(),
+            display_name: "1.20.1".to_owned(),
+        }],
+    };
+
+    let value = serde_json::to_value(&dto).unwrap();
+
+    assert_eq!(value["token"], "t");
+    assert_eq!(value["sourceKind"], "pcl2");
+    assert_eq!(value["sourcePath"], "D:\\MC");
+    assert_eq!(value["candidates"][0]["id"], "1.20.1");
+    assert_eq!(value["candidates"][0]["displayName"], "1.20.1");
+    assert!(value.get("source_kind").is_none());
+}
+
+#[test]
+fn installation_dto_nests_its_sources() {
+    let dto = LauncherInstallationDto {
+        kind: "pcl2",
+        launcher_root: "D:\\PCL2".to_owned(),
+        sources: vec![ImportSourceDto {
+            token: "t".to_owned(),
+            source_kind: "pcl2",
+            source_path: "D:\\PCL2\\.minecraft".to_owned(),
+            candidates: Vec::new(),
+        }],
+    };
+
+    let value = serde_json::to_value(&dto).unwrap();
+
+    assert_eq!(value["kind"], "pcl2");
+    assert_eq!(value["launcherRoot"], "D:\\PCL2");
+    assert_eq!(value["sources"][0]["sourcePath"], "D:\\PCL2\\.minecraft");
+}
+
+#[test]
+fn result_dto_reports_imported_instances_and_skips() {
+    let instance = GameInstance {
+        id: InstanceId::new(),
+        name: "1.20.1".to_owned(),
+        version: VersionId::parse("1.20.1").unwrap(),
+        root: PathBuf::from("instances"),
+        game_directory: None,
+        state: InstanceState::Incomplete,
+    };
+    let dto = ImportResultDto {
+        imported: vec![InstanceSummary::from_instance(&instance)],
+        skipped: vec![ImportSkippedDto {
+            id: "1.21".to_owned(),
+            reason: "missing-version-json",
+        }],
+    };
+
+    let value = serde_json::to_value(&dto).unwrap();
+
+    assert_eq!(value["imported"][0]["name"], "1.20.1");
+    assert_eq!(value["imported"][0]["state"], "incomplete");
+    assert_eq!(value["skipped"][0]["id"], "1.21");
+    assert_eq!(value["skipped"][0]["reason"], "missing-version-json");
+    assert!(value["imported"][0].get("root").is_none());
+}
+
+#[test]
+fn describe_scan_error_covers_every_variant() {
+    for error in [
+        aether_storage::ImportError::InvalidRoot,
+        aether_storage::ImportError::TooManyEntries,
+        aether_storage::ImportError::Io(std::io::Error::other("boom")),
+    ] {
+        let message = describe_scan_error(&error);
+        assert!(!message.is_empty());
+        assert!(!message.contains("boom"));
+    }
+}
+
+#[test]
+fn a_bakaxl_folder_is_recognised_by_its_executable() {
+    let temp = TempDir::new("bakaxl");
+    temp.touch("BakaXL.exe", "MZ");
+    temp.touch(
+        ".minecraft/versions/1.20.1/1.20.1.json",
+        r#"{"id":"1.20.1"}"#,
+    );
+
+    let state = ImportState::default();
+    let installation = installation_at(&state, temp.path(), &listing_of(temp.path()))
+        .expect("a BakaXL folder has to be recognised");
+
+    assert_eq!(installation.kind, "bakaxl");
+    assert_eq!(installation.sources.len(), 1);
+    assert_eq!(installation.sources[0].source_kind, "bakaxl");
+    assert_eq!(installation.sources[0].candidates.len(), 1);
+}
+
+#[test]
+fn a_prism_folder_offers_one_source_with_every_instance() {
+    let temp = TempDir::new("prism");
+    temp.touch("multimc.cfg", "InstanceDir=instances\n");
+    temp.touch(
+        "instances/fabric-1.16.1/mmc-pack.json",
+        r#"{"components":[{"uid":"net.minecraft","version":"1.16.1"},
+            {"uid":"net.fabricmc.fabric-loader","version":"0.18.4"}]}"#,
+    );
+    temp.touch("instances/fabric-1.16.1/instance.cfg", "name=Ranked\n");
+
+    let state = ImportState::default();
+    let installation = installation_at(&state, temp.path(), &listing_of(temp.path()))
+        .expect("a Prism folder has to be recognised");
+
+    assert_eq!(installation.kind, "prism");
+    assert_eq!(installation.sources.len(), 1);
+    let source = &installation.sources[0];
+    assert_eq!(source.source_kind, "prism");
+    assert_eq!(source.candidates.len(), 1);
+    assert_eq!(source.candidates[0].id, "fabric-1.16.1");
+    assert!(source.candidates[0].display_name.contains("Ranked"));
+}
+
+#[test]
+fn a_plain_game_folder_is_not_a_launcher() {
+    let temp = TempDir::new("plain-not-launcher");
+    temp.touch("versions/1.20.1/1.20.1.json", r#"{"id":"1.20.1"}"#);
+
+    let state = ImportState::default();
+
+    assert!(installation_at(&state, temp.path(), &listing_of(temp.path())).is_none());
+}
+
+#[test]
+fn an_hmcl_game_folder_is_recognised_by_its_config() {
+    let temp = TempDir::new("hmcl");
+    temp.touch(".hmcl.json", r#"{"version":3}"#);
+    temp.touch("versions/1.20.1/1.20.1.json", r#"{"id":"1.20.1"}"#);
+
+    let state = ImportState::default();
+    let installation = installation_at(&state, temp.path(), &listing_of(temp.path()))
+        .expect("an HMCL game folder has to be recognised");
+
+    assert_eq!(installation.kind, "hmcl");
+    assert_eq!(installation.sources.len(), 1);
+    assert_eq!(installation.sources[0].source_kind, "hmcl");
+    assert_eq!(installation.sources[0].candidates[0].id, "1.20.1");
+}

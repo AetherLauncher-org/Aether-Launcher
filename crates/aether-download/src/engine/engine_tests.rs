@@ -1779,3 +1779,172 @@ fn plan_results_have_one_entry_per_artifact_in_order() {
     assert_eq!(transport.request_count(), 5);
     assert!(sleeps.durations().is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// 复用已验证文件
+// ---------------------------------------------------------------------------
+
+#[test]
+fn reuse_verified_skips_network_for_matching_file() {
+    let root = TempRoot::new("reuse-skip");
+    let body = body_of(64, 3);
+    fs::create_dir_all(root.join("libraries")).expect("mkdir");
+    fs::write(root.join("libraries/ready.jar"), &body).expect("seed file");
+    // 传输没有任何脚本：只要发出请求就会得到 Timeout 并失败。
+    let transport = FakeTransport::new(vec![]);
+    let sleeps = SleepRecorder::default();
+    let progress = CollectProgress::default();
+
+    let result = engine(
+        &transport,
+        root.path(),
+        3,
+        Duration::from_millis(10),
+        Duration::from_secs(1),
+        &sleeps,
+    )
+    .with_reuse_verified(true)
+    .download_artifact(
+        &artifact(
+            "libraries/ready.jar",
+            body.len() as u64,
+            &sha1_of(&body),
+            &["a"],
+        ),
+        &CancellationToken::new(),
+        &progress,
+    );
+
+    assert_eq!(result.expect("reuse"), root.join("libraries/ready.jar"));
+    assert_eq!(
+        fs::read(root.join("libraries/ready.jar")).expect("read"),
+        body
+    );
+    assert_eq!(transport.request_count(), 0);
+    let last = progress.last().expect("progress");
+    assert_eq!(last.downloaded, body.len() as u64);
+    assert_eq!(last.total, body.len() as u64);
+    assert_eq!(last.destination, PathBuf::from("libraries/ready.jar"));
+    assert_eq!(last.provider, "local");
+    assert!(sleeps.durations().is_empty());
+}
+
+#[test]
+fn reuse_verified_redownloads_when_file_missing() {
+    let root = TempRoot::new("reuse-missing");
+    let body = body_of(48, 2);
+    let transport = FakeTransport::new(vec![Script::Ok {
+        status: 200,
+        body: body.clone(),
+        range_mode: RangeMode::Synthesized,
+    }]);
+    let sleeps = SleepRecorder::default();
+
+    let result = engine(
+        &transport,
+        root.path(),
+        3,
+        Duration::from_millis(10),
+        Duration::from_secs(1),
+        &sleeps,
+    )
+    .with_reuse_verified(true)
+    .download_artifact(
+        &artifact(
+            "libraries/absent.jar",
+            body.len() as u64,
+            &sha1_of(&body),
+            &["a"],
+        ),
+        &CancellationToken::new(),
+        &CollectProgress::default(),
+    );
+
+    assert_eq!(result.expect("download"), root.join("libraries/absent.jar"));
+    assert_eq!(
+        fs::read(root.join("libraries/absent.jar")).expect("read"),
+        body
+    );
+    assert_eq!(transport.request_count(), 1);
+}
+
+#[test]
+fn reuse_verified_redownloads_on_hash_mismatch() {
+    let root = TempRoot::new("reuse-mismatch");
+    let body = body_of(48, 6);
+    fs::create_dir_all(root.join("libraries")).expect("mkdir");
+    // 大小一致但内容不同：复用校验必须拒绝，随后正常下载覆盖。
+    fs::write(root.join("libraries/corrupt.jar"), body_of(48, 99)).expect("seed file");
+    let transport = FakeTransport::new(vec![Script::Ok {
+        status: 200,
+        body: body.clone(),
+        range_mode: RangeMode::Synthesized,
+    }]);
+    let sleeps = SleepRecorder::default();
+
+    let result = engine(
+        &transport,
+        root.path(),
+        3,
+        Duration::from_millis(10),
+        Duration::from_secs(1),
+        &sleeps,
+    )
+    .with_reuse_verified(true)
+    .download_artifact(
+        &artifact(
+            "libraries/corrupt.jar",
+            body.len() as u64,
+            &sha1_of(&body),
+            &["a"],
+        ),
+        &CancellationToken::new(),
+        &CollectProgress::default(),
+    );
+
+    assert_eq!(
+        result.expect("redownload"),
+        root.join("libraries/corrupt.jar")
+    );
+    assert_eq!(
+        fs::read(root.join("libraries/corrupt.jar")).expect("read"),
+        body
+    );
+    assert_eq!(transport.request_count(), 1);
+}
+
+#[test]
+fn reuse_disabled_by_default_downloads_matching_file_again() {
+    let root = TempRoot::new("reuse-default-off");
+    let body = body_of(32, 4);
+    fs::create_dir_all(root.join("libraries")).expect("mkdir");
+    fs::write(root.join("libraries/again.jar"), &body).expect("seed file");
+    let transport = FakeTransport::new(vec![Script::Ok {
+        status: 200,
+        body: body.clone(),
+        range_mode: RangeMode::Synthesized,
+    }]);
+    let sleeps = SleepRecorder::default();
+
+    let result = engine(
+        &transport,
+        root.path(),
+        3,
+        Duration::from_millis(10),
+        Duration::from_secs(1),
+        &sleeps,
+    )
+    .download_artifact(
+        &artifact(
+            "libraries/again.jar",
+            body.len() as u64,
+            &sha1_of(&body),
+            &["a"],
+        ),
+        &CancellationToken::new(),
+        &CollectProgress::default(),
+    );
+
+    assert!(result.is_ok());
+    assert_eq!(transport.request_count(), 1);
+}

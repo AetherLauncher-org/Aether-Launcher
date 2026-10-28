@@ -11,6 +11,7 @@ use thiserror::Error;
 
 pub mod engine;
 pub mod hash;
+pub mod mirrors;
 pub mod selector;
 pub mod transport;
 
@@ -207,5 +208,9 @@ pub use engine::{
     ProgressSink, RetryPolicy, SourceFailure,
 };
 pub use hash::{HashMismatch, HashingWriter, VerifyError, verify_reader};
+pub use mirrors::{
+    BMCLAPI_BASE, BMCLAPI_PROVIDER, bmclapi_mirror, expand_plan_with_mirrors,
+    fetch_first_available, with_mirrors,
+};
 pub use selector::{ProviderStat, degraded_weight, effective_weight, order_sources};
 pub use transport::{HttpTransport, Range, TransportError, TransportRequest, TransportResponse};

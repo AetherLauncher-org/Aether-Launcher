@@ -63,6 +63,7 @@ impl Fixture {
             name: "Fabric Test".to_owned(),
             version: VersionId::parse(version).unwrap(),
             root: self.instance_dir.clone(),
+            game_directory: None,
             state,
         };
         fs::write(

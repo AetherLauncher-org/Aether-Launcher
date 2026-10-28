@@ -36,6 +36,7 @@ impl Fixture {
             name: "Aether Test".to_owned(),
             version: VersionId::parse("1.21.1").unwrap(),
             root: self.directory.clone(),
+            game_directory: None,
             state: InstanceState::Ready,
         }
     }

@@ -20,11 +20,23 @@
 //! | --- | --- | --- |
 //! | PCL2 | `PCL/Setup.ini`, `PCL.ini` | `versions/<id>/<id>.json` (also below `.minecraft/`) |
 //! | HMCL | `.hmcl.json`, `hmcl.json`, `hmclversion.cfg` | `versions/<id>/<id>.json` |
+//! | BakaXL | `BakaXL.exe`, `BakaXL.Core*` | `versions/<id>/<id>.json` (also below `.minecraft/`) |
+//! | Prism / MultiMC | `prismlauncher.cfg`, `multimc.cfg`, `instances/<id>/mmc-pack.json` | none on disk; see [`prism`] |
+//! | Plain folder | none | `versions/<id>/<id>.json` |
+//!
+//! The first three keep the game in a `.minecraft` folder, so one pipeline
+//! imports all of them. Prism Launcher and MultiMC describe a version with
+//! `mmc-pack.json` instead of storing `versions/<id>/<id>.json`, which is why
+//! [`execute`] has a second entry point for those instances.
 //!
 //! Importing is additive only: a candidate describes what would be created, and
 //! the caller must skip every target that already exists instead of overwriting
 //! it. See [`ImportCandidate::existing_targets`] and
 //! [`ImportCandidate::missing_targets`] for the planned-file split.
+//!
+//! [`execute`] performs the transfer: it copies the version metadata (and its
+//! `inheritsFrom` ancestors) into the launcher-owned game tree and creates one
+//! managed instance per selected version. It never copies game files.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -32,8 +44,12 @@ use std::path::{Component, Path, PathBuf};
 
 use thiserror::Error;
 
+pub mod bakaxl;
+pub mod execute;
+pub mod fallback;
 pub mod hmcl;
 pub mod pcl2;
+pub mod prism;
 
 /// Maximum directory depth [`scan_directory`] walks below its root.
 pub const MAX_SCAN_DEPTH: usize = 3;
@@ -48,6 +64,12 @@ pub enum ImportSourceKind {
     Pcl2,
     /// Hello Minecraft! Launcher.
     Hmcl,
+    /// BakaXL.
+    BakaXl,
+    /// Prism Launcher or MultiMC, which share one instance format.
+    Prism,
+    /// A plain game directory with no launcher marker of its own.
+    Folder,
 }
 
 impl ImportSourceKind {
@@ -57,6 +79,9 @@ impl ImportSourceKind {
         match self {
             Self::Pcl2 => "pcl2",
             Self::Hmcl => "hmcl",
+            Self::BakaXl => "bakaxl",
+            Self::Prism => "prism",
+            Self::Folder => "folder",
         }
     }
 }
@@ -230,15 +255,23 @@ pub enum ImportError {
 
 /// Recognises which launcher produced a listing.
 ///
-/// PCL2 wins when both launchers left markers behind, because PCL2 keeps its
-/// configuration in a subdirectory that a mixed tree would still contain.
+/// Prism wins when its instance format is present, because a Prism folder also
+/// contains a `.minecraft`-shaped tree that would otherwise look like a plain
+/// game directory. PCL2 comes next: it keeps its configuration in a
+/// subdirectory that a mixed tree would still contain.
 #[must_use]
 pub fn detect(files: &ExistingFiles) -> Option<ImportSourceKind> {
+    if prism::matches(files) {
+        return Some(ImportSourceKind::Prism);
+    }
     if pcl2::matches(files) {
         return Some(ImportSourceKind::Pcl2);
     }
     if hmcl::matches(files) {
         return Some(ImportSourceKind::Hmcl);
+    }
+    if bakaxl::matches(files) {
+        return Some(ImportSourceKind::BakaXl);
     }
     None
 }
@@ -291,6 +324,119 @@ pub fn scan_directory(root: &Path) -> Result<ExistingFiles, ImportError> {
     walk(root, "", 0, &mut entries, &mut budget)?;
 
     Ok(ExistingFiles::new(entries))
+}
+
+/// Builds the snapshot an import plan actually needs from a game directory.
+///
+/// [`scan_directory`] walks the whole tree, which is the wrong tool for a real
+/// `.minecraft`: `libraries/` and `assets/` alone hold thousands of files, so any
+/// installed version would hit [`MAX_SCAN_ENTRIES`] and be rejected. This
+/// function only collects what the planner reads:
+///
+/// * the root entries, which carry the launcher markers;
+/// * `versions/<id>` and `versions/<id>/<id>.json` for every version folder;
+/// * the same two levels below a `.minecraft` directory at the root.
+///
+/// Symbolic links are skipped and the entry budget is the same as
+/// [`scan_directory`], so a hostile tree is still bounded.
+pub fn scan_game_directory(root: &Path) -> Result<ExistingFiles, ImportError> {
+    match fs::symlink_metadata(root) {
+        Ok(metadata) if metadata.file_type().is_symlink() => return Err(ImportError::InvalidRoot),
+        Ok(metadata) if metadata.is_dir() => {}
+        Ok(_) => return Err(ImportError::InvalidRoot),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(ImportError::InvalidRoot);
+        }
+        Err(error) => return Err(ImportError::Io(error)),
+    }
+
+    let mut entries = Vec::new();
+    let mut budget = MAX_SCAN_ENTRIES;
+    collect_game_root(root, "", &mut entries, &mut budget)?;
+
+    Ok(ExistingFiles::new(entries))
+}
+
+/// Collects the root entries of a game directory and descends into `versions/`.
+fn collect_game_root(
+    directory: &Path,
+    prefix: &str,
+    entries: &mut Vec<String>,
+    budget: &mut usize,
+) -> Result<(), ImportError> {
+    for entry in fs::read_dir(directory).map_err(ImportError::Io)? {
+        let entry = entry.map_err(ImportError::Io)?;
+        if *budget == 0 {
+            return Err(ImportError::TooManyEntries);
+        }
+        *budget -= 1;
+
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
+        };
+        let Ok(metadata) = fs::symlink_metadata(entry.path()) else {
+            continue;
+        };
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+
+        let relative = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{prefix}/{name}")
+        };
+        entries.push(relative.clone());
+
+        if !metadata.is_dir() {
+            continue;
+        }
+        if name == "versions" {
+            collect_versions(&entry.path(), &relative, entries, budget)?;
+        } else if prefix.is_empty() && name == ".minecraft" {
+            collect_game_root(&entry.path(), &relative, entries, budget)?;
+        } else if name == "PCL" && entry.path().join("Setup.ini").is_file() {
+            // Only the marker is needed; the configuration itself is read by the
+            // command layer, which knows how to locate the launcher folder.
+            entries.push(format!("{relative}/Setup.ini"));
+        }
+    }
+
+    Ok(())
+}
+
+/// Collects `versions/<id>` and `versions/<id>/<id>.json` for one `versions/`.
+fn collect_versions(
+    directory: &Path,
+    prefix: &str,
+    entries: &mut Vec<String>,
+    budget: &mut usize,
+) -> Result<(), ImportError> {
+    for entry in fs::read_dir(directory).map_err(ImportError::Io)? {
+        let entry = entry.map_err(ImportError::Io)?;
+        if *budget == 0 {
+            return Err(ImportError::TooManyEntries);
+        }
+        *budget -= 1;
+
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
+        };
+        let Ok(metadata) = fs::symlink_metadata(entry.path()) else {
+            continue;
+        };
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            continue;
+        }
+
+        let relative = format!("{prefix}/{name}");
+        entries.push(relative.clone());
+        if entry.path().join(format!("{name}.json")).is_file() {
+            entries.push(format!("{relative}/{name}.json"));
+        }
+    }
+
+    Ok(())
 }
 
 /// Depth-first walk that appends `/`-separated relative paths.

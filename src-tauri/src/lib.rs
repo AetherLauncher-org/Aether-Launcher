@@ -66,8 +66,10 @@ async fn system_memory() -> Option<aether_runtime::memory::SystemMemory> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(commands::launch::LaunchState::default())
         .manage(commands::install::InstallState::default())
+        .manage(commands::import::ImportState::default())
         .invoke_handler(tauri::generate_handler![
             application_info,
             list_java_runtimes,
@@ -76,6 +78,14 @@ pub fn run() {
             commands::install::install_vanilla_version,
             commands::install::cancel_vanilla_install,
             commands::instances::list_instances,
+            commands::instances::create_instance,
+            commands::instances::set_game_directory_for_all_instances,
+            commands::instances::delete_instance,
+            commands::import::pick_import_folder,
+            commands::import::detect_launcher_installations,
+            commands::import::pick_launcher_folder,
+            commands::import::import_versions,
+            commands::import::install_imported_instance,
             commands::launch::start_installed_instance,
             commands::launch::stop_installed_instance,
             commands::launch::game_status,

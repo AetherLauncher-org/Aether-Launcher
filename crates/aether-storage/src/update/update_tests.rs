@@ -102,6 +102,7 @@ fn instance_in(directory: &Path, name: &str) -> GameInstance {
         name: name.to_owned(),
         version: VersionId::parse("1.21.1").expect("the sample version should parse"),
         root: directory.to_path_buf(),
+        game_directory: None,
         state: InstanceState::Ready,
     }
 }
@@ -484,6 +485,7 @@ fn set_state_refuses_a_record_whose_root_points_elsewhere() {
         name: "Copied".to_owned(),
         version: VersionId::parse("1.21.1").expect("the sample version should parse"),
         root: elsewhere.clone(),
+        game_directory: None,
         state: InstanceState::Ready,
     };
     let raw = crate::encode_instance(&instance).expect("the record should encode");

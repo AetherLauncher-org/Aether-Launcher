@@ -49,14 +49,40 @@ export function listJavaRuntimes(): Promise<JavaRuntimeInfo[]> {
 // 带参数的命令封装与错误描述
 export { callCommand, describeCommandError } from "./call";
 
-// 实例列表（实例由安装流程创建）
-export { emptyInstanceListing, listInstances } from "./instances";
+// 实例列表与创建
+export {
+  emptyInstanceListing,
+  createInstance,
+  deleteInstance,
+  listInstances,
+  setGameDirectoryForAllInstances,
+} from "./instances";
 export type {
+  CreateInstanceInput,
+  GameDirectoryReport,
+  InstanceCategory,
   InstanceListing,
   InstanceState,
   InstanceSummary,
   SkippedInstance,
 } from "./instances";
+
+// 从现有 .minecraft 或其他启动器导入实例
+export {
+  detectLauncherInstallations,
+  importVersions,
+  installImportedInstance,
+  pickImportFolder,
+  pickLauncherFolder,
+} from "./import";
+export type {
+  ImportCandidate,
+  ImportResult,
+  ImportSkipped,
+  ImportSource,
+  ImportSourceKind,
+  LauncherInstallation,
+} from "./import";
 
 // 官方 Minecraft 版本目录（只读）
 export { listMinecraftVersions } from "./catalog";

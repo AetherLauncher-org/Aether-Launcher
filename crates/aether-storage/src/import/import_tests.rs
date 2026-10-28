@@ -7,7 +7,7 @@
 //! Most tests feed a hand-built [`ExistingFiles`] snapshot to the pure
 //! `detect` / `plan_candidates` functions. Only the `scan_directory` tests touch
 //! the file system, and they use a unique directory below
-//! `std::env::temp_dir()` that is removed on drop — never the working directory
+//! `std::env::temp_dir()` that is removed on drop 鈥?never the working directory
 //! and never a real user profile.
 
 use std::fs;
@@ -16,7 +16,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use super::hmcl;
 use super::pcl2;
-use super::{ImportError, ImportSourceKind, detect, plan_candidates, scan_directory};
+use super::{
+    ImportError, ImportSourceKind, detect, plan_candidates, scan_directory, scan_game_directory,
+};
 
 /// Monotonic counter that keeps temporary directory names unique per process.
 static TEMP_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -240,6 +242,48 @@ fn existing_match_is_case_insensitive() {
 }
 
 // --- directory scanning -----------------------------------------------------
+
+#[test]
+fn scan_game_directory_ignores_libraries_and_assets() {
+    let temp = TempDir::new("game-dir");
+    temp.touch("versions/1.20.1/1.20.1.json");
+    temp.touch("versions/1.20.1/1.20.1.jar");
+    temp.touch("PCL/Setup.ini");
+    // A real install keeps thousands of files here; the targeted scan must not
+    // count them against the entry budget.
+    for index in 0..200 {
+        temp.touch(&format!(
+            "libraries/group/artifact/{index}/artifact-{index}.jar"
+        ));
+    }
+
+    let snapshot = scan_game_directory(temp.path()).unwrap();
+
+    assert!(snapshot.contains("versions/1.20.1/1.20.1.json"));
+    assert!(snapshot.contains("PCL/Setup.ini"));
+    assert!(
+        !snapshot
+            .entries
+            .iter()
+            .any(|entry| entry.starts_with("libraries/")),
+        "libraries must not be walked"
+    );
+    assert!(snapshot.entries.len() < 20);
+    assert_eq!(plan_candidates(ImportSourceKind::Pcl2, &snapshot).len(), 1);
+}
+
+#[test]
+fn scan_game_directory_finds_versions_below_a_minecraft_folder() {
+    let temp = TempDir::new("nested-game-dir");
+    temp.touch(".minecraft/versions/1.21/1.21.json");
+
+    let snapshot = scan_game_directory(temp.path()).unwrap();
+    let candidates = plan_candidates(ImportSourceKind::Folder, &snapshot);
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].version_id, "1.21");
+    assert_eq!(candidates[0].game_directory, PathBuf::from(".minecraft"));
+}
 
 #[test]
 fn scan_directory_builds_relative_slash_paths() {

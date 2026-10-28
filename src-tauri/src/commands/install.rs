@@ -17,8 +17,9 @@ use aether_download::transport::http::UreqKernel;
 use aether_download::transport::{HttpTransport, KernelHttpTransport, TransportError};
 use aether_download::verify::verify_local_artifact;
 use aether_download::{
-    ArtifactResult, ArtifactSource, AttemptError, CancellationToken, DownloadArtifact,
-    DownloadEngine, DownloadError, DownloadPlan, ProgressSink, is_safe_relative_path,
+    ArtifactResult, AttemptError, CancellationToken, DownloadArtifact, DownloadEngine,
+    DownloadError, DownloadPlan, ProgressSink, expand_plan_with_mirrors, is_safe_relative_path,
+    with_mirrors,
 };
 use aether_launch::build_install_plan;
 use aether_manifest::load_resolved_version_manifest;
@@ -65,8 +66,8 @@ pub trait Reporter: Send + Sync {
     fn report(&self, progress: &InstallProgress);
 }
 
-struct EventReporter {
-    app: tauri::AppHandle,
+pub(super) struct EventReporter {
+    pub(super) app: tauri::AppHandle,
 }
 
 impl Reporter for EventReporter {
@@ -82,7 +83,7 @@ pub struct InstallState {
 }
 
 impl InstallState {
-    fn begin(&self) -> Result<CancellationToken, String> {
+    pub(super) fn begin(&self) -> Result<CancellationToken, String> {
         let mut active = self
             .active
             .lock()
@@ -95,7 +96,7 @@ impl InstallState {
         Ok(token)
     }
 
-    fn finish(&self) {
+    pub(super) fn finish(&self) {
         if let Ok(mut active) = self.active.lock() {
             *active = None;
         }
@@ -246,8 +247,11 @@ pub(super) fn install_version(
     let client_version = resolved
         .client_jar_version
         .ok_or_else(|| "version JSON has no official client download".to_owned())?;
-    let plan = build_install_plan(&resolved.manifest, &client_version, &current_environment())
-        .map_err(|error| format!("cannot plan installation: {error}"))?;
+    // 官方源在前、BMCLAPI 镜像在后；传输失败后的回退与按源熔断都由引擎处理。
+    let plan = expand_plan_with_mirrors(
+        build_install_plan(&resolved.manifest, &client_version, &current_environment())
+            .map_err(|error| format!("cannot plan installation: {error}"))?,
+    );
 
     let engine = DownloadEngine::new(transport, game_root);
     let mut total = run_stage(
@@ -271,10 +275,7 @@ pub(super) fn install_version(
                     .join(format!("{}.json", index.id)),
                 size: index.size,
                 sha1: index.sha1.to_ascii_lowercase(),
-                sources: vec![ArtifactSource {
-                    provider: "mojang".to_owned(),
-                    url: index.url.clone(),
-                }],
+                sources: with_mirrors("mojang", &index.url.clone()),
             }],
         };
         total += run_stage(
@@ -288,6 +289,7 @@ pub(super) fn install_version(
         )?;
         let objects = build_asset_object_plan(game_root, &index.id, &index.sha1, index.size)
             .map_err(|error| format!("cannot plan asset download: {error}"))?;
+        let objects = expand_plan_with_mirrors(objects);
         total += run_stage(
             &engine,
             game_root,
@@ -393,7 +395,7 @@ pub(super) fn install_and_create(
         bytes_done: 0,
         bytes_total: 0,
     });
-    let instance = create_instance(base, name, version)
+    let instance = create_instance(base, name, version, &game_root)
         .map_err(|error| format!("cannot create instance: {error}"))?;
     activate_instance(base, &game_root, instance.id)?;
     let ready = InstanceStore::open(base)

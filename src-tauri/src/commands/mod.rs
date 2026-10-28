@@ -5,12 +5,13 @@
 //! configuration values, never an executable path, a game directory or an
 //! arbitrary file system location. The backend owns those roots.
 //!
-//! Only the instance *listing* and *creation* commands live here for now.
-//! Instance launching, process control and crash analysis stay behind the
-//! Rust-only APIs of `aether-launch` and `aether-diagnose` until their
-//! fail-closed preconditions are fully implemented.
+//! Instance listing, creation and import live here. Instance launching, process
+//! control and crash analysis stay behind the Rust-only APIs of `aether-launch`
+//! and `aether-diagnose` until their fail-closed preconditions are fully
+//! implemented.
 
 pub mod catalog;
+pub mod import;
 pub mod install;
 pub mod instances;
 pub mod launch;

@@ -78,6 +78,7 @@ fn plant_instance(temp: &TempDir, name: &str) -> InstanceId {
         name: name.to_owned(),
         version: VersionId::parse("1.21.1").expect("version"),
         root: directory.clone(),
+        game_directory: None,
         state: InstanceState::Ready,
     };
     fs::write(
@@ -131,6 +132,7 @@ fn consistent_instance(directory: &Path, name: &str) -> GameInstance {
         name: name.to_owned(),
         version: VersionId::parse("1.21.1").expect("version"),
         root: canonical,
+        game_directory: None,
         state: InstanceState::Ready,
     }
 }

@@ -1,6 +1,14 @@
-import { Button, MessageBar, MessageBarActions, MessageBarBody, SearchBox, Text } from "@fluentui/react-components";
+import {
+  Button,
+  MessageBar,
+  MessageBarActions,
+  MessageBarBody,
+  SearchBox,
+  Text,
+} from "@fluentui/react-components";
 import {
   ArrowDownload20Regular,
+  ArrowImport20Regular,
   ArrowSync20Regular,
   Box24Regular,
   Warning24Regular,
@@ -9,6 +17,7 @@ import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { EmptyState } from "../components/EmptyState";
 import { GameControls } from "../components/GameControls";
+import { ImportInstancesDialog } from "../components/ImportInstancesDialog";
 import { InstanceCover } from "../components/InstanceCover";
 import { PageHeader } from "../components/PageHeader";
 import { DesktopOnlyNotice, ErrorState } from "../components/PageState";
@@ -31,13 +40,16 @@ type InstancesPageProps = {
 
 /**
  * 实例页：卡片网格。每张卡片有封面、名称、版本和启动／停止按钮。
- * 实例由「下载」页的安装流程创建，这里不提供空实例的创建入口。
+ *
+ * 实例有两条来源：下载页的安装流程，以及从别的启动器导入。两者都落到同一个
+ * 实例存储，所以这里只有一个入口负责展示和启动。
  */
 export function InstancesPage({ page }: InstancesPageProps) {
   const { desktop, status, instances, skipped, error, reload } = useInstances();
   const { book } = useAccounts();
   const { navigate } = useNavigation();
   const [query, setQuery] = useState("");
+  const [importing, setImporting] = useState(false);
   const [memoryLabel] = useState(() => describeMemorySetting(loadMemoryMode(), loadMemoryMiB()));
 
   const visible = useMemo(
@@ -45,17 +57,26 @@ export function InstancesPage({ page }: InstancesPageProps) {
     [instances, query],
   );
 
-  const toDownload = (
-    <Button appearance="primary" icon={<ArrowDownload20Regular />} onClick={() => navigate("download")}>
-      安装新版本
-    </Button>
+  const actions = (
+    <div className="page-actions">
+      {desktop ? (
+        <Button appearance="subtle" icon={<ArrowImport20Regular />} onClick={() => setImporting(true)}>
+          导入实例
+        </Button>
+      ) : null}
+      <Button appearance="primary" icon={<ArrowDownload20Regular />} onClick={() => navigate("download")}>
+        安装新版本
+      </Button>
+    </div>
   );
 
   return (
     <>
-      <PageHeader title={page.label} description={page.summary} action={toDownload} />
+      <PageHeader title={page.label} description={page.summary} action={actions} />
 
-      {!desktop ? <DesktopOnlyNotice body="浏览器预览读不到本机实例。用桌面版可以安装、管理和启动实例。" /> : null}
+      {!desktop ? (
+        <DesktopOnlyNotice body="浏览器预览读不到本机实例。用桌面版可以安装、管理和启动实例。" />
+      ) : null}
 
       {desktop && instances.length > 0 && book.accounts.length === 0 ? (
         <MessageBar intent="info" className="page-notice">
@@ -104,10 +125,29 @@ export function InstancesPage({ page }: InstancesPageProps) {
           title="还没有实例"
           body={
             desktop
-              ? "到「下载」页选一个游戏版本，安装完成后会自动创建实例。"
+              ? "到「下载」页装一个新版本，或者把别的启动器里已有的版本导入进来。"
               : "浏览器预览里无法读取本机实例，打开桌面版即可看到列表。"
           }
-          action={desktop ? toDownload : undefined}
+          action={
+            desktop ? (
+              <div className="page-actions">
+                <Button
+                  appearance="secondary"
+                  icon={<ArrowImport20Regular />}
+                  onClick={() => setImporting(true)}
+                >
+                  导入实例
+                </Button>
+                <Button
+                  appearance="primary"
+                  icon={<ArrowDownload20Regular />}
+                  onClick={() => navigate("download")}
+                >
+                  安装新版本
+                </Button>
+              </div>
+            ) : undefined
+          }
         />
       ) : visible.length === 0 ? (
         <EmptyState
@@ -152,6 +192,12 @@ export function InstancesPage({ page }: InstancesPageProps) {
           </ul>
         </div>
       ) : null}
+
+      <ImportInstancesDialog
+        open={importing}
+        onOpenChange={setImporting}
+        onImported={reload}
+      />
     </>
   );
 }

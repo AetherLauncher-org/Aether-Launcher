@@ -455,7 +455,7 @@ fn live_launch_of_an_installed_version_stays_running() {
     let version = std::env::var("AETHER_LIVE_VERSION").unwrap_or_else(|_| "1.16.5".to_owned());
     let game = PathBuf::from(std::env::var_os("AETHER_LIVE_DIR").expect("AETHER_LIVE_DIR"));
     let store = Fixture::new();
-    let instance = aether_storage::create_instance(store.root(), "live", &version).unwrap();
+    let instance = aether_storage::create_instance(store.root(), "live", &version, &game).unwrap();
     aether_storage::set_instance_state(&instance.root, &instance, InstanceState::Ready).unwrap();
 
     let vars = BTreeMap::from([

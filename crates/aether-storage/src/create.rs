@@ -61,8 +61,11 @@ use crate::update::{self, UpdateError, validate_instance_name, validate_version_
 /// redefined here because that file is owned by PR #12.
 pub const INSTANCES_DIR: &str = "instances";
 
-/// Game directory skeleton created for every new instance.
-pub const MINECRAFT_DIR: &str = "minecraft";
+/// 旧记录的游戏目录回退名：`<root>/minecraft`。
+///
+/// 新实例不再使用它 —— 游戏目录就是用户自己的 `.minecraft`，原地读、原地下载。
+/// 这个常量只服务于「字段加入之前创建的实例」，让它们的旧路径仍有名字可依。
+pub const LEGACY_MINECRAFT_DIR: &str = "minecraft";
 
 /// Record file name inside an instance directory.
 ///
@@ -79,6 +82,9 @@ pub enum CreateError {
     /// The store root is missing, is not a directory, or is a symbolic link.
     #[error("instance store base is not a safe existing directory")]
     UnsafeBase,
+    /// The game directory (the user's `.minecraft`) is not a usable directory.
+    #[error("game directory is not a safe existing directory")]
+    UnsafeGameDirectory,
     /// The display name is not acceptable.
     #[error("invalid instance name: {0}")]
     InvalidName(String),
@@ -140,16 +146,23 @@ fn map_version_error(error: UpdateError) -> CreateError {
     }
 }
 
-/// Creates a new managed instance under `base`.
+/// Creates a new managed instance under `base`, bound to `game_directory`.
 ///
 /// `base` is the store root (the parent of `instances/`). The directory
-/// `instances/` is created when missing. The returned instance is already
-/// persisted; `root` is the canonicalized `<base>/instances/<uuid>` path.
+/// `instances/` is created when missing. `game_directory` is the real
+/// `.minecraft` this instance reads and downloads into; it must already exist
+/// and must not be a symbolic link. Nothing is copied out of it, and several
+/// instances may share one directory.
+///
+/// The returned instance is already persisted; `root` is the canonicalized
+/// `<base>/instances/<uuid>` path, and `game_directory` is its canonicalized form.
 ///
 /// # Errors
 ///
 /// * [`CreateError::UnsafeBase`] when `base` is missing, is not a plain directory,
 ///   is a symbolic link, or when `<base>/instances` is not a plain directory;
+/// * [`CreateError::UnsafeGameDirectory`] when `game_directory` is missing, is not
+///   a plain directory, or is a symbolic link;
 /// * [`CreateError::InvalidName`] when `name` fails
 ///   [`crate::update::validate_instance_name`];
 /// * [`CreateError::InvalidVersion`] when `version` fails
@@ -165,6 +178,7 @@ pub fn create_instance(
     base: &Path,
     name: &str,
     version: &str,
+    game_directory: &Path,
 ) -> Result<GameInstance, CreateError> {
     // 1. The store root must be a real directory before anything is derived from it.
     let base = canonical_base(base)?;
@@ -177,40 +191,58 @@ pub fn create_instance(
     let parsed_version = VersionId::parse(version)
         .map_err(|error| CreateError::InvalidVersion(error.to_string()))?;
 
-    // 4. `<base>/instances` is created on demand and re-checked through metadata.
+    // 4. The game directory is the user's own .minecraft: it stays where it is.
+    let game_directory = canonical_game_directory(game_directory)?;
+
+    // 5. `<base>/instances` is created on demand and re-checked through metadata.
     let instances = instances_dir(&base)?;
 
-    // 5. Two instances must not share a display name.
+    // 6. Two instances must not share a display name.
     reject_duplicate_name(&instances, name)?;
 
-    // 6. + 7. A fresh UUID directory, allocated exclusively for this call.
+    // 7. A fresh UUID directory, allocated exclusively for this call.
     let (id, directory) = allocate_directory(&instances)?;
-
-    // 8. Everything from here on has to roll the directory back on failure.
-    if let Err(error) = create_skeleton(&directory) {
-        rollback(&directory);
-        return Err(error);
-    }
 
     let instance = GameInstance {
         id,
         name: name.to_owned(),
         version: parsed_version,
         root: directory.clone(),
+        game_directory: Some(game_directory),
         state: InstanceState::Incomplete,
     };
 
-    // 9. The record is written through the same atomic path as every update.
+    // 8. The record is written through the same atomic path as every update.
     //    No record can exist yet: `allocate_directory` created this directory
     //    itself, so there is nothing to check for and `AlreadyExists` cannot
     //    originate here — see its documentation for where it does come from.
     if let Err(error) = update::write_instance_atomic(&directory, &instance) {
-        // 10. Roll back the half-built directory so a retry starts from a clean slate.
+        // 9. Roll back the half-built directory so a retry starts from a clean slate.
         rollback(&directory);
         return Err(error.into());
     }
 
     Ok(instance)
+}
+
+/// Verifies that `game_directory` is an existing plain directory, and canonicalizes it.
+///
+/// The game directory is the user's `.minecraft`: it is read and written in place,
+/// never copied and never relocated. It is not created on demand — adopting a
+/// surviving reparse point or a freshly made empty directory would silently bind an
+/// instance to something that was never a Minecraft installation.
+fn canonical_game_directory(game_directory: &Path) -> Result<PathBuf, CreateError> {
+    match fs::symlink_metadata(game_directory) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(CreateError::UnsafeGameDirectory),
+        Ok(metadata) if metadata.is_dir() => {
+            fs::canonicalize(game_directory).map_err(|_| CreateError::UnsafeGameDirectory)
+        }
+        Ok(_) => Err(CreateError::UnsafeGameDirectory),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(CreateError::UnsafeGameDirectory)
+        }
+        Err(error) => Err(CreateError::Io(error)),
+    }
 }
 
 /// Verifies that `base` is a plain, existing directory and canonicalizes it.
@@ -341,11 +373,6 @@ fn read_record_name(directory: &Path) -> Option<String> {
     crate::decode_instance(&raw)
         .ok()
         .map(|existing| existing.name)
-}
-
-/// Creates the `minecraft/` working directory inside a freshly allocated directory.
-fn create_skeleton(directory: &Path) -> Result<(), CreateError> {
-    fs::create_dir(directory.join(MINECRAFT_DIR)).map_err(CreateError::Io)
 }
 
 /// Picks a fresh identifier, creates its directory and returns both.

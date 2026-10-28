@@ -239,6 +239,7 @@ pub struct DownloadEngine<'a> {
     trip_threshold: u32,
     sleeper: Box<dyn Fn(Duration) + Send + Sync>,
     history: Mutex<HashMap<String, ProviderStat>>,
+    reuse_verified: bool,
 }
 
 impl<'a> DownloadEngine<'a> {
@@ -253,6 +254,7 @@ impl<'a> DownloadEngine<'a> {
             trip_threshold: DEFAULT_TRIP_THRESHOLD,
             sleeper: Box::new(thread::sleep),
             history: Mutex::new(HashMap::new()),
+            reuse_verified: false,
         }
     }
 
@@ -284,6 +286,20 @@ impl<'a> DownloadEngine<'a> {
         self
     }
 
+    /// 启用「复用已验证文件」：下载前先核对目标文件是否已存在，且大小与
+    /// SHA-1 都和计划一致，一致则不发起任何网络请求，直接视为成功。默认
+    /// 关闭，行为与从前一致。
+    ///
+    /// 复用前的校验就是 [`crate::verify::verify_local_artifact`]（流式 SHA-1，
+    /// 并拒绝指向游戏目录之外的链接）；文件缺失或校验不符都静默落回常规
+    /// 下载路径，不符的旧内容由 `.part` 协议在提交阶段原子覆盖。跳过发生在
+    /// 来源选择与熔断统计之前，不产生任何 provider 记录或请求历史。
+    #[must_use]
+    pub fn with_reuse_verified(mut self, reuse: bool) -> Self {
+        self.reuse_verified = reuse;
+        self
+    }
+
     /// 当前会话的 provider 统计快照。
     #[must_use]
     pub fn provider_stats(&self) -> HashMap<String, ProviderStat> {
@@ -312,6 +328,15 @@ impl<'a> DownloadEngine<'a> {
         // 预取消必须一次请求都不发。
         if cancel.is_cancelled() {
             return Err(DownloadError::Cancelled(destination.clone()));
+        }
+
+        // 复用已验证文件：目标已存在且与计划一致时，一次请求都不发。校验
+        // 失败（缺失、大小或摘要不符、指向目录外的链接）一律回落到常规
+        // 下载路径，不在这里报错。
+        if self.reuse_verified && crate::verify::verify_local_artifact(self.root, artifact).is_ok()
+        {
+            progress.progress(destination, "local", artifact.size, artifact.size);
+            return Ok(self.root.join(destination));
         }
 
         let ordered = {
