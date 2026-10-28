@@ -791,14 +791,12 @@
 }
 
 .microsoft-card {
-  max-width: 640px;
   justify-items: start;
 }
 
 /* ── 设置页 ───────────────────────────────────────────────────── */
 
 .setting-group {
-  max-width: 760px;
   margin-bottom: 16px;
   gap: 4px;
 }
