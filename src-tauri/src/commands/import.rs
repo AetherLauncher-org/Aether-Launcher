@@ -555,10 +555,43 @@ pub(crate) async fn detect_launcher_installations(
         for (root, depth) in launcher_search_roots(&handle) {
             probe(&state, &root, depth, &mut found, &mut budget);
         }
-        found
+        drop_repeated_game_directories(found)
     })
     .await
     .map_err(|error| format!("launcher detection task failed: {error}"))
+}
+
+/// 去掉跨启动器重复的游戏目录。
+///
+/// 同一份 `.minecraft` 常被 PCL2 和 HMCL 同时记录，不去重的话对话框里会列出
+/// 好几行一模一样的路径，用户分不清该点哪个。这里只去掉**指向同一目录**的
+/// 重复条目；`E:\a` 和 `E:\a\.minecraft` 是两个不同的目录，各自可能装不同的
+/// 版本，都要保留。
+///
+/// 判据是规范化后的路径：先 `canonicalize`（解符号链接和 `..`），失败时退回
+/// 小写比较，因为 Windows 路径不区分大小写。同一个目录只保留最先出现的那条，
+/// 顺序不变；一个启动器的来源被全部去掉时，这条安装记录本身也不再列出。
+fn drop_repeated_game_directories(
+    installations: Vec<LauncherInstallationDto>,
+) -> Vec<LauncherInstallationDto> {
+    let mut seen = std::collections::HashSet::new();
+    let mut kept = Vec::with_capacity(installations.len());
+
+    for mut installation in installations {
+        installation.sources.retain(|source| {
+            let key = PathBuf::from(&source.source_path);
+            let key = key
+                .canonicalize()
+                .map(|resolved| resolved.to_string_lossy().to_lowercase())
+                .unwrap_or_else(|_| source.source_path.to_lowercase());
+            seen.insert(key)
+        });
+        if !installation.sources.is_empty() {
+            kept.push(installation);
+        }
+    }
+
+    kept
 }
 
 /// Reads a launcher or game folder the user picked by hand.

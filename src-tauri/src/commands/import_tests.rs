@@ -18,8 +18,8 @@ use aether_storage::ImportSourceKind;
 
 use super::{
     ImportCandidateDto, ImportResultDto, ImportSkippedDto, ImportSourceDto, ImportState,
-    LauncherInstallationDto, PendingSource, describe_scan_error, installation_at, listing_of,
-    pcl2_game_directories, plan_source,
+    LauncherInstallationDto, PendingSource, describe_scan_error, drop_repeated_game_directories,
+    installation_at, listing_of, pcl2_game_directories, plan_source,
 };
 use crate::commands::instances::InstanceSummary;
 
@@ -321,4 +321,76 @@ fn an_hmcl_game_folder_is_recognised_by_its_config() {
     assert_eq!(installation.sources.len(), 1);
     assert_eq!(installation.sources[0].source_kind, "hmcl");
     assert_eq!(installation.sources[0].candidates[0].id, "1.20.1");
+}
+
+/// 造一个只有路径和版本数的安装记录，用来验证去重。
+fn installation(kind: &'static str, game_directories: &[&Path]) -> LauncherInstallationDto {
+    LauncherInstallationDto {
+        kind,
+        launcher_root: "unused".to_owned(),
+        sources: game_directories
+            .iter()
+            .map(|directory| ImportSourceDto {
+                token: format!("{kind}-{}", directory.display()),
+                source_kind: kind,
+                source_path: directory.display().to_string(),
+                candidates: Vec::new(),
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn the_same_game_directory_is_only_listed_once_across_launchers() {
+    let temp = TempDir::new("dedup-across-launchers");
+    let game = temp.path().join(".minecraft");
+    fs::create_dir_all(&game).unwrap();
+
+    // PCL2 和 HMCL 记录了同一个 .minecraft，这正是截图里重复三次的那一幕。
+    let kept = drop_repeated_game_directories(vec![
+        installation("pcl2", &[&game]),
+        installation("hmcl", &[&game]),
+    ]);
+
+    assert_eq!(kept.len(), 1, "第二个启动器只剩重复条目时整条都要去掉");
+    assert_eq!(kept[0].kind, "pcl2");
+    assert_eq!(kept[0].sources.len(), 1);
+}
+
+#[test]
+fn a_parent_folder_is_not_merged_into_its_minecraft_subfolder() {
+    let temp = TempDir::new("dedup-parent-child");
+    let parent = temp.path().to_path_buf();
+    let nested = parent.join(".minecraft");
+    fs::create_dir_all(&nested).unwrap();
+
+    // `E:\a` 和 `E:\a\.minecraft` 是两个不同的目录，各自可能装不同的版本，
+    // 所以都要留下。只有指向同一目录的重复条目才合并。
+    let kept = drop_repeated_game_directories(vec![
+        installation("pcl2", &[&parent, &nested]),
+        installation("hmcl", &[&parent]),
+    ]);
+
+    // PCL2 的两条目录都保留；HMCL 的 parent 已被 PCL2 占用，整条去掉。
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].kind, "pcl2");
+    assert_eq!(kept[0].sources.len(), 2, "父子目录是两个不同的来源");
+}
+
+#[test]
+fn distinct_game_directories_are_all_kept() {
+    let temp = TempDir::new("dedup-distinct");
+    let first = temp.path().join("first");
+    let second = temp.path().join("second");
+    fs::create_dir_all(&first).unwrap();
+    fs::create_dir_all(&second).unwrap();
+
+    let kept = drop_repeated_game_directories(vec![
+        installation("pcl2", &[&first]),
+        installation("hmcl", &[&second]),
+    ]);
+
+    assert_eq!(kept.len(), 2, "两个不同的目录都要留下");
+    assert_eq!(kept[0].sources[0].source_path, first.display().to_string());
+    assert_eq!(kept[1].sources[0].source_path, second.display().to_string());
 }
