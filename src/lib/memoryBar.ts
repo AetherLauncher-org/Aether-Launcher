@@ -64,8 +64,15 @@ export function barGeometry(valueMiB: number, system: SystemMemory | null): BarG
   };
 }
 
+/**
+ * 指针拖动的取整粒度。比键盘和设置里用的 256 MiB 细得多：轨道上 1 像素大约是
+ * 十几到几十 MiB，用 256 的话手柄会一格一格地跳，不跟手。32 MiB 约等于 1–2 个像素，
+ * 看上去是连续的；落到设置里的值仍然是合法的 MiB 整数。
+ */
+export const pointerStepMiB = 32;
+
 function roundToStep(value: number): number {
-  return Math.round(value / memorySliderStep) * memorySliderStep;
+  return Math.round(value / pointerStepMiB) * pointerStepMiB;
 }
 
 /** 拖右手柄：位置（轨道上的百分比）换成分配值，只在可用区里取值。 */
@@ -84,18 +91,20 @@ export function valueFromLeftThumb(pct: number, system: SystemMemory | null): nu
 }
 
 /**
- * 拖橙色手柄：相对的。`leftwardPct` 是指针从按下处向左移动的百分比（向右为负），
- * 每向左一格就多分配一格，向右就少分配。蓝色没到底时多出来的部分让蓝色往右增加，
- * 到底之后才轮到橙色往左走——因为位置都是由同一个分配值算出来的。
+ * 拖任何一个手柄：都是相对的，手柄不会在按下的瞬间跳到指针下面，而是保持按下时的偏移。
+ * `increasePct` 是「多分配」的方向上指针移动的百分比（负数是少分配）：蓝色手柄往右、
+ * 橙色手柄往左都是多分配。位置全部由同一个分配值算出来，所以顺序是自然的——
+ * 蓝色没到底时多出来的部分让蓝色往右增加；蓝色到底之后继续多分配，橙色才往左走进红区；
+ * 反方向则是橙色先退回分界线，再往下蓝色才减少。
  */
-export function valueFromLeftDrag(
+export function valueFromDrag(
   startValueMiB: number,
-  leftwardPct: number,
+  increasePct: number,
   system: SystemMemory | null,
 ): number {
   const geometry = barGeometry(minMemoryMiB, system);
   const max = sliderMaxMiB(system);
-  return clamp(roundToStep(startValueMiB + (leftwardPct / 100) * geometry.totalMib), minMemoryMiB, max);
+  return clamp(roundToStep(startValueMiB + (increasePct / 100) * geometry.totalMib), minMemoryMiB, max);
 }
 
 /**

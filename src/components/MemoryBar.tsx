@@ -6,7 +6,7 @@ import { exceedsAvailable, formatMiB, memorySliderStep, minMemoryMiB, sliderMaxM
 import {
   barGeometry,
   thumbForTrackPress,
-  valueFromLeftDrag,
+  valueFromDrag,
   valueFromLeftThumb,
   valueFromRightThumb,
 } from "../lib/memoryBar";
@@ -21,18 +21,18 @@ type MemoryBarProps = {
 
 type Thumb = "right" | "left";
 
-/** 橙色手柄是相对拖动的：记下按下时的位置和分配值。 */
-type LeftDrag = { startPct: number; startValue: number };
+/** 两个手柄都是相对拖动的：记下按下时的指针位置和分配值。 */
+type Drag = { thumb: Thumb; startX: number; startValue: number };
 
 /**
  * 一体化的内存滑块：整条轨道就是本机的物理内存。
  *
  * 左边红色是系统已经用掉的，不能拖；分界线右边是可用内存，蓝色手柄在里面滑动，
- * 蓝色从分界线铺到手柄，就是分配给游戏的量。橙色手柄一直停在分界线上：
- * 往左拖是「多分配」——蓝色没到底时，是蓝色往右增加；蓝色到底之后，橙色才真的往左
- * 走进红区，那一段是橙色，**不推荐**，因为分配得比可用内存还多，会把内存挤爆。
- * 往右拖则是「少分配」：橙色先退回分界线，再往右，蓝色就直接减少。
- * 两个手柄控制同一个值。
+ * 蓝色从分界线铺到手柄，就是分配给游戏的量。橙色手柄一直停在分界线上。
+ * 两个手柄是同一种相对的控制：蓝色往右、橙色往左都是「多分配」，反之是「少分配」。
+ * 蓝色没到底时多出来的部分让蓝色往右增加；蓝色到底之后继续多分配（往右推蓝色，或
+ * 往左拖橙色），橙色才真的往左走进红区，那一段是橙色，**不推荐**，因为分配得比可用
+ * 内存还多，会把内存挤爆。反方向则是橙色先退回分界线，再往下蓝色才减少。
  *
  * 屏幕上的手柄用指针拖动；真正的 `<input type="range">` 在旁边，只是看不见：
  * 键盘方向键、读屏和表单语义都由它承担，值和手柄始终一致。
@@ -40,7 +40,7 @@ type LeftDrag = { startPct: number; startValue: number };
 export function MemoryBar({ system, valueMiB, onChange, disabled = false }: MemoryBarProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const leftDrag = useRef<LeftDrag | null>(null);
+  const drag = useRef<Drag | null>(null);
   const [dragging, setDragging] = useState<Thumb | null>(null);
   const interactive = !disabled && onChange !== undefined;
 
@@ -81,48 +81,39 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
     const thumb: Thumb = onLeftThumb ? "left" : onRightThumb ? "right" : thumbForTrackPress(pct, geometry);
 
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    setDragging(thumb);
 
-    if (thumb === "right") {
-      onChange?.(valueFromRightThumb(pct, system));
-      return;
+    // 抓住手柄：什么都不变，之后相对于这里拖。直接点在轨道上：先把手柄放到那里，再从那里接着拖
+    let startValue = geometry.valueMiB;
+    if (!onLeftThumb && !onRightThumb) {
+      startValue = thumb === "right" ? valueFromRightThumb(pct, system) : valueFromLeftThumb(pct, system);
+      onChange?.(startValue);
     }
-    if (onLeftThumb) {
-      // 抓住手柄：什么都不变，之后相对于这里拖
-      leftDrag.current = { startPct: pct, startValue: geometry.valueMiB };
-      return;
-    }
-    // 直接点在红区：把橙色手柄放到那里，再从那里接着拖
-    const placed = valueFromLeftThumb(pct, system);
-    leftDrag.current = { startPct: pct, startValue: placed };
-    onChange?.(placed);
+    drag.current = { thumb, startX: event.clientX, startValue };
+    setDragging(thumb);
   };
 
   const handleMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (dragging === null) {
+    const current = drag.current;
+    const width = trackRef.current?.getBoundingClientRect().width ?? 0;
+    if (current === null || width <= 0) {
       return;
     }
-    const pct = pressedPercent(event);
-    if (pct === null) {
-      return;
-    }
-    if (dragging === "right") {
-      onChange?.(valueFromRightThumb(pct, system));
-    } else if (leftDrag.current !== null) {
-      const { startPct, startValue } = leftDrag.current;
-      onChange?.(valueFromLeftDrag(startValue, startPct - pct, system));
-    }
+    // 不夹在轨道里：指针被捕获，拖到轨道外面也要继续算，这样把蓝色一路往右推也能推过「满」
+    const movedPct = ((event.clientX - current.startX) / width) * 100;
+    onChange?.(
+      valueFromDrag(current.startValue, current.thumb === "right" ? movedPct : -movedPct, system),
+    );
   };
 
   const stopDragging = () => {
-    leftDrag.current = null;
+    drag.current = null;
     setDragging(null);
   };
 
   const cancelNativeDrag = (event: DragEvent) => event.preventDefault();
 
   return (
-    <div className="memory-bar" style={style} data-over={over === true} data-disabled={!interactive}>
+    <div className="memory-bar" style={style} data-over={over === true} data-disabled={!interactive} data-dragging={dragging !== null}>
       <div
         ref={trackRef}
         className="memory-track"
@@ -219,7 +210,7 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
         </Text>
       ) : geometry.usedMib !== null && interactive ? (
         <Text size={200} className="muted">
-          蓝色是分配给游戏的内存。往左拖橙色手柄可以多分配；超过可用内存的部分会变成橙色，不推荐。
+          蓝色是分配给游戏的内存。往右拖蓝色手柄、或往左拖橙色手柄都是多分配；超过可用内存的部分会变成橙色，不推荐。
         </Text>
       ) : null}
       {system === null ? (

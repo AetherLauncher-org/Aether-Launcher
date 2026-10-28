@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   barGeometry,
   thumbForTrackPress,
-  valueFromLeftDrag,
+  valueFromDrag,
   valueFromLeftThumb,
   valueFromRightThumb,
 } from "./memoryBar";
@@ -68,7 +68,7 @@ describe("dragging the right thumb", () => {
     // 分界线在 75%，右端 100% 对应 4096 MiB 可用
     expect(valueFromRightThumb(75 + 6.25, machine)).toBe(1024);
     expect(valueFromRightThumb(100, machine)).toBe(4096);
-    expect(valueFromRightThumb(80, machine) % 256).toBe(0);
+    expect(valueFromRightThumb(80, machine) % 32).toBe(0);
   });
 
   it("cannot be dragged into the red area or below the minimum", () => {
@@ -102,17 +102,27 @@ describe("dragging the second thumb", () => {
   });
 });
 
-describe("valueFromLeftDrag", () => {
-  // 1% 的轨道 = 163.84 MiB；步长 256
-  it("allocates more for every step dragged left, and less for every step dragged right", () => {
-    expect(valueFromLeftDrag(1024, 0, machine)).toBe(1024);
-    expect(valueFromLeftDrag(1024, 5, machine)).toBe(1792);
+describe("valueFromDrag", () => {
+  // 1% 的轨道 = 163.84 MiB；指针取整粒度 32 MiB，所以手柄看上去是连续的
+  it("allocates more for a positive move and less for a negative one", () => {
+    expect(valueFromDrag(1024, 0, machine)).toBe(1024);
+    expect(valueFromDrag(1024, 5, machine)).toBe(1856);
     // 4096 少掉 25%（4096）就到了下限，不会变成 0 或负数
-    expect(valueFromLeftDrag(4096, -25, machine)).toBe(512);
+    expect(valueFromDrag(4096, -25, machine)).toBe(512);
   });
 
-  it("grows the blue share first: below full a leftward drag only raises the value, with the orange thumb still on the divider", () => {
-    const value = valueFromLeftDrag(1024, 10, machine);
+  it("moves in steps fine enough to look continuous, not in the 256 MiB steps of the keyboard", () => {
+    const values = [0.1, 0.2, 0.3, 0.4, 0.5].map((pct) => valueFromDrag(1024, pct, machine));
+
+    for (const value of values) {
+      expect(value % 32).toBe(0);
+    }
+    expect(new Set(values).size).toBeGreaterThan(1);
+    expect(valueFromDrag(1024, 0.5, machine)).toBeLessThan(1024 + 256);
+  });
+
+  it("grows the blue share first: below full an increasing drag only raises the value, with the orange thumb still on the divider", () => {
+    const value = valueFromDrag(1024, 10, machine);
     const geometry = barGeometry(value, machine);
 
     expect(value).toBeGreaterThan(1024);
@@ -121,7 +131,7 @@ describe("valueFromLeftDrag", () => {
   });
 
   it("carries on past full into the red area, where the orange thumb really moves left", () => {
-    const value = valueFromLeftDrag(1024, 25, machine);
+    const value = valueFromDrag(1024, 25, machine);
     const geometry = barGeometry(value, machine);
 
     expect(value).toBe(1024 + 4096);
@@ -131,17 +141,17 @@ describe("valueFromLeftDrag", () => {
 
   it("brings the orange thumb back to the divider first and then shrinks the blue share", () => {
     const start = 8192; // 比「满」多出 4096
-    expect(barGeometry(valueFromLeftDrag(start, -25, machine), machine).overMiB).toBe(0);
-    expect(valueFromLeftDrag(start, -25, machine)).toBe(4096);
+    expect(barGeometry(valueFromDrag(start, -25, machine), machine).overMiB).toBe(0);
+    expect(valueFromDrag(start, -25, machine)).toBe(4096);
 
-    const further = valueFromLeftDrag(start, -30, machine);
+    const further = valueFromDrag(start, -30, machine);
     expect(further).toBeLessThan(4096);
     expect(barGeometry(further, machine).rightPct).toBeLessThan(100);
   });
 
   it("stays between the minimum and the installed memory", () => {
-    expect(valueFromLeftDrag(1024, -100, machine)).toBe(512);
-    expect(valueFromLeftDrag(1024, 500, machine)).toBe(16_384);
+    expect(valueFromDrag(1024, -100, machine)).toBe(512);
+    expect(valueFromDrag(1024, 500, machine)).toBe(16_384);
   });
 });
 

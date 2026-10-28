@@ -876,9 +876,6 @@
   position: absolute;
   top: calc((var(--thumb) - var(--track-h)) / 2 + 1px);
   height: calc(var(--track-h) - 2px);
-  transition:
-    left var(--durationFaster) var(--curveLinear),
-    width var(--durationFaster) var(--curveLinear);
 }
 
 /* 系统已用：从最左边到分界线，左端圆角贴合胶囊 */
@@ -934,9 +931,27 @@
   border-radius: 50%;
   background: #fff;
   box-shadow: var(--shadow4);
-  transition:
-    left var(--durationFaster) var(--curveLinear),
-    transform var(--durationFast) var(--curveDecelerateMid);
+  cursor: grab;
+  /* 位置不加过渡：手柄必须紧贴指针，有一点延迟就会觉得不跟手；只有缩放有动画 */
+  transition: transform var(--durationFast) var(--curveDecelerateMid);
+  touch-action: none;
+}
+
+/* 比看得见的圆大一圈的透明命中区，更容易抓住 */
+.memory-thumb::after {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  content: "";
+}
+
+.memory-bar[data-dragging="true"] .memory-thumb,
+.memory-bar[data-dragging="true"] .memory-track {
+  cursor: grabbing;
+}
+
+.memory-bar[data-disabled="true"] .memory-thumb {
+  cursor: default;
 }
 
 .memory-thumb.right {
