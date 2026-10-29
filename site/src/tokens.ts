@@ -46,8 +46,8 @@ export const sizes = {
  * theme (public/backdrop-*.svg). These are the only colours the site writes by hand.
  */
 export const backdrop = {
-  dark: { color: "#0a0f22", image: 'url("/backdrop-dark.svg")' },
-  light: { color: "#eef1f9", image: 'url("/backdrop-light.svg")' },
+  dark: { color: "#0b1226", image: 'url("/backdrop-dark.svg")' },
+  light: { color: "#eef2fb", image: 'url("/backdrop-light.svg")' },
 } as const;
 
 /** Breakpoints, as ready-made media queries. */

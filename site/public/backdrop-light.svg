@@ -1,68 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice" role="presentation">
   <!-- Original artwork for the Aether Launcher site. Not derived from any third-party asset. -->
   <defs>
-    <linearGradient id="base" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f4f6fc"/>
-      <stop offset="1" stop-color="#e4e9f6"/>
-    </linearGradient>
-    <radialGradient id="vignette" cx="0.5" cy="0.45" r="0.75">
-      <stop offset="0.55" stop-color="#9aa8d8" stop-opacity="0"/>
-      <stop offset="1" stop-color="#9aa8d8" stop-opacity="0.18"/>
-    </radialGradient>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="130"/></filter>
   </defs>
-  <rect width="1600" height="1000" fill="#eef1f9"/>
-  <rect width="1600" height="1000" fill="url(#base)"/>
-  <g stroke-linejoin="round">
-    <path d="M-80 640 C 120 430, 420 360, 640 470 C 860 580, 820 820, 560 1010 L -80 1010 Z" fill="#e7ebf7"/>
-    <path d="M-80 640 C 120 430, 420 360, 640 470 C 860 580, 820 820, 560 1010" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="2"/>
-    <path d="M420 -60 C 640 90, 700 340, 600 560 C 540 690, 420 740, 330 700 C 400 520, 330 250, 200 -60 Z" fill="#dde3f4" opacity="0.9"/>
-    <path d="M420 -60 C 640 90, 700 340, 600 560" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="2"/>
-    <path d="M980 -40 L1680 -40 L1680 420 C 1500 330, 1280 300, 1040 380 C 960 250, 940 100, 980 -40 Z" fill="#d3dbf1" opacity="0.85"/>
-    <path d="M1040 380 C 1280 300, 1500 330, 1680 420" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="2"/>
-    <path d="M880 1040 C 900 820, 1040 660, 1220 700 C 1380 740, 1520 880, 1680 860 L1680 1040 Z" fill="#dde3f4" opacity="0.8"/>
-    <path d="M880 1040 C 900 820, 1040 660, 1220 700 C 1380 740, 1520 880, 1680 860" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="2"/>
-  </g>
-  <rect width="1600" height="1000" fill="url(#vignette)"/>
-  <g>
-    <circle cx="1464" cy="960" r="0.8" fill="#9fb0e3" opacity="0.23"/>
-    <circle cx="1515" cy="869" r="1" fill="#9fb0e3" opacity="0.18"/>
-    <circle cx="520" cy="909" r="1" fill="#9fb0e3" opacity="0.27"/>
-    <circle cx="229" cy="412" r="1" fill="#9fb0e3" opacity="0.22"/>
-    <circle cx="956" cy="929" r="1.6" fill="#9fb0e3" opacity="0.22"/>
-    <circle cx="1005" cy="946" r="1" fill="#9fb0e3" opacity="0.25"/>
-    <circle cx="678" cy="740" r="0.8" fill="#9fb0e3" opacity="0.17"/>
-    <circle cx="397" cy="746" r="0.8" fill="#9fb0e3" opacity="0.34"/>
-    <circle cx="758" cy="796" r="0.8" fill="#9fb0e3" opacity="0.17"/>
-    <circle cx="924" cy="903" r="1.6" fill="#9fb0e3" opacity="0.16"/>
-    <circle cx="664" cy="53" r="0.8" fill="#9fb0e3" opacity="0.33"/>
-    <circle cx="1411" cy="416" r="1.6" fill="#9fb0e3" opacity="0.20"/>
-    <circle cx="358" cy="791" r="1.2" fill="#9fb0e3" opacity="0.19"/>
-    <circle cx="917" cy="218" r="1.6" fill="#9fb0e3" opacity="0.25"/>
-    <circle cx="1517" cy="320" r="1" fill="#9fb0e3" opacity="0.34"/>
-    <circle cx="1561" cy="341" r="0.8" fill="#9fb0e3" opacity="0.26"/>
-    <circle cx="242" cy="35" r="0.8" fill="#9fb0e3" opacity="0.26"/>
-    <circle cx="1578" cy="907" r="1.6" fill="#9fb0e3" opacity="0.29"/>
-    <circle cx="42" cy="262" r="1.2" fill="#9fb0e3" opacity="0.24"/>
-    <circle cx="1036" cy="880" r="0.8" fill="#9fb0e3" opacity="0.15"/>
-    <circle cx="1051" cy="151" r="1" fill="#9fb0e3" opacity="0.14"/>
-    <circle cx="1155" cy="113" r="1.2" fill="#9fb0e3" opacity="0.34"/>
-    <circle cx="609" cy="621" r="1" fill="#9fb0e3" opacity="0.32"/>
-    <circle cx="1561" cy="608" r="1.2" fill="#9fb0e3" opacity="0.16"/>
-    <circle cx="344" cy="323" r="1.2" fill="#9fb0e3" opacity="0.22"/>
-    <circle cx="500" cy="221" r="0.8" fill="#9fb0e3" opacity="0.30"/>
-    <circle cx="580" cy="350" r="1" fill="#9fb0e3" opacity="0.29"/>
-    <circle cx="491" cy="366" r="1" fill="#9fb0e3" opacity="0.33"/>
-    <circle cx="103" cy="754" r="1" fill="#9fb0e3" opacity="0.21"/>
-    <circle cx="613" cy="772" r="1.2" fill="#9fb0e3" opacity="0.22"/>
-    <circle cx="411" cy="993" r="1.6" fill="#9fb0e3" opacity="0.27"/>
-    <circle cx="1022" cy="441" r="0.8" fill="#9fb0e3" opacity="0.28"/>
-    <circle cx="1020" cy="994" r="1" fill="#9fb0e3" opacity="0.33"/>
-    <circle cx="1579" cy="232" r="0.8" fill="#9fb0e3" opacity="0.24"/>
-    <circle cx="1050" cy="226" r="1.2" fill="#9fb0e3" opacity="0.15"/>
-    <circle cx="1503" cy="306" r="0.8" fill="#9fb0e3" opacity="0.32"/>
-    <circle cx="1261" cy="34" r="0.8" fill="#9fb0e3" opacity="0.30"/>
-    <circle cx="1225" cy="752" r="1" fill="#9fb0e3" opacity="0.23"/>
-    <circle cx="1416" cy="971" r="1" fill="#9fb0e3" opacity="0.20"/>
-    <circle cx="1103" cy="757" r="1.6" fill="#9fb0e3" opacity="0.20"/>
+  <rect width="1600" height="1000" fill="#eef2fb"/>
+  <g filter="url(#soft)">
+    <circle cx="260" cy="180" r="430" fill="#93b4f5" opacity="0.55"/>
+    <circle cx="1380" cy="120" r="380" fill="#c4b5fd" opacity="0.5"/>
+    <circle cx="900" cy="980" r="520" fill="#99e0ef" opacity="0.45"/>
+    <circle cx="1500" cy="800" r="300" fill="#a5b8f2" opacity="0.5"/>
   </g>
 </svg>

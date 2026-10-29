@@ -19,10 +19,8 @@ const useStyles = makeStyles({
     border: `${sizes.hairline} solid ${tokens.colorNeutralStroke1}`,
     ":focus": { top: space.m },
   },
-  header: {
-    backgroundColor: tokens.colorNeutralBackground1,
-    borderBottom: `${sizes.hairline} solid ${tokens.colorNeutralStroke2}`,
-  },
+  // Transparent: the backdrop runs behind the header, so the page reads as one piece.
+  header: {},
   headerInner: {
     display: "flex",
     flexWrap: "wrap",
