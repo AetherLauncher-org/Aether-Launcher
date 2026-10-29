@@ -43,13 +43,25 @@ fn application_info() -> ApplicationInfo {
 }
 
 /// A read-only IPC command: enumerate detected Java installations without
-/// blocking the Tauri main thread. No caller-provided executable is run.
+/// blocking the Tauri main thread.
+///
+/// `refresh` 为 false 时先读上次的结果，只有用户主动点「重新扫描」才真的去
+/// 扫。扫描要启动一堆 `java -version`，每次切页面都做一遍会让界面一直卡一下，
+/// 还会在任务栏闪命令窗口。
 #[tauri::command]
-async fn list_java_runtimes() -> Result<Vec<JavaRuntimeInfo>, String> {
-    tauri::async_runtime::spawn_blocking(aether_runtime::discover_java_runtimes)
-        .await
-        .map(|runtimes| runtimes.into_iter().map(JavaRuntimeInfo::from).collect())
-        .map_err(|error| format!("Java discovery task failed: {error}"))
+async fn list_java_runtimes(
+    app: tauri::AppHandle,
+    refresh: Option<bool>,
+) -> Result<Vec<JavaRuntimeInfo>, String> {
+    let runtimes = commands::java::list_java_runtimes(app, refresh.unwrap_or(false)).await?;
+    Ok(runtimes.into_iter().map(JavaRuntimeInfo::from).collect())
+}
+
+/// 让用户手动挑一个 `java`，挑完立刻探测并写进缓存。
+#[tauri::command]
+async fn pick_java_runtime(app: tauri::AppHandle) -> Result<Option<JavaRuntimeInfo>, String> {
+    let picked = commands::java::pick_java_runtime(app).await?;
+    Ok(picked.map(JavaRuntimeInfo::from))
 }
 
 /// A read-only IPC command: installed and available physical memory, so the
@@ -74,6 +86,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             application_info,
             list_java_runtimes,
+            pick_java_runtime,
             system_memory,
             commands::catalog::list_minecraft_versions,
             commands::install::install_vanilla_version,

@@ -91,6 +91,19 @@
   gap: 12px;
 }
 
+/* Java 区块右侧的两个按钮：导入 + 重新扫描，挨在一起不换行。 */
+.runtime-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* 导入失败时的提示：说清楚为什么这个 Java 用不了。 */
+.runtime-error {
+  color: var(--colorStatusDangerForeground1);
+}
+
 .error-panel {
   margin-top: 16px;
   justify-items: start;
@@ -878,45 +891,35 @@
   height: calc(var(--track-h) - 2px);
 }
 
-/* 系统已用：从最左边到分界线，左端圆角贴合胶囊 */
+/*
+ * 两段色各从一头长出来，互不覆盖：
+ * - 蓝色从最左端铺到手柄（分给游戏的）；
+ * - 红色从最右端往左铺（系统已用的）。
+ * 中间剩下的空档就是还能用的内存。
+ */
+/* 系统已用：从红区左边缘一直铺到轨道最右端。 */
 .memory-seg.used {
-  left: calc(var(--thumb) / -2 + 1px);
-  width: calc(var(--used) * 1% + var(--thumb) / 2 - 1px);
-  border-radius: calc(var(--track-h) / 2) 0 0 calc(var(--track-h) / 2);
+  left: calc(var(--used-start) * 1%);
+  right: calc(var(--thumb) / -2 + 1px);
+  border-radius: 0 calc(var(--track-h) / 2) calc(var(--track-h) / 2) 0;
   background: var(--used-color);
 }
 
-/* 分配：从分界线到右手柄 */
+/* 分配：从最左端铺到手柄，两端圆角贴合胶囊。 */
 .memory-seg.alloc {
-  left: calc(var(--used) * 1%);
-  width: calc((var(--right) - var(--used)) * 1%);
+  left: calc(var(--thumb) / -2 + 1px);
+  width: calc(var(--pos) * 1% + var(--thumb) / 2 - 1px);
+  border-radius: calc(var(--track-h) / 2) 0 0 calc(var(--track-h) / 2);
   background: var(--alloc-color);
 }
 
-/* 越过可用内存的那段，盖在红区上，从第二个手柄到分界线 */
-.memory-seg.over {
-  left: calc(var(--left) * 1%);
-  width: calc((var(--used) - var(--left)) * 1%);
+/* 越界：手柄压进了红区，红段整条换成橙色，提示「在抢别人的内存」。 */
+.memory-bar[data-over="true"] .memory-seg.used {
   background: var(--over-color);
 }
 
-.memory-divider {
-  position: absolute;
-  top: calc((var(--thumb) - var(--track-h)) / 2 - 2px);
-  left: calc(var(--used) * 1%);
-  width: 2px;
-  height: calc(var(--track-h) + 4px);
-  margin-left: -1px;
-  border-radius: 1px;
-  background: #fff;
-  opacity: 0.85;
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 18%);
-  pointer-events: none;
-}
-
 .memory-seg,
-.memory-thumb,
-.memory-divider {
+.memory-thumb {
   -webkit-user-drag: none;
   user-select: none;
 }
@@ -954,13 +957,12 @@
   cursor: default;
 }
 
-.memory-thumb.right {
-  left: calc(var(--right) * 1%);
+.memory-thumb {
+  left: calc(var(--pos) * 1%);
 }
 
-.memory-thumb.left {
-  left: calc(var(--left) * 1%);
-  z-index: 2;
+/* 手柄压进红区时，圆钮的描边跟着换成橙色，和轨道上的警示一致。 */
+.memory-bar[data-over="true"] .memory-thumb {
   border-color: var(--ring-over);
 }
 
@@ -986,7 +988,7 @@
 }
 
 /* 键盘操作时的焦点：只在蓝色手柄上画一圈，不在整条轨道外面套框 */
-.memory-bar[data-keyboard="true"] .memory-track:has(.memory-input:focus) .memory-thumb.right {
+.memory-bar[data-keyboard="true"] .memory-track:has(.memory-input:focus) .memory-thumb {
   box-shadow: 0 0 0 3px var(--colorStrokeFocus2), var(--shadow4);
 }
 
@@ -1021,26 +1023,6 @@
     opacity: 1;
     transform: scale(1);
   }
-}
-
-/* 橙区下面直接写明「不推荐」，位置跟着橙区走 */
-.memory-over-label {
-  position: relative;
-  height: 16px;
-  margin: -4px calc(var(--thumb) / 2) 0;
-  pointer-events: none;
-}
-
-.memory-over-label span {
-  position: absolute;
-  left: calc(var(--left) * 1%);
-  width: calc((var(--used) - var(--left)) * 1%);
-  min-width: 3.5em;
-  color: var(--colorStatusWarningForeground1);
-  font-size: var(--fontSizeBase200);
-  font-weight: var(--fontWeightSemibold);
-  text-align: center;
-  white-space: nowrap;
 }
 
 .memory-bar-labels {

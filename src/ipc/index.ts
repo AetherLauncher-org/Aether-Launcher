@@ -95,7 +95,7 @@ export { getSystemMemory } from "./system";
 export type { SystemMemory } from "./system";
 
 // Java 运行时发现
-export { discoverJavaRuntimes } from "./java";
+export { discoverJavaRuntimes, pickJavaRuntime } from "./java";
 export type { JavaRuntimeInfo } from "./java";
 
 // 微软账户登录

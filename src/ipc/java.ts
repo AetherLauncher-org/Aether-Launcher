@@ -4,22 +4,20 @@ import { isTauri } from "./index";
 /**
  * Java 运行时发现。
  *
- * `list_java_runtimes` 命令由 PR #12 提供，字段与 `JavaRuntimeInfo` 一一对应。
- * 主 lead 合并后，`src/ipc/index.ts` 会重新导出同名函数与类型；本文件与它
- * **签名等价**，合并时保留其中一份即可（见汇报里的 re-export 说明）。
- *
- * 命令目前可能还不存在：非 Tauri 环境、或者桌面版还没注册该命令时，
- * `invoke` 会失败。这两种情况都降级为空列表，让设置页显示「暂未检测到 Java」，
- * 而不是白屏或抛错到界面上。
+ * 扫描结果由后端缓存在 `java-runtimes.json` 里：平时只读缓存，只有用户点
+ * 「重新扫描」才真的去扫一遍。扫描要启动一串 `java -version`，每次切页面都
+ * 做一遍会让界面反复卡顿。
  */
 
 declare module "./call" {
   interface CommandArgs {
-    list_java_runtimes: void;
+    list_java_runtimes: { refresh?: boolean };
+    pick_java_runtime: void;
   }
 
   interface CommandResults {
     list_java_runtimes: JavaRuntimeInfo[];
+    pick_java_runtime: JavaRuntimeInfo | null;
   }
 }
 
@@ -32,18 +30,33 @@ export type JavaRuntimeInfo = {
 };
 
 /**
- * 探测本机的 Java 安装。
+ * 本机的 Java 列表。
  *
- * 任何失败都当作「没有发现」处理：设置页只需要一个列表，不需要区分
- * 「命令不存在」和「扫描失败」——两种情况用户能做的事是一样的。
+ * `refresh` 为 true 时重新扫描；否则后端直接给上次缓存的结果（没有缓存时才扫）。
+ * 任何失败都当作「没有发现」处理：设置页只需要一个列表。
  */
-export async function discoverJavaRuntimes(): Promise<JavaRuntimeInfo[]> {
+export async function discoverJavaRuntimes(
+  refresh = false,
+): Promise<JavaRuntimeInfo[]> {
   if (!isTauri()) {
     return [];
   }
   try {
-    return await callCommand("list_java_runtimes");
+    return await callCommand("list_java_runtimes", { refresh });
   } catch {
     return [];
   }
+}
+
+/**
+ * 让用户手动挑一个 `java.exe`（或 Java 安装目录）。
+ *
+ * 后端打开文件选择框，探测成功后把路径记进缓存，返回探测结果。
+ * `null` 表示用户取消了选择；抛错表示选的东西不是能用的 Java。
+ */
+export async function pickJavaRuntime(): Promise<JavaRuntimeInfo | null> {
+  if (!isTauri()) {
+    return null;
+  }
+  return callCommand("pick_java_runtime");
 }

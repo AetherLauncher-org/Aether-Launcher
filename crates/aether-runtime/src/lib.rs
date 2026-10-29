@@ -22,15 +22,19 @@ impl JavaRuntime {
     }
 
     /// Probe a Java executable and use its JVM properties when available.
+    ///
+    /// Spawning a console program from a GUI app opens a console window on
+    /// Windows unless the child is created detached, so every run goes through
+    /// [`hidden_command`].
     pub fn probe(executable: PathBuf) -> Result<Self, RuntimeError> {
-        let mut output = Command::new(&executable)
+        let mut output = hidden_command(&executable)
             .args(["-XshowSettings:properties", "-version"])
             .output()
             .map_err(|error| RuntimeError::CommandFailed(executable.clone(), error))?;
 
         // Some older VMs do not support -XshowSettings:properties.
         if !output.status.success() {
-            output = Command::new(&executable)
+            output = hidden_command(&executable)
                 .arg("-version")
                 .output()
                 .map_err(|error| RuntimeError::CommandFailed(executable.clone(), error))?;
@@ -57,6 +61,23 @@ impl JavaRuntime {
             vendor: extract_vendor(&version_output),
         })
     }
+}
+
+/// A [`Command`] that never flashes a console window.
+///
+/// Launching a delimited console app from a windowed process makes Windows
+/// allocate a console for it. `CREATE_NO_WINDOW` asks for one that stays
+/// invisible; it has no effect on other platforms.
+fn hidden_command(program: &Path) -> Command {
+    let mut command = Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        /// `CREATE_NO_WINDOW`, from `winbase.h`.
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
 }
 
 #[derive(Debug, Error)]
@@ -155,12 +176,50 @@ fn extract_vendor(output: &str) -> Option<String> {
     }
 }
 
-/// 扫描系统中常见位置的 Java 安装
-pub fn discover_java_runtimes() -> Vec<JavaRuntime> {
+/// 扫描系统中常见位置的 Java 安装。
+///
+/// `extra` 是用户手动导入的 java 可执行文件（或它所在的 `bin` 目录），排在
+/// 自动扫描结果前面：手动指定的东西不该被扫描漏掉。
+pub fn discover_java_runtimes(extra: &[PathBuf]) -> Vec<JavaRuntime> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    for path in extra {
+        if let Some(executable) = normalize_java_path(path) {
+            candidates.push(executable);
+        }
+    }
+    candidates.extend(discover_java_candidates());
+    probe_candidates(candidates)
+}
+
+/// 把用户挑的路径规整成 java 可执行文件。
+///
+/// 允许三种输入：`java.exe` 本身、包含它的 `bin` 目录、以及 JDK 根目录。
+/// 挑错的情况很常见（有人直接选了 `jdk-21` 那一层），这里替用户补一层。
+#[must_use]
+pub fn normalize_java_path(path: &Path) -> Option<PathBuf> {
+    let name = if cfg!(windows) { "java.exe" } else { "java" };
+    if path.is_file() {
+        let looks_like_java = path.file_name().is_some_and(|file| {
+            file.eq_ignore_ascii_case(name)
+                || file.eq_ignore_ascii_case("javaw.exe")
+                || file.eq_ignore_ascii_case("java")
+        });
+        return looks_like_java.then(|| path.to_path_buf());
+    }
+    [path.join("bin").join(name), path.join(name)]
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+}
+
+/// 探测一组可执行文件，去掉重复路径并按版本从高到低排。
+fn probe_candidates<I>(candidates: I) -> Vec<JavaRuntime>
+where
+    I: IntoIterator<Item = PathBuf>,
+{
     let mut runtimes = Vec::new();
     let mut seen = HashSet::new();
 
-    for candidate in discover_java_candidates() {
+    for candidate in candidates {
         // Different installs with the same vendor/major/architecture must remain
         // selectable. Only de-duplicate paths resolving to the same executable.
         let identity = std::fs::canonicalize(&candidate).unwrap_or_else(|_| candidate.clone());
@@ -175,6 +234,15 @@ pub fn discover_java_runtimes() -> Vec<JavaRuntime> {
 
     runtimes.sort_by_key(|runtime| std::cmp::Reverse(runtime.major_version));
     runtimes
+}
+
+/// 只探测用户手动挑的这些路径，用于「导入」时立刻给出反馈。
+pub fn probe_java_paths(paths: &[PathBuf]) -> Vec<JavaRuntime> {
+    let candidates: Vec<PathBuf> = paths
+        .iter()
+        .filter_map(|path| normalize_java_path(path))
+        .collect();
+    probe_candidates(candidates)
 }
 
 #[cfg(target_os = "windows")]
@@ -199,25 +267,56 @@ fn discover_java_candidates() -> Vec<PathBuf> {
         }
     }
 
-    // 常见安装位置
-    let common_dirs = [
+    // 常见安装位置：一组固定的目录，外加每个盘符根目录下的常见文件夹。
+    //
+    // 只往一层看目录，不递归整个磁盘：Java 通常就装在 `<base>/<某个名字>/bin`
+    // 或 `<base>/bin` 里，深挖全盘要几十秒，还会摸到一堆无关的大目录。
+    let bases: Vec<PathBuf> = [
         r"C:\Program Files\Java",
         r"C:\Program Files (x86)\Java",
         r"C:\Program Files\Eclipse Adoptium",
+        r"C:\Program Files\Eclipse Foundation",
         r"C:\Program Files\Microsoft",
         r"C:\Program Files\Zulu",
         r"C:\Program Files\Amazon Corretto",
-    ];
+        r"C:\Program Files\BellSoft",
+        r"C:\Program Files\Semeru",
+        r"C:\Program Files\JetBrains",
+        r"C:\Program Files\Android\Android Studio",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .collect();
 
-    for base_dir in &common_dirs {
-        if let Ok(entries) = std::fs::read_dir(base_dir) {
-            for entry in entries.flatten() {
-                let java_exe = entry.path().join("bin").join("java.exe");
-                if java_exe.exists() {
-                    paths.push(java_exe);
-                }
+    // 每个盘符根目录下的**所有**目录：解压版 JDK 常被随手放在 `E:\jdk17`、
+    // `E:\jre-17.0.2-full` 这种地方，名字完全随人起，靠固定名单永远漏。
+    //
+    // 这些只往下看**一层**（`<dir>/bin/java.exe` 和 `<dir>/*/bin/java.exe`），
+    // 而且不看 `Windows`、`$Recycle.Bin` 那批。盘根目录动辄几百个，深挖会让
+    // 扫描从几秒变成一分半 —— 实测过，不能那么干。
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for letter in 'A'..='Z' {
+        let Ok(entries) = std::fs::read_dir(format!("{letter}:\\")) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                continue;
             }
+            let name = entry.file_name();
+            if is_skipped_directory(&name.to_string_lossy()) {
+                continue;
+            }
+            roots.push(entry.path());
         }
+    }
+
+    // 固定的安装位置才递归：这些目录里就是一堆 `<产品名>/bin`。
+    for base_dir in &bases {
+        collect_java_in(base_dir, &mut paths, 0);
+    }
+    for root in &roots {
+        collect_java_in(root, &mut paths, 2);
     }
 
     // Minecraft 自带的 Java runtime（通常在 .minecraft/runtime）
@@ -229,6 +328,67 @@ fn discover_java_candidates() -> Vec<PathBuf> {
     }
 
     paths
+}
+
+/// 在一个基础目录里找 `<base>/bin/java.exe` 和 `<base>/<子目录>/bin/java.exe`。
+///
+/// 只走三层，且跳过 `node_modules`、`.git` 这类明显不会有 JRE 的目录：整盘
+/// 递归会把启动拖到几十秒，而 Java 的目录结构就那么几种。
+#[cfg(target_os = "windows")]
+fn collect_java_in(base: &Path, paths: &mut Vec<PathBuf>, depth: u8) {
+    if depth > 2 {
+        return;
+    }
+    let direct = base.join("bin").join("java.exe");
+    if direct.is_file() {
+        paths.push(direct);
+    }
+    // 有些 IDE 把 JBR 放在 `bin` 的兄弟层级，例如 `jbr/bin`。
+    let jbr = base.join("jbr").join("bin").join("java.exe");
+    if jbr.is_file() {
+        paths.push(jbr);
+    }
+
+    let Ok(entries) = std::fs::read_dir(base) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if !kind.is_dir() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if is_skipped_directory(&name) {
+            continue;
+        }
+        collect_java_in(&entry.path(), paths, depth + 1);
+    }
+}
+
+/// 明显不会藏着 JRE、但目录特别大的那些名字。
+///
+/// 盘根下一层的目录动辄几十个、里面几千个文件，逐个往下翻会把扫描拖成几十秒，
+/// 所以这里先按名字挡掉一批。挡错了的代价只是那个目录里的 Java 扫不到，用户还
+/// 可以手动导入。
+#[cfg(target_os = "windows")]
+fn is_skipped_directory(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "windows"
+            | "winsxs"
+            | "system32"
+            | "syswow64"
+            | "node_modules"
+            | ".git"
+            | "$recycle.bin"
+            | "system volume information"
+            | "recovery"
+            | "perflogs"
+            | "programdata"
+    )
 }
 
 #[cfg(target_os = "linux")]
@@ -466,7 +626,7 @@ mod tests {
 
     #[test]
     fn discover_returns_sorted_by_version() {
-        let runtimes = discover_java_runtimes();
+        let runtimes = discover_java_runtimes(&[]);
         // 只检查排序，不假设系统一定有 Java
         for i in 1..runtimes.len() {
             assert!(

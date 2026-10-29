@@ -14,6 +14,7 @@ pub mod catalog;
 pub mod import;
 pub mod install;
 pub mod instances;
+pub mod java;
 pub mod launch;
 pub mod microsoft;
 pub mod vanilla;
