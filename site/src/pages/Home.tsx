@@ -1,4 +1,4 @@
-import { Badge, Card, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Badge, Button, Card, Text, makeStyles, tokens } from "@fluentui/react-components";
 import {
   ArrowDownload24Regular,
   Code24Regular,
@@ -8,117 +8,69 @@ import {
   ShieldCheckmark24Regular,
 } from "@fluentui/react-icons";
 import type { ReactNode } from "react";
-import { Button } from "@fluentui/react-components";
 import { ButtonLink } from "../chrome";
 import { lastUpdated, repositoryUrl } from "../router";
 import type { Lang } from "../router";
+import { screen, sizes, space, textSize, widths } from "../tokens";
 
 const useStyles = makeStyles({
+  container: {
+    maxWidth: widths.page,
+    marginInline: "auto",
+    paddingInline: space.xl,
+    [screen.phone]: { paddingInline: space.l },
+  },
   hero: {
-    position: "relative",
-    overflow: "hidden",
-    paddingBlock: "72px 56px",
-    backgroundImage:
-      "radial-gradient(60% 80% at 15% 0%, rgb(47 192 220 / 16%), transparent 70%), radial-gradient(60% 80% at 90% 10%, rgb(123 63 255 / 14%), transparent 70%)",
-    "@media (max-width: 720px)": { paddingBlock: "32px 24px" },
-  },
-  heroInner: {
     display: "grid",
-    gridTemplateColumns: "1fr auto",
-    alignItems: "center",
-    columnGap: "40px",
-    maxWidth: "1080px",
-    marginInline: "auto",
-    paddingInline: "16px",
-    "@media (max-width: 720px)": { gridTemplateColumns: "1fr", rowGap: "16px" },
+    rowGap: space.l,
+    justifyItems: "start",
+    paddingTop: space.page,
   },
-  heroLogo: {
-    width: "200px",
-    height: "200px",
-    filter: "drop-shadow(0 16px 32px rgb(59 120 255 / 30%))",
-    animationName: {
-      "50%": { transform: "translateY(-8px)" },
-    },
-    animationDuration: "6s",
-    animationIterationCount: "infinite",
-    animationTimingFunction: "ease-in-out",
-    "@media (max-width: 720px)": { order: -1, width: "96px", height: "96px" },
-    "@media (prefers-reduced-motion: reduce)": { animationName: "none" },
+  heroLogo: { width: sizes.heroLogo, height: sizes.heroLogo },
+  lead: { maxWidth: widths.prose, color: tokens.colorNeutralForeground2 },
+  actions: { display: "flex", flexWrap: "wrap", columnGap: space.m, rowGap: space.m },
+  caption: { color: tokens.colorNeutralForeground3 },
+  section: {
+    display: "grid",
+    rowGap: space.l,
+    marginTop: space.section,
   },
-  chip: { marginBottom: "16px" },
-  title: {
-    display: "block",
-    marginBottom: "12px",
-    fontFamily: tokens.fontFamilyBase,
-  },
-  lead: {
-    display: "block",
-    maxWidth: "56ch",
-    marginBottom: "24px",
-    color: tokens.colorNeutralForeground2,
-  },
-  actions: { display: "flex", flexWrap: "wrap", columnGap: "12px", rowGap: "12px" },
-  body: {
-    maxWidth: "1080px",
-    marginInline: "auto",
-    paddingInline: "16px",
-  },
-  section: { paddingBlock: "40px 8px" },
-  sectionLead: {
-    display: "block",
-    maxWidth: "70ch",
-    marginBlock: "8px 24px",
-    color: tokens.colorNeutralForeground2,
-  },
+  sectionLead: { maxWidth: widths.prose, color: tokens.colorNeutralForeground2 },
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-    columnGap: "16px",
-    rowGap: "16px",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    columnGap: space.l,
+    rowGap: space.l,
+    [screen.tablet]: { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" },
+    [screen.phone]: { gridTemplateColumns: "minmax(0, 1fr)" },
   },
   card: {
-    rowGap: "8px",
-    animationName: { from: { opacity: 0, transform: "translateY(8px)" } },
-    animationDuration: tokens.durationNormal,
-    animationTimingFunction: tokens.curveDecelerateMid,
-    animationFillMode: "both",
-    transitionProperty: "transform, box-shadow",
-    transitionDuration: tokens.durationNormal,
-    transitionTimingFunction: tokens.curveDecelerateMid,
-    ":hover": { transform: "translateY(-2px)", boxShadow: tokens.shadow8 },
-    "@media (prefers-reduced-motion: reduce)": { animationName: "none", transitionDuration: "0ms" },
+    alignItems: "flex-start",
+    rowGap: space.m,
+    padding: space.xl,
   },
-  iconBubble: {
+  icon: { color: tokens.colorNeutralForeground2 },
+  cardBody: { color: tokens.colorNeutralForeground2 },
+  steps: { display: "grid", margin: 0, padding: 0, listStyleType: "none" },
+  step: {
     display: "grid",
-    placeItems: "center",
-    width: "36px",
-    height: "36px",
-    borderRadius: tokens.borderRadiusMedium,
-    backgroundColor: tokens.colorBrandBackground2,
-    color: tokens.colorBrandForeground1,
+    gridTemplateColumns: `${sizes.badgeColumn} minmax(0, 1fr)`,
+    alignItems: "start",
+    columnGap: space.l,
+    paddingBlock: space.m,
+    borderBottom: `${sizes.hairline} solid ${tokens.colorNeutralStroke2}`,
+    ":last-child": { borderBottomStyle: "none" },
+    [screen.phone]: { gridTemplateColumns: "minmax(0, 1fr)", rowGap: space.s },
   },
-  status: { display: "grid", rowGap: "8px", margin: 0, padding: 0, listStyleType: "none" },
-  statusRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    columnGap: "12px",
-    rowGap: "4px",
-    paddingBlock: "12px",
-    paddingInline: "16px",
-    borderRadius: tokens.borderRadiusMedium,
-    backgroundColor: tokens.colorNeutralBackground1,
-    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
-  },
-  statusBadge: { minWidth: "84px", justifyContent: "center" },
-  statusText: { display: "grid", flexGrow: 1, minWidth: "220px" },
+  stepText: { display: "grid", rowGap: space.xs },
+  stepDetail: { color: tokens.colorNeutralForeground2 },
 });
 
 type Feature = { icon: ReactNode; title: string; body: string };
 type Step = { tone: "done" | "wip" | "todo"; label: string; name: string; detail: string };
 
 type Copy = {
-  chip: string;
+  status: string;
   lead: string;
   primary: string;
   secondary: string;
@@ -131,7 +83,7 @@ type Copy = {
 };
 
 const en: Copy = {
-  chip: "Early development: no public release yet",
+  status: "Early development: no public release yet.",
   lead: "A transparent, resilient Minecraft: Java Edition launcher built with Rust, Tauri 2 and Fluent 2.",
   primary: "View on GitHub",
   secondary: "Read the security model",
@@ -181,7 +133,7 @@ const en: Copy = {
 };
 
 const zh: Copy = {
-  chip: "早期开发中：暂无公开发行版",
+  status: "早期开发中：暂无公开发行版。",
   lead: "一个透明、可靠的 Minecraft Java 版启动器，使用 Rust、Tauri 2 和 Fluent 2 构建。",
   primary: "在 GitHub 查看",
   secondary: "阅读安全模型",
@@ -230,90 +182,87 @@ const zh: Copy = {
   ],
 };
 
-const tones = { done: "success", wip: "warning", todo: "informative" } as const;
+/** Two chromatic badges at most: available (success) and in progress (brand). */
+const badges = {
+  done: { appearance: "tint", color: "success" },
+  wip: { appearance: "tint", color: "brand" },
+  todo: { appearance: "outline", color: "subtle" },
+} as const;
 
 export function Home({ lang }: { lang: Lang }) {
   const styles = useStyles();
   const copy = lang === "en" ? en : zh;
 
   return (
-    <>
+    <div className={styles.container}>
       <section className={styles.hero}>
-        <div className={styles.heroInner}>
-          <div>
-            <Badge className={styles.chip} appearance="tint" color="warning" size="large">
-              {copy.chip}
-            </Badge>
-            <Text as="h1" size={1000} weight="semibold" className={styles.title}>
-              Aether Launcher
-            </Text>
-            <Text size={500} className={styles.lead}>
-              {copy.lead}
-            </Text>
-            <div className={styles.actions}>
-              <Button as="a" appearance="primary" size="large" href={repositoryUrl} rel="noopener">
-                {copy.primary}
-              </Button>
-              <ButtonLink route={{ lang, page: "security" }} size="large">
-                {copy.secondary}
-              </ButtonLink>
-            </div>
-          </div>
-          <img className={styles.heroLogo} src="/logo.svg" alt="" width={200} height={200} />
+        <img className={styles.heroLogo} src="/logo.svg" alt="" width={56} height={56} />
+        <Text as="h1" size={textSize.title} weight="semibold">
+          Aether Launcher
+        </Text>
+        <Text size={textSize.lead} className={styles.lead}>
+          {copy.lead}
+        </Text>
+        <div className={styles.actions}>
+          <Button as="a" appearance="primary" href={repositoryUrl} rel="noopener">
+            {copy.primary}
+          </Button>
+          <ButtonLink route={{ lang, page: "security" }}>{copy.secondary}</ButtonLink>
+        </div>
+        <Text size={textSize.ui} className={styles.caption}>
+          {copy.status}
+        </Text>
+      </section>
+
+      <section className={styles.section} aria-labelledby="features">
+        <Text as="h2" id="features" size={textSize.section} weight="semibold">
+          {copy.featuresTitle}
+        </Text>
+        <Text size={textSize.body} className={styles.sectionLead}>
+          {copy.featuresLead}
+        </Text>
+        <div className={styles.grid}>
+          {copy.features.map((feature) => (
+            <Card key={feature.title} appearance="outline" className={styles.card}>
+              <span className={styles.icon} aria-hidden="true">
+                {feature.icon}
+              </span>
+              <Text as="h3" size={textSize.item} weight="semibold">
+                {feature.title}
+              </Text>
+              <Text size={textSize.ui} className={styles.cardBody}>
+                {feature.body}
+              </Text>
+            </Card>
+          ))}
         </div>
       </section>
 
-      <div className={styles.body}>
-        <section className={styles.section} aria-labelledby="features">
-          <Text as="h2" id="features" size={800} weight="semibold">
-            {copy.featuresTitle}
-          </Text>
-          <Text size={400} className={styles.sectionLead}>
-            {copy.featuresLead}
-          </Text>
-          <div className={styles.grid}>
-            {copy.features.map((feature, index) => (
-              <Card key={feature.title} className={styles.card} style={{ animationDelay: `${index * 60}ms` }}>
-                <span className={styles.iconBubble} aria-hidden="true">
-                  {feature.icon}
-                </span>
-                <Text as="h3" size={400} weight="semibold">
-                  {feature.title}
+      <section className={styles.section} aria-labelledby="status">
+        <Text as="h2" id="status" size={textSize.section} weight="semibold">
+          {copy.statusTitle}
+        </Text>
+        <Text size={textSize.body} className={styles.sectionLead}>
+          {copy.statusLead}
+        </Text>
+        <ul className={styles.steps}>
+          {copy.steps.map((step) => (
+            <li key={step.name} className={styles.step}>
+              <span>
+                <Badge {...badges[step.tone]}>{step.label}</Badge>
+              </span>
+              <span className={styles.stepText}>
+                <Text size={textSize.ui} weight="semibold">
+                  {step.name}
                 </Text>
-                <Text size={300}>{feature.body}</Text>
-              </Card>
-            ))}
-          </div>
-        </section>
-
-        <section className={styles.section} aria-labelledby="status">
-          <Text as="h2" id="status" size={800} weight="semibold">
-            {copy.statusTitle}
-          </Text>
-          <Text size={400} className={styles.sectionLead}>
-            {copy.statusLead}
-          </Text>
-          <ul className={styles.status}>
-            {copy.steps.map((step) => (
-              <li key={step.name} className={styles.statusRow}>
-                <Badge
-                  className={mergeClasses(styles.statusBadge)}
-                  appearance="tint"
-                  color={tones[step.tone]}
-                >
-                  {step.label}
-                </Badge>
-                <span className={styles.statusText}>
-                  <Text weight="semibold">{step.name}</Text>
-                  <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
-                    {step.detail}
-                  </Text>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      </div>
-    </>
+                <Text size={textSize.ui} className={styles.stepDetail}>
+                  {step.detail}
+                </Text>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
   );
 }

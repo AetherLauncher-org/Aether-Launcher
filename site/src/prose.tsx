@@ -1,52 +1,57 @@
 import { MessageBar, MessageBarBody, Text, makeStyles, tokens } from "@fluentui/react-components";
 import type { ReactNode } from "react";
+import { screen, space, textSize, widths } from "./tokens";
 
 const useStyles = makeStyles({
   article: {
-    maxWidth: "760px",
+    display: "grid",
+    rowGap: space.m,
+    // The same 960 container as the header, with the text in a left-aligned reading column.
+    gridTemplateColumns: `minmax(0, ${widths.prose})`,
+    maxWidth: widths.page,
     marginInline: "auto",
-    paddingBlock: "48px 24px",
-    paddingInline: "16px",
+    paddingTop: space.page,
+    paddingInline: space.xl,
+    [screen.phone]: { paddingInline: space.l },
   },
-  title: { display: "block", marginBottom: "8px" },
-  meta: { display: "block", color: tokens.colorNeutralForeground3 },
-  h2: { display: "block", marginTop: "40px", marginBottom: "8px" },
+  header: { display: "grid", rowGap: space.s },
+  meta: { color: tokens.colorNeutralForeground3 },
+  h2: { marginTop: space.xl },
   p: {
-    display: "block",
-    marginBlock: "12px",
     color: tokens.colorNeutralForeground2,
     lineHeight: tokens.lineHeightBase400,
   },
   list: {
-    marginBlock: "12px",
-    paddingLeft: "22px",
+    display: "grid",
+    rowGap: space.s,
+    margin: 0,
+    paddingLeft: space.xl,
     color: tokens.colorNeutralForeground2,
-    fontSize: tokens.fontSizeBase300,
+    fontSize: tokens.fontSizeBase400,
     lineHeight: tokens.lineHeightBase400,
-    "> li + li": { marginTop: "6px" },
   },
   code: {
-    paddingBlock: "1px",
-    paddingInline: "6px",
+    paddingInline: space.xs,
     borderRadius: tokens.borderRadiusSmall,
-    backgroundColor: tokens.colorBrandBackground2,
+    backgroundColor: tokens.colorNeutralBackground3,
     fontFamily: tokens.fontFamilyMonospace,
-    fontSize: "13px",
+    fontSize: tokens.fontSizeBase300,
     overflowWrap: "anywhere",
   },
-  callout: { marginBlock: "20px" },
 });
 
 export function Article({ title, meta, children }: { title: string; meta: ReactNode; children: ReactNode }) {
   const styles = useStyles();
   return (
     <article className={styles.article}>
-      <Text as="h1" size={900} weight="semibold" className={styles.title}>
-        {title}
-      </Text>
-      <Text size={300} className={styles.meta}>
-        {meta}
-      </Text>
+      <div className={styles.header}>
+        <Text as="h1" size={textSize.title} weight="semibold">
+          {title}
+        </Text>
+        <Text size={textSize.ui} className={styles.meta}>
+          {meta}
+        </Text>
+      </div>
       {children}
     </article>
   );
@@ -55,7 +60,7 @@ export function Article({ title, meta, children }: { title: string; meta: ReactN
 export function H2({ children }: { children: ReactNode }) {
   const styles = useStyles();
   return (
-    <Text as="h2" size={600} weight="semibold" className={styles.h2}>
+    <Text as="h2" size={textSize.section} weight="semibold" className={styles.h2}>
       {children}
     </Text>
   );
@@ -64,7 +69,7 @@ export function H2({ children }: { children: ReactNode }) {
 export function P({ children }: { children: ReactNode }) {
   const styles = useStyles();
   return (
-    <Text as="p" size={300} className={styles.p}>
+    <Text as="p" size={textSize.body} className={styles.p}>
       {children}
     </Text>
   );
@@ -81,9 +86,8 @@ export function Code({ children }: { children: ReactNode }) {
 }
 
 export function Callout({ children }: { children: ReactNode }) {
-  const styles = useStyles();
   return (
-    <MessageBar className={styles.callout} intent="info">
+    <MessageBar intent="info">
       <MessageBarBody>{children}</MessageBarBody>
     </MessageBar>
   );

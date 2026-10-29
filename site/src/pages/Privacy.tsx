@@ -10,12 +10,13 @@ import {
 } from "@fluentui/react-components";
 import { Article, Code, H2, P, UL } from "../prose";
 import { lastUpdated, repositoryUrl } from "../router";
+import { space } from "../tokens";
 import type { Lang } from "../router";
 
 const useStyles = makeStyles({
-  tableWrap: { overflowX: "auto", marginBlock: "12px" },
-  cell: { alignItems: "flex-start", paddingBlock: "8px" },
-  hosts: { display: "grid", rowGap: "4px" },
+  tableWrap: { overflowX: "auto" },
+  cell: { alignItems: "flex-start", paddingBlock: space.s },
+  hosts: { display: "grid", rowGap: space.xs },
 });
 
 const consent = "https://account.live.com/consent/Manage";

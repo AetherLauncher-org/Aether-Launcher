@@ -1,6 +1,5 @@
-import { FluentProvider, makeStyles, tokens } from "@fluentui/react-components";
+import { FluentProvider, makeStyles, tokens, webDarkTheme, webLightTheme } from "@fluentui/react-components";
 import { useEffect, useState } from "react";
-import { aetherDarkTheme, aetherLightTheme } from "../../src/lib/brand";
 import { SiteFooter, SiteHeader } from "./chrome";
 import { chrome, meta } from "./copy";
 import { useRoute } from "./navigation";
@@ -13,7 +12,7 @@ import type { Route } from "./router";
 const useStyles = makeStyles({
   root: {
     minHeight: "100vh",
-    backgroundColor: tokens.colorNeutralBackground2,
+    backgroundColor: tokens.colorNeutralBackground1,
     color: tokens.colorNeutralForeground1,
   },
   main: { outlineStyle: "none" },
@@ -69,7 +68,7 @@ export default function App() {
   useDocumentHead(route);
 
   return (
-    <FluentProvider theme={dark ? aetherDarkTheme : aetherLightTheme} className={styles.root}>
+    <FluentProvider theme={dark ? webDarkTheme : webLightTheme} className={styles.root}>
       <SiteHeader route={route} />
       <main id="main" tabIndex={-1} className={styles.main}>
         <Page route={route} />

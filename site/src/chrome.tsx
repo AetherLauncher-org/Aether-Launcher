@@ -4,44 +4,40 @@ import { chrome } from "./copy";
 import { navigate } from "./navigation";
 import { hrefFor, otherLanguage, repositoryUrl } from "./router";
 import type { PageId, Route } from "./router";
+import { screen, sizes, space, textSize, widths } from "./tokens";
 
 const useStyles = makeStyles({
   skip: {
     position: "absolute",
-    top: "-48px",
-    left: "16px",
+    top: "-100vh",
+    left: space.l,
     zIndex: 100,
-    padding: "8px 16px",
+    paddingBlock: space.s,
+    paddingInline: space.l,
     borderRadius: tokens.borderRadiusMedium,
     backgroundColor: tokens.colorNeutralBackground1,
-    border: `1px solid ${tokens.colorNeutralStroke1}`,
-    transitionProperty: "top",
-    transitionDuration: tokens.durationFast,
-    ":focus": { top: "12px" },
+    border: `${sizes.hairline} solid ${tokens.colorNeutralStroke1}`,
+    ":focus": { top: space.m },
   },
   header: {
-    position: "sticky",
-    top: 0,
-    zIndex: 50,
-    // The same translucent bar the launcher's title bar uses.
-    backgroundColor: "color-mix(in srgb, var(--colorNeutralBackground2) 72%, transparent)",
-    backdropFilter: "saturate(180%) blur(24px)",
-    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    borderBottom: `${sizes.hairline} solid ${tokens.colorNeutralStroke2}`,
   },
   headerInner: {
     display: "flex",
     flexWrap: "wrap",
     alignItems: "center",
-    columnGap: "16px",
-    minHeight: "56px",
-    maxWidth: "1080px",
+    columnGap: space.l,
+    minHeight: sizes.header,
+    maxWidth: widths.page,
     marginInline: "auto",
-    paddingInline: "16px",
+    paddingInline: space.xl,
+    [screen.phone]: { paddingInline: space.l, paddingBlock: space.s },
   },
   brand: {
     display: "inline-flex",
     alignItems: "center",
-    columnGap: "10px",
+    columnGap: space.m,
     color: tokens.colorNeutralForeground1,
     textDecorationLine: "none",
     fontFamily: tokens.fontFamilyBase,
@@ -49,34 +45,43 @@ const useStyles = makeStyles({
     fontWeight: tokens.fontWeightSemibold,
     ":hover": { textDecorationLine: "none" },
   },
-  logo: { width: "28px", height: "28px" },
+  logo: { width: sizes.headerLogo, height: sizes.headerLogo },
   nav: {
     display: "flex",
     flexGrow: 1,
     flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "flex-end",
-    columnGap: "4px",
+    columnGap: space.xs,
+    [screen.phone]: { justifyContent: "flex-start" },
   },
   current: {
-    boxShadow: `inset 0 -2px 0 ${tokens.colorCompoundBrandStroke}`,
+    boxShadow: `inset 0 -${sizes.indicator} 0 ${tokens.colorCompoundBrandStroke}`,
     fontWeight: tokens.fontWeightSemibold,
+    borderRadius: tokens.borderRadiusNone,
   },
   footer: {
-    marginTop: "40px",
-    paddingBlock: "32px 48px",
-    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+    marginTop: space.section,
+    paddingBlock: `${space.xxl} ${space.section}`,
+    borderTop: `${sizes.hairline} solid ${tokens.colorNeutralStroke2}`,
   },
   footerInner: {
     display: "grid",
-    rowGap: "8px",
-    maxWidth: "1080px",
+    rowGap: space.s,
+    maxWidth: widths.page,
     marginInline: "auto",
-    paddingInline: "16px",
+    paddingInline: space.xl,
+    color: tokens.colorNeutralForeground3,
+    [screen.phone]: { paddingInline: space.l },
   },
+  footerText: { maxWidth: widths.prose },
 });
 
 type SiteLinkProps = { route: Route; children: ReactNode; className?: string };
+
+function isPlainClick(event: { button: number; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean }) {
+  return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+}
 
 /** A real link that navigates without a reload on a plain click. */
 export function SiteLink({ route, children, className }: SiteLinkProps) {
@@ -86,11 +91,10 @@ export function SiteLink({ route, children, className }: SiteLinkProps) {
       href={href}
       className={className}
       onClick={(event) => {
-        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-          return;
+        if (isPlainClick(event)) {
+          event.preventDefault();
+          navigate(href);
         }
-        event.preventDefault();
-        navigate(href);
       }}
     >
       {children}
@@ -102,14 +106,12 @@ export function SiteLink({ route, children, className }: SiteLinkProps) {
 export function ButtonLink({
   route,
   appearance,
-  size,
   children,
   current,
   className,
 }: {
   route: Route;
   appearance?: "primary" | "secondary" | "subtle" | "outline";
-  size?: "small" | "medium" | "large";
   children: ReactNode;
   current?: boolean;
   className?: string;
@@ -120,15 +122,13 @@ export function ButtonLink({
       as="a"
       href={href}
       appearance={appearance}
-      size={size}
       className={className}
       aria-current={current ? "page" : undefined}
       onClick={(event) => {
-        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-          return;
+        if (isPlainClick(event)) {
+          event.preventDefault();
+          navigate(href);
         }
-        event.preventDefault();
-        navigate(href);
       }}
     >
       {children}
@@ -145,6 +145,7 @@ export function SiteHeader({ route }: { route: Route }) {
     { page: "privacy", label: text.nav.privacy },
   ];
   const other = otherLanguage(route);
+  const homeHref = hrefFor({ lang: route.lang, page: "home" });
 
   return (
     <header className={styles.header}>
@@ -161,10 +162,10 @@ export function SiteHeader({ route }: { route: Route }) {
       <div className={styles.headerInner}>
         <a
           className={styles.brand}
-          href={hrefFor({ lang: route.lang, page: "home" })}
+          href={homeHref}
           onClick={(event) => {
             event.preventDefault();
-            navigate(hrefFor({ lang: route.lang, page: "home" }));
+            navigate(homeHref);
           }}
         >
           <img className={styles.logo} src="/logo.svg" alt="" width={28} height={28} />
@@ -185,7 +186,7 @@ export function SiteHeader({ route }: { route: Route }) {
           <Button as="a" appearance="subtle" href={repositoryUrl} rel="noopener">
             {text.nav.github}
           </Button>
-          <ButtonLink route={other} appearance="outline">
+          <ButtonLink route={other} appearance="subtle">
             <span lang={other.lang === "zh" ? "zh-CN" : "en"}>{text.switchTo}</span>
           </ButtonLink>
         </nav>
@@ -200,8 +201,10 @@ export function SiteFooter({ route }: { route: Route }) {
   return (
     <footer className={styles.footer}>
       <div className={styles.footerInner}>
-        <Text size={200}>{text.footerDisclaimer}</Text>
-        <Text size={200}>
+        <Text size={textSize.caption} className={styles.footerText}>
+          {text.footerDisclaimer}
+        </Text>
+        <Text size={textSize.caption} className={styles.footerText}>
           {text.footerLicense.before}
           <Link href={repositoryUrl} rel="noopener">
             GitHub
