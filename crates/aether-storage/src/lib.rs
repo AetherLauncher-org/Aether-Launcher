@@ -26,13 +26,9 @@ pub mod list;
 pub mod update;
 
 pub use create::{CreateError, create_instance};
-pub use delete::{DeleteError, delete_instance};
-mod delete;
-pub use game_directory::{GameDirectoryError, GameDirectoryOutcome, apply_game_directory};
-mod game_directory;
 pub use import::execute::{
-    ImportExecuteError, ImportOutcome, ImportSkipReason, MAX_IMPORT_VERSIONS,
-    import_prism_instances, import_versions,
+    ImportExecuteError, ImportPlan, ImportRequest, ImportSkipReason, MAX_IMPORT_VERSIONS,
+    plan_folder_import, plan_prism_import,
 };
 pub use import::{
     ExistingFiles, ImportCandidate, ImportError, ImportSourceKind, detect, plan_candidates,
@@ -43,6 +39,6 @@ pub use list::{
     list_instances,
 };
 pub use update::{
-    UpdateError, rename_instance, set_instance_game_directory, set_instance_state,
-    set_instance_version, validate_instance_name, write_instance_atomic,
+    UpdateError, rename_instance, set_instance_state, set_instance_version, validate_instance_name,
+    write_instance_atomic,
 };

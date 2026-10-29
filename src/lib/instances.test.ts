@@ -16,8 +16,6 @@ function instance(overrides: Partial<InstanceSummary> = {}): InstanceSummary {
     name: "Survival",
     version: "1.21.1",
     state: "ready",
-    category: "vanilla" as const,
-    gameDirectory: null,
     ...overrides,
   };
 }

@@ -50,24 +50,11 @@ impl TempDir {
     fn instances(&self) -> PathBuf {
         self.path.join("instances")
     }
-
-    /// 一个可用于新建实例的 `.minecraft`：真实目录，带 `versions/`。
-    ///
-    /// 放在 base **之外**：`base` 下只应有 `instances/`，否则「拒绝时不创建任何
-    /// 东西」这类断言会被这个辅助目录干扰。
-    fn game_directory(&self) -> PathBuf {
-        let game = self.path.with_extension("game");
-        if !game.is_dir() {
-            fs::create_dir_all(game.join("versions")).expect("game directory should be creatable");
-        }
-        game
-    }
 }
 
 impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.path);
-        let _ = fs::remove_dir_all(self.path.with_extension("game"));
     }
 }
 
@@ -110,8 +97,8 @@ fn symlink_dir(original: &Path, link: &Path) -> bool {
 fn create_persists_the_requested_instance() {
     let temp = TempDir::new("happy");
 
-    let instance = create_instance(temp.path(), "Survival", "1.21.1", &temp.game_directory())
-        .expect("creation should succeed");
+    let instance =
+        create_instance(temp.path(), "Survival", "1.21.1").expect("creation should succeed");
 
     assert_eq!(instance.name, "Survival");
     assert_eq!(instance.version.as_str(), "1.21.1");
@@ -136,56 +123,23 @@ fn create_persists_the_requested_instance() {
 }
 
 #[test]
-fn create_records_the_game_directory_instead_of_a_copy() {
-    let temp = TempDir::new("game-directory");
-    let game = temp.game_directory();
+fn create_builds_an_empty_minecraft_directory() {
+    let temp = TempDir::new("skeleton");
 
     let instance =
-        create_instance(temp.path(), "Bound", "1.21.1", &game).expect("creation should succeed");
+        create_instance(temp.path(), "Skeleton", "1.21.1").expect("creation should succeed");
 
-    // 实例记录只放 instance.json：游戏文件留在原来的 .minecraft 里。
+    let minecraft = instance.root.join("minecraft");
+    assert!(minecraft.is_dir(), "minecraft/ should be a directory");
+    assert_eq!(
+        entries(&minecraft),
+        Vec::<String>::new(),
+        "minecraft/ should be created empty"
+    );
     assert_eq!(
         entries(&instance.root),
-        ["instance.json".to_owned()],
-        "the instance directory must hold the record only"
-    );
-    assert!(
-        !instance.root.join("minecraft").exists(),
-        "no empty minecraft/ copy should be created"
-    );
-
-    let recorded = instance
-        .game_directory
-        .as_ref()
-        .expect("the record should name a game directory");
-    assert_eq!(
-        fs::canonicalize(recorded).expect("canonical game directory"),
-        fs::canonicalize(&game).expect("canonical expected game directory"),
-        "the record should point at the directory that was passed in"
-    );
-    assert_eq!(
-        instance.effective_game_directory(),
-        recorded.clone(),
-        "the effective directory is the recorded one"
-    );
-}
-
-#[test]
-fn create_rejects_a_missing_game_directory() {
-    let temp = TempDir::new("missing-game");
-    let missing = temp.path().with_extension("does-not-exist");
-
-    let error = create_instance(temp.path(), "Survival", "1.21.1", &missing)
-        .expect_err("a missing game directory must fail");
-
-    assert!(
-        matches!(error, CreateError::UnsafeGameDirectory),
-        "expected UnsafeGameDirectory, got {error:?}"
-    );
-    assert_eq!(
-        entries(temp.path()),
-        Vec::<String>::new(),
-        "nothing should be created under the base"
+        ["instance.json".to_owned(), "minecraft".to_owned()],
+        "the instance directory should hold the record and the skeleton only"
     );
 }
 
@@ -197,8 +151,8 @@ fn create_makes_the_instances_directory_when_it_is_missing() {
         "the store starts without an instances/ directory"
     );
 
-    let instance = create_instance(temp.path(), "First", "1.21.1", &temp.game_directory())
-        .expect("creation should succeed");
+    let instance =
+        create_instance(temp.path(), "First", "1.21.1").expect("creation should succeed");
 
     assert!(temp.instances().is_dir(), "instances/ should be created");
     assert!(instance.root.is_dir());
@@ -209,8 +163,8 @@ fn create_rejects_a_missing_base() {
     let temp = TempDir::new("missing-base");
     let missing = temp.path().join("no-such-base");
 
-    let error = create_instance(&missing, "Survival", "1.21.1", &temp.game_directory())
-        .expect_err("a missing base must fail");
+    let error =
+        create_instance(&missing, "Survival", "1.21.1").expect_err("a missing base must fail");
 
     assert!(
         matches!(error, CreateError::UnsafeBase),
@@ -228,8 +182,7 @@ fn create_rejects_a_regular_file_as_base() {
     let file = temp.path().join("not-a-directory");
     fs::write(&file, b"not a store").expect("the file should be writable");
 
-    let error = create_instance(&file, "Survival", "1.21.1", &temp.game_directory())
-        .expect_err("a file base must fail");
+    let error = create_instance(&file, "Survival", "1.21.1").expect_err("a file base must fail");
 
     assert!(
         matches!(error, CreateError::UnsafeBase),
@@ -255,8 +208,7 @@ fn create_rejects_a_symlinked_base() {
         return;
     }
 
-    let error = create_instance(&link, "Survival", "1.21.1", &temp.game_directory())
-        .expect_err("a link base must fail");
+    let error = create_instance(&link, "Survival", "1.21.1").expect_err("a link base must fail");
 
     assert!(
         matches!(error, CreateError::UnsafeBase),
@@ -281,7 +233,7 @@ fn create_rejects_a_symlinked_instances_directory() {
         return;
     }
 
-    let error = create_instance(temp.path(), "Survival", "1.21.1", &temp.game_directory())
+    let error = create_instance(temp.path(), "Survival", "1.21.1")
         .expect_err("a symlinked instances directory must be refused");
 
     assert!(
@@ -298,11 +250,10 @@ fn create_rejects_a_symlinked_instances_directory() {
 #[test]
 fn create_rejects_a_duplicate_name_ignoring_case() {
     let temp = TempDir::new("duplicate");
-    create_instance(temp.path(), "Survival", "1.21.1", &temp.game_directory())
-        .expect("the first creation should succeed");
+    create_instance(temp.path(), "Survival", "1.21.1").expect("the first creation should succeed");
     let before = entries(&temp.instances());
 
-    let error = create_instance(temp.path(), "survival", "1.20.1", &temp.game_directory())
+    let error = create_instance(temp.path(), "survival", "1.20.1")
         .expect_err("a case-insensitive duplicate must be rejected");
 
     assert!(
@@ -322,7 +273,7 @@ fn create_rejects_invalid_names_without_creating_anything() {
     let too_long = "n".repeat(65);
 
     for name in ["", "  ", "a/b", "CON", "name.", too_long.as_str()] {
-        let error = create_instance(temp.path(), name, "1.21.1", &temp.game_directory())
+        let error = create_instance(temp.path(), name, "1.21.1")
             .expect_err("an invalid name must be rejected");
         assert!(
             matches!(error, CreateError::InvalidName(_)),
@@ -342,7 +293,7 @@ fn create_rejects_invalid_versions_without_creating_anything() {
     let too_long = "v".repeat(65);
 
     for version in ["", "  ", "../1.21", "a\\b", "1.\u{7}", too_long.as_str()] {
-        let error = create_instance(temp.path(), "Survival", version, &temp.game_directory())
+        let error = create_instance(temp.path(), "Survival", version)
             .expect_err("an invalid version must be rejected");
         assert!(
             matches!(error, CreateError::InvalidVersion(_)),
@@ -360,10 +311,8 @@ fn create_rejects_invalid_versions_without_creating_anything() {
 fn two_instances_get_distinct_ids_and_roots() {
     let temp = TempDir::new("two");
 
-    let first = create_instance(temp.path(), "Alpha", "1.21.1", &temp.game_directory())
-        .expect("the first should succeed");
-    let second = create_instance(temp.path(), "Beta", "1.20.1", &temp.game_directory())
-        .expect("the second should succeed");
+    let first = create_instance(temp.path(), "Alpha", "1.21.1").expect("the first should succeed");
+    let second = create_instance(temp.path(), "Beta", "1.20.1").expect("the second should succeed");
 
     assert_ne!(first.id, second.id, "each instance needs its own id");
     assert_ne!(first.root, second.root, "each instance needs its own root");
@@ -390,7 +339,7 @@ fn a_corrupt_record_does_not_block_a_new_instance() {
     fs::write(&corrupt_record, b"{ this is not json")
         .expect("the corrupt record should be writable");
 
-    let created = create_instance(temp.path(), "Fresh", "1.21.1", &temp.game_directory())
+    let created = create_instance(temp.path(), "Fresh", "1.21.1")
         .expect("a corrupt neighbour must not block creation");
 
     assert_eq!(created.name, "Fresh");
@@ -406,10 +355,8 @@ fn a_corrupt_record_does_not_block_a_new_instance() {
 fn every_instance_directory_is_named_after_its_id() {
     let temp = TempDir::new("id-named");
 
-    let first = create_instance(temp.path(), "Alpha", "1.21.1", &temp.game_directory())
-        .expect("the first should succeed");
-    let second = create_instance(temp.path(), "Beta", "1.20.1", &temp.game_directory())
-        .expect("the second should succeed");
+    let first = create_instance(temp.path(), "Alpha", "1.21.1").expect("the first should succeed");
+    let second = create_instance(temp.path(), "Beta", "1.20.1").expect("the second should succeed");
 
     for instance in [&first, &second] {
         let name = instance
@@ -433,13 +380,11 @@ fn every_instance_directory_is_named_after_its_id() {
 #[test]
 fn creating_a_second_instance_leaves_the_first_record_untouched() {
     let temp = TempDir::new("untouched");
-    let first = create_instance(temp.path(), "Alpha", "1.21.1", &temp.game_directory())
-        .expect("the first should succeed");
+    let first = create_instance(temp.path(), "Alpha", "1.21.1").expect("the first should succeed");
     let record = first.root.join("instance.json");
     let before = fs::read(&record).expect("the first record should exist");
 
-    let second = create_instance(temp.path(), "Beta", "1.20.1", &temp.game_directory())
-        .expect("the second should succeed");
+    let second = create_instance(temp.path(), "Beta", "1.20.1").expect("the second should succeed");
 
     assert_eq!(
         fs::read(&record).expect("the first record should still exist"),

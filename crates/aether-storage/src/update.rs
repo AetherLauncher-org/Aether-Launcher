@@ -499,33 +499,6 @@ pub fn set_instance_state(
     })
 }
 
-/// 把实例的游戏目录改成 `game_directory`。
-///
-/// 这是**用户明确选择**的结果：Aether 不从别的启动器读配置，也不猜路径，所以
-/// 老实例（`game_directory` 字段加入之前创建的）只能靠这一步补上。
-///
-/// 传入的目录必须先通过 [`crate::import::fallback::looks_like_game_directory`]，
-/// 也就是真的有 `versions/` 子目录；写记录时用和重命名、改版本相同的原子路径。
-///
-/// # Errors
-///
-/// [`UpdateError::UnsafeDirectory`] when the directory is not a usable game
-/// directory, plus every error `update_record` can report.
-pub fn set_instance_game_directory(
-    directory: &Path,
-    instance: &GameInstance,
-    game_directory: &Path,
-) -> Result<GameInstance, UpdateError> {
-    if !crate::import::fallback::looks_like_game_directory(game_directory) {
-        return Err(UpdateError::UnsafeDirectory);
-    }
-    let canonical = std::fs::canonicalize(game_directory).map_err(UpdateError::Io)?;
-    update_record(directory, instance, |stored| {
-        stored.game_directory = Some(canonical);
-        Ok(())
-    })
-}
-
 /// Replaces the Minecraft version of the instance stored in `directory`.
 ///
 /// `instance` identifies the record to rewrite; see `update_record`.

@@ -14,12 +14,15 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use aether_core::{GameInstance, InstanceId, InstanceState, VersionId};
-use aether_storage::ImportSourceKind;
+use aether_download::CancellationToken;
+use aether_download::transport::HttpTransport;
+use aether_storage::{ImportPlan, ImportSkipReason, ImportSourceKind};
 
 use super::{
     ImportCandidateDto, ImportResultDto, ImportSkippedDto, ImportSourceDto, ImportState,
-    LauncherInstallationDto, PendingSource, describe_scan_error, drop_repeated_game_directories,
-    installation_at, listing_of, pcl2_game_directories, plan_source,
+    LauncherInstallationDto, PendingSource, Reporter, describe_scan_error,
+    drop_repeated_game_directories, installation_at, listing_of, pcl2_game_directories,
+    plan_source, run_import,
 };
 use crate::commands::instances::InstanceSummary;
 
@@ -221,7 +224,6 @@ fn result_dto_reports_imported_instances_and_skips() {
         name: "1.20.1".to_owned(),
         version: VersionId::parse("1.20.1").unwrap(),
         root: PathBuf::from("instances"),
-        game_directory: None,
         state: InstanceState::Incomplete,
     };
     let dto = ImportResultDto {
@@ -239,6 +241,102 @@ fn result_dto_reports_imported_instances_and_skips() {
     assert_eq!(value["skipped"][0]["id"], "1.21");
     assert_eq!(value["skipped"][0]["reason"], "missing-version-json");
     assert!(value["imported"][0].get("root").is_none());
+}
+
+/// Fails every request, like an offline machine.
+struct OfflineTransport;
+
+impl HttpTransport for OfflineTransport {
+    fn get(
+        &self,
+        request: &aether_download::transport::TransportRequest,
+    ) -> Result<
+        aether_download::transport::TransportResponse,
+        aether_download::transport::TransportError,
+    > {
+        Err(aether_download::transport::TransportError::Timeout {
+            url: request.url.clone(),
+            timeout_secs: 1,
+        })
+    }
+}
+
+struct SilentReporter;
+
+impl Reporter for SilentReporter {
+    fn report(&self, _progress: &super::super::install::InstallProgress) {}
+}
+
+fn plan_of(ids: &[&str], seed: &Path) -> ImportPlan {
+    ImportPlan {
+        requests: ids
+            .iter()
+            .map(|id| aether_storage::ImportRequest {
+                id: (*id).to_owned(),
+                version: (*id).to_owned(),
+                name: (*id).to_owned(),
+            })
+            .collect(),
+        skipped: vec![("1.12.2-forge".to_owned(), ImportSkipReason::NeedsLoader)],
+        seed: seed.to_path_buf(),
+    }
+}
+
+#[test]
+fn planner_skips_are_carried_into_the_result() {
+    let temp = TempDir::new("run-skips");
+    let result = run_import(
+        &OfflineTransport,
+        temp.path(),
+        plan_of(&[], temp.path()),
+        &CancellationToken::new(),
+        &SilentReporter,
+        &|_| {},
+    );
+
+    assert!(result.imported.is_empty());
+    assert_eq!(result.skipped.len(), 1);
+    assert_eq!(result.skipped[0].id, "1.12.2-forge");
+    assert_eq!(result.skipped[0].reason, "needs-loader");
+}
+
+#[test]
+fn an_unreachable_catalog_fails_each_version_without_creating_anything() {
+    let temp = TempDir::new("run-offline");
+    let result = run_import(
+        &OfflineTransport,
+        temp.path(),
+        plan_of(&["1.20.1", "1.21"], temp.path()),
+        &CancellationToken::new(),
+        &SilentReporter,
+        &|_| panic!("nothing should start"),
+    );
+
+    assert!(result.imported.is_empty());
+    let failed: Vec<_> = result
+        .skipped
+        .iter()
+        .filter(|item| item.reason == "install-failed")
+        .collect();
+    assert_eq!(failed.len(), 2);
+    assert!(!temp.path().join("game").exists());
+}
+
+#[test]
+fn a_cancelled_import_marks_the_rest_cancelled() {
+    let temp = TempDir::new("run-cancel");
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let result = run_import(
+        &OfflineTransport,
+        temp.path(),
+        plan_of(&["1.20.1"], temp.path()),
+        &cancel,
+        &SilentReporter,
+        &|_| {},
+    );
+
+    assert!(result.skipped.iter().any(|item| item.reason == "cancelled"));
 }
 
 #[test]

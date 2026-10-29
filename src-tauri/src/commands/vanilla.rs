@@ -173,13 +173,24 @@ pub(super) fn prepare_version(
     version: &str,
 ) -> Result<String, String> {
     let catalog = fetch_catalog(transport)?;
+    prepare_version_from_catalog(transport, &catalog, game_root, version)
+}
+
+/// Same as [`prepare_version`] for a catalog the caller already holds, so
+/// installing many versions in a row reads the catalog once.
+pub(super) fn prepare_version_from_catalog(
+    transport: &dyn HttpTransport,
+    catalog: &VersionCatalog,
+    game_root: &Path,
+    version: &str,
+) -> Result<String, String> {
     let selected = catalog
         .versions
         .iter()
         .find(|item| item.id == version)
         .ok_or_else(|| "version is absent from the official Mojang catalog".to_owned())?;
     let digest = selected.sha1.clone();
-    let bytes = fetch_verified_metadata(transport, &catalog, version)?;
+    let bytes = fetch_verified_metadata(transport, catalog, version)?;
     cache_verified_metadata(game_root, version, &bytes, &digest)?;
     Ok(version.to_owned())
 }

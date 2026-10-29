@@ -18,40 +18,21 @@ import { isTauri } from "./index";
 declare module "./call" {
   interface CommandArgs {
     list_instances: void;
-    create_instance: { name: string; version: string };
-    set_game_directory_for_all_instances: void;
-    delete_instance: { id: string };
   }
 
   interface CommandResults {
     list_instances: InstanceListing;
-    create_instance: InstanceSummary | null;
-    set_game_directory_for_all_instances: GameDirectoryReport;
-    delete_instance: null;
   }
 }
 
 /** 与 `aether_core::InstanceState` 的蛇形标签一一对应。 */
 export type InstanceState = "ready" | "incomplete" | "running" | "failed";
 
-export type InstanceCategory =
-  | "vanilla"
-  | "forge"
-  | "neoforge"
-  | "fabric"
-  | "quilt"
-  | "liteloader"
-  | "modpack";
-
 export type InstanceSummary = {
   id: string;
   name: string;
   version: string;
   state: InstanceState;
-  /** 版本类型分组，界面据此像 PCL 那样按类别折叠。 */
-  category: InstanceCategory;
-  /** 这个实例的游戏目录；老记录为 null，说明还没设置。 */
-  gameDirectory: string | null;
 };
 
 /** 读取失败的记录，只带稳定分类，不带文件系统路径。 */
@@ -70,18 +51,6 @@ export const emptyInstanceListing: InstanceListing = {
   skipped: [],
 };
 
-export type GameDirectoryReport = {
-  updated: number;
-  skipped: number;
-  failed: string[];
-  cancelled: boolean;
-};
-
-export type CreateInstanceInput = {
-  name: string;
-  version: string;
-};
-
 /**
  * 列出本机实例。
  *
@@ -93,37 +62,4 @@ export async function listInstances(): Promise<InstanceListing> {
     return emptyInstanceListing;
   }
   return callCommand("list_instances");
-}
-
-/**
- * 新建一个实例。非桌面版会 reject，调用方负责把提示显示出来。
- *
- * 游戏目录由后端弹出选择框让用户挑，前端不传路径；用户取消选择时返回 `null`。
- */
-export async function createInstance(
-  input: CreateInstanceInput,
-): Promise<InstanceSummary | null> {
-  return callCommand("create_instance", {
-    name: input.name.trim(),
-    version: input.version.trim(),
-  });
-}
-
-/**
- * 给所有还没设置游戏目录的实例指定一个 `.minecraft`。
- *
- * 目录由后端弹出选择框让用户挑，前端不传路径；取消时 `cancelled` 为真。
- * 后端会在改写前备份 `instance.json`。
- */
-export async function setGameDirectoryForAllInstances(): Promise<GameDirectoryReport> {
-  return callCommand("set_game_directory_for_all_instances");
-}
-/**
- * 删除一个实例记录。
- *
- * 只删 Aether 的实例记录，**不会删游戏文件** —— `versions/`、`saves/`、
- * `mods/`、`schematics/` 都在 `.minecraft` 里，删实例只是让 Aether 忘掉这个版本。
- */
-export async function deleteInstance(id: string): Promise<void> {
-  await callCommand("delete_instance", { id });
 }

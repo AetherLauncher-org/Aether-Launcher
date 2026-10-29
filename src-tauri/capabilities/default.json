@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimum capability set for the Aether Launcher main window, plus the window controls its custom title bar draws and the standalone schematic preview window",
-  "windows": ["main", "preview-*"],
+  "description": "Minimum capability set for the Aether Launcher main window, plus the window controls its custom title bar draws",
+  "windows": ["main"],
   "permissions": [
     "core:default",
     "core:window:allow-minimize",

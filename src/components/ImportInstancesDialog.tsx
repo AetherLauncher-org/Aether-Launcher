@@ -15,20 +15,19 @@ import {
   TabList,
   Text,
 } from "@fluentui/react-components";
+import { FolderOpen24Regular } from "@fluentui/react-icons";
+import { useCallback, useEffect, useState } from "react";
 import {
-  ArrowDownload24Regular,
-  FolderOpen24Regular,
-} from "@fluentui/react-icons";
-import { useCallback, useState } from "react";
-import {
+  cancelVanillaInstall,
   describeCommandError,
   detectLauncherInstallations,
   importVersions,
-  installImportedInstance,
+  listenImportItem,
   pickImportFolder,
   pickLauncherFolder,
 } from "../ipc";
 import type {
+  ImportItemProgress,
   ImportResult,
   ImportSource,
   InstanceSummary,
@@ -52,7 +51,7 @@ type ImportInstancesDialogProps = {
 
 type ImportTab = "folder" | "launcher";
 
-type Busy = "idle" | "picking" | "detecting" | "importing" | "installing";
+type Busy = "idle" | "picking" | "detecting" | "importing";
 
 /**
  * 导入实例对话框。
@@ -65,8 +64,9 @@ type Busy = "idle" | "picking" | "detecting" | "importing" | "installing";
  *   启动器目录。
  *
  * 前端从不传路径：预览返回的 `token` 是后端保存的扫描结果句柄，导入时只提交
- * `token` 和勾选的条目 ID。导入只复制版本元数据，游戏文件由「补齐游戏文件」
- * 走已有的下载流程（官方源失败时自动回退 BMCLAPI 镜像）。
+ * `token` 和勾选的条目 ID。每个版本都从官方清单安装到启动器自己的游戏目录，
+ * 来源文件夹只是只读的种子（哈希一致的文件直接复用），不会被修改，也不会被
+ * 当作游戏目录。导入期间可以取消，已下载的文件保留。
  */
 export function ImportInstancesDialog({
   open,
@@ -82,9 +82,32 @@ export function ImportInstancesDialog({
   const [busy, setBusy] = useState<Busy>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
-  const [installNote, setInstallNote] = useState<string | null>(null);
-  // Prism / MultiMC 不存 versions/<id>/<id>.json，补齐文件前要先从官方清单缓存
-  const [needsManifest, setNeedsManifest] = useState(false);
+  const [current, setCurrent] = useState<ImportItemProgress | null>(null);
+
+  // 导入期间由后端逐个推送"正在安装哪一个"，对话框据此显示进度。
+  useEffect(() => {
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    listenImportItem((item) => {
+      if (active) {
+        setCurrent(item);
+      }
+    })
+      .then((stop) => {
+        if (active) {
+          unlisten = stop;
+        } else {
+          stop();
+        }
+      })
+      .catch(() => {
+        // Progress text is cosmetic; the import itself does not depend on it.
+      });
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, []);
 
   const reset = useCallback(() => {
     setTab("folder");
@@ -94,8 +117,7 @@ export function ImportInstancesDialog({
     setBusy("idle");
     setError(null);
     setResult(null);
-    setInstallNote(null);
-    setNeedsManifest(false);
+    setCurrent(null);
   }, []);
 
   const close = useCallback(() => {
@@ -129,7 +151,6 @@ export function ImportInstancesDialog({
     setSource(next);
     setSelected(new Set(allCandidateIds(next)));
     setResult(null);
-    setInstallNote(null);
     setError(null);
   };
 
@@ -176,7 +197,6 @@ export function ImportInstancesDialog({
     try {
       const imported = await importVersions(source.token, [...selected]);
       setResult(imported);
-      setNeedsManifest(source.sourceKind === "prism");
       setSource(null);
       setSelected(new Set());
       if (imported.imported.length > 0) {
@@ -185,31 +205,9 @@ export function ImportInstancesDialog({
     } catch (failure: unknown) {
       setError(describeCommandError(failure));
     } finally {
+      setCurrent(null);
       setBusy("idle");
     }
-  };
-
-  const handleInstallFiles = async () => {
-    if (!result) {
-      return;
-    }
-    setBusy("installing");
-    setInstallNote(null);
-    let files = 0;
-    const failures: string[] = [];
-    for (const instance of result.imported) {
-      try {
-        files += await installImportedInstance(instance.id, needsManifest);
-      } catch (failure: unknown) {
-        failures.push(`${instance.version}：${describeCommandError(failure)}`);
-      }
-    }
-    setInstallNote(
-      failures.length === 0
-        ? `已下载并校验 ${files} 个文件。`
-        : `已下载并校验 ${files} 个文件；${failures.join("；")}`,
-    );
-    setBusy("idle");
   };
 
   const busyNow = busy !== "idle";
@@ -341,8 +339,8 @@ export function ImportInstancesDialog({
                 </div>
                 {source.sourceKind === "prism" ? (
                   <Text size={200} className="muted">
-                    Prism / MultiMC 不保存版本 JSON，导入只创建基础版本实例；
-                    Fabric、Forge 等加载器需要另行安装。
+                    Prism / MultiMC 只会导入没有加载器的原版实例；带 Fabric、
+                    Forge 等加载器的实例会被跳过。
                   </Text>
                 ) : null}
                 <div className="import-actions">
@@ -381,6 +379,17 @@ export function ImportInstancesDialog({
               </section>
             ) : null}
 
+            {busy === "importing" ? (
+              <Spinner
+                size="tiny"
+                label={
+                  current
+                    ? `正在安装 ${current.id}（${current.index + 1} / ${current.total}）…`
+                    : "正在准备…"
+                }
+              />
+            ) : null}
+
             {result ? (
               <section className="import-section">
                 <Text weight="semibold">{summariseImport(result)}</Text>
@@ -395,33 +404,19 @@ export function ImportInstancesDialog({
                     ))}
                   </ul>
                 ) : null}
-                {result.imported.length > 0 ? (
-                  <>
-                    <Text size={200} className="muted">
-                      导入只复制版本元数据。客户端、依赖库和资源需要下载补齐，
-                      官方源不可用时自动回退 BMCLAPI 镜像。
-                    </Text>
-                    <Button
-                      icon={<ArrowDownload24Regular />}
-                      disabled={busyNow}
-                      onClick={() => void handleInstallFiles()}
-                    >
-                      {busy === "installing"
-                        ? "正在下载并校验…"
-                        : "下载并补齐游戏文件"}
-                    </Button>
-                    {installNote ? (
-                      <Text size={200} role="status">
-                        {installNote}
-                      </Text>
-                    ) : null}
-                  </>
-                ) : null}
               </section>
             ) : null}
           </DialogContent>
 
           <DialogActions>
+            {busy === "importing" ? (
+              <Button
+                appearance="secondary"
+                onClick={() => void cancelVanillaInstall()}
+              >
+                取消导入
+              </Button>
+            ) : null}
             <Button appearance="secondary" onClick={close} disabled={busyNow}>
               关闭
             </Button>

@@ -78,17 +78,13 @@ pub fn run() {
             commands::install::install_vanilla_version,
             commands::install::cancel_vanilla_install,
             commands::instances::list_instances,
-            commands::instances::create_instance,
-            commands::instances::set_game_directory_for_all_instances,
-            commands::instances::delete_instance,
+            commands::launch::start_installed_instance,
+            commands::launch::stop_installed_instance,
+            commands::launch::game_status,
             commands::import::pick_import_folder,
             commands::import::detect_launcher_installations,
             commands::import::pick_launcher_folder,
             commands::import::import_versions,
-            commands::import::install_imported_instance,
-            commands::launch::start_installed_instance,
-            commands::launch::stop_installed_instance,
-            commands::launch::game_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

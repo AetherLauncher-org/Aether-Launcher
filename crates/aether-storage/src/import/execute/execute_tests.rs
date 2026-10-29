@@ -1,4 +1,4 @@
-//! Unit tests for the import execution layer.
+//! Unit tests for the import planner.
 //!
 //! The file is pulled in with `#[path = "execute/execute_tests.rs"] mod tests;`
 //! from `import/execute.rs`, so it is the *body* of the `tests` module and
@@ -7,18 +7,21 @@
 //!
 //! Every test builds its own directory below `std::env::temp_dir()` and removes
 //! it on drop, so nothing here touches the working directory or a real user
-//! profile.
+//! profile. The planner never writes, and several tests assert exactly that.
 
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use super::{ImportExecuteError, ImportSkipReason, import_versions};
+use super::{
+    ImportExecuteError, ImportPlan, ImportRequest, ImportSkipReason, MAX_IMPORT_VERSIONS,
+    plan_folder_import, plan_prism_import,
+};
 
 /// Monotonic counter that keeps temporary directory names unique per process.
 static TEMP_COUNTER: AtomicU32 = AtomicU32::new(0);
 
-/// A throwaway layout with a `source/`, `game/` and `store/` directory.
+/// A throwaway source directory.
 struct Fixture {
     root: PathBuf,
 }
@@ -27,26 +30,16 @@ impl Fixture {
     fn new(label: &str) -> Self {
         let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
-            "aether-storage-import-exec-{label}-{}-{counter}",
+            "aether-storage-import-plan-{label}-{}-{counter}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&root);
-        for directory in ["source", "game", "store"] {
-            fs::create_dir_all(root.join(directory)).unwrap();
-        }
+        fs::create_dir_all(root.join("source")).unwrap();
         Self { root }
     }
 
     fn source(&self) -> PathBuf {
         self.root.join("source")
-    }
-
-    fn game(&self) -> PathBuf {
-        self.root.join("game")
-    }
-
-    fn store(&self) -> PathBuf {
-        self.root.join("store")
     }
 
     /// Writes `versions/<id>/<id>.json` into the source directory.
@@ -58,20 +51,31 @@ impl Fixture {
         path
     }
 
-    /// Reads a version JSON out of the managed game tree.
-    fn read_game_version(&self, id: &str) -> Option<String> {
-        fs::read_to_string(
-            self.game()
-                .join("versions")
-                .join(id)
-                .join(format!("{id}.json")),
+    /// Writes a Prism instance with the given base version and loader component.
+    fn write_prism_instance(&self, id: &str, name: &str, version: &str, loader_uid: Option<&str>) {
+        let directory = self.source().join("instances").join(id);
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            self.source().join("prismlauncher.cfg"),
+            "InstanceDir=instances\n",
         )
-        .ok()
+        .unwrap();
+        fs::write(directory.join("instance.cfg"), format!("name={name}\n")).unwrap();
+        let loader = loader_uid
+            .map(|uid| format!(r#",{{"uid":"{uid}","version":"0.16.0"}}"#))
+            .unwrap_or_default();
+        fs::write(
+            directory.join("mmc-pack.json"),
+            format!(
+                r#"{{"components":[{{"uid":"net.minecraft","version":"{version}"}}{loader}]}}"#
+            ),
+        )
+        .unwrap();
     }
 
-    fn import(&self, ids: &[&str]) -> super::ImportOutcome {
+    fn plan(&self, ids: &[&str]) -> ImportPlan {
         let owned: Vec<String> = ids.iter().map(|id| (*id).to_owned()).collect();
-        import_versions(&self.source(), &self.game(), &self.store(), &owned).unwrap()
+        plan_folder_import(&self.source(), &owned).unwrap()
     }
 }
 
@@ -81,115 +85,109 @@ impl Drop for Fixture {
     }
 }
 
-fn skip_reason(outcome: &super::ImportOutcome, id: &str) -> Option<ImportSkipReason> {
-    outcome
-        .skipped
+fn skip_reason(plan: &ImportPlan, id: &str) -> Option<ImportSkipReason> {
+    plan.skipped
         .iter()
         .find(|(skipped, _)| skipped == id)
         .map(|(_, reason)| *reason)
 }
 
+fn owned(ids: &[&str]) -> Vec<String> {
+    ids.iter().map(|id| (*id).to_owned()).collect()
+}
+
 #[test]
-fn imports_a_standalone_version_into_the_game_tree() {
+fn a_plain_version_becomes_an_install_request_named_after_it() {
     let fixture = Fixture::new("standalone");
     fixture.write_source_version("1.20.1", r#"{"id":"1.20.1"}"#);
 
-    let outcome = fixture.import(&["1.20.1"]);
+    let plan = fixture.plan(&["1.20.1"]);
 
-    assert_eq!(outcome.imported.len(), 1);
-    assert!(outcome.skipped.is_empty());
-    assert_eq!(outcome.imported[0].version.as_str(), "1.20.1");
-    assert_eq!(outcome.imported[0].name, "1.20.1");
     assert_eq!(
-        fixture.read_game_version("1.20.1").as_deref(),
-        Some(r#"{"id":"1.20.1"}"#)
+        plan.requests,
+        [ImportRequest {
+            id: "1.20.1".to_owned(),
+            version: "1.20.1".to_owned(),
+            name: "1.20.1".to_owned(),
+        }]
+    );
+    assert!(plan.skipped.is_empty());
+    assert_eq!(plan.seed, fs::canonicalize(fixture.source()).unwrap());
+}
+
+#[test]
+fn planning_never_writes_anything() {
+    let fixture = Fixture::new("read-only");
+    let json = fixture.write_source_version("1.20.1", r#"{"id":"1.20.1"}"#);
+    let before = fs::read(&json).unwrap();
+
+    fixture.plan(&["1.20.1", "absent", "../escape"]);
+
+    assert_eq!(fs::read(&json).unwrap(), before);
+    let entries: Vec<_> = fs::read_dir(fixture.source()).unwrap().flatten().collect();
+    assert_eq!(entries.len(), 1, "only the versions directory may exist");
+    assert!(
+        !fixture.source().join("versions").join("absent").exists(),
+        "a missing version must not be created"
     );
 }
 
 #[test]
-fn copies_every_ancestor_of_an_inheriting_version() {
-    let fixture = Fixture::new("chain");
+fn a_version_that_inherits_from_another_needs_a_loader() {
+    let fixture = Fixture::new("loader");
     fixture.write_source_version("1.21.1", r#"{"id":"1.21.1"}"#);
     fixture.write_source_version(
-        "fabric-loader-0.16",
-        r#"{"id":"fabric-loader-0.16","inheritsFrom":"1.21.1"}"#,
+        "fabric-loader-0.16-1.21.1",
+        r#"{"id":"fabric-loader-0.16-1.21.1","inheritsFrom":"1.21.1"}"#,
     );
 
-    let outcome = fixture.import(&["fabric-loader-0.16"]);
+    let plan = fixture.plan(&["1.21.1", "fabric-loader-0.16-1.21.1"]);
 
-    assert_eq!(outcome.imported.len(), 1);
-    assert!(fixture.read_game_version("fabric-loader-0.16").is_some());
-    assert!(
-        fixture.read_game_version("1.21.1").is_some(),
-        "the parent manifest has to be present or the loader cannot resolve the child"
-    );
-}
-
-#[test]
-fn an_existing_version_json_is_kept_and_an_instance_is_still_created() {
-    let fixture = Fixture::new("already-installed");
-    fixture.write_source_version("1.20.1", r#"{"id":"1.20.1","source":"foreign"}"#);
-
-    // 从文件夹导入时源和目标常常是同一个 `.minecraft`，那个版本早就装好了。
-    let installed = fixture.game().join("versions").join("1.20.1");
-    fs::create_dir_all(&installed).unwrap();
-    fs::write(
-        installed.join("1.20.1.json"),
-        r#"{"id":"1.20.1","source":"official"}"#,
-    )
-    .unwrap();
-
-    let outcome = fixture.import(&["1.20.1"]);
-
-    // 文件已存在不是错误：直接给这个版本建实例，不再报「重名」。
-    assert_eq!(outcome.imported.len(), 1);
-    assert!(outcome.skipped.is_empty());
+    assert_eq!(plan.requests.len(), 1);
+    assert_eq!(plan.requests[0].version, "1.21.1");
     assert_eq!(
-        fixture.read_game_version("1.20.1").as_deref(),
-        Some(r#"{"id":"1.20.1","source":"official"}"#),
-        "the installed version must be left untouched"
+        skip_reason(&plan, "fabric-loader-0.16-1.21.1"),
+        Some(ImportSkipReason::NeedsLoader)
     );
 }
 
 #[test]
-fn reports_a_version_whose_metadata_is_missing() {
+fn a_utf8_byte_order_mark_does_not_hide_a_loader() {
+    let fixture = Fixture::new("bom");
+    let mut bytes = b"\xEF\xBB\xBF".to_vec();
+    bytes.extend_from_slice(br#"{"id":"x","inheritsFrom":"1.20.1"}"#);
+    let directory = fixture.source().join("versions").join("x");
+    fs::create_dir_all(&directory).unwrap();
+    fs::write(directory.join("x.json"), bytes).unwrap();
+
+    let plan = fixture.plan(&["x"]);
+
+    assert_eq!(skip_reason(&plan, "x"), Some(ImportSkipReason::NeedsLoader));
+}
+
+#[test]
+fn a_version_whose_metadata_is_missing_is_reported() {
     let fixture = Fixture::new("missing");
-    let outcome = fixture.import(&["1.21"]);
 
-    assert!(outcome.imported.is_empty());
+    let plan = fixture.plan(&["1.21"]);
+
+    assert!(plan.requests.is_empty());
     assert_eq!(
-        skip_reason(&outcome, "1.21"),
+        skip_reason(&plan, "1.21"),
         Some(ImportSkipReason::MissingVersionJson)
     );
 }
 
 #[test]
-fn reports_a_missing_parent_instead_of_half_importing() {
-    let fixture = Fixture::new("missing-parent");
-    fixture.write_source_version("child", r#"{"id":"child","inheritsFrom":"absent"}"#);
-
-    let outcome = fixture.import(&["child"]);
-
-    assert!(outcome.imported.is_empty());
-    assert_eq!(
-        skip_reason(&outcome, "child"),
-        Some(ImportSkipReason::MissingVersionJson)
-    );
-    assert!(
-        fixture.read_game_version("child").is_none(),
-        "nothing may be published when the chain cannot be read completely"
-    );
-}
-
-#[test]
-fn rejects_an_identifier_that_is_not_a_single_path_segment() {
+fn an_identifier_that_is_not_a_single_path_segment_is_refused() {
     let fixture = Fixture::new("unsafe-id");
-    let outcome = fixture.import(&["../escape", "CON", "a/b"]);
 
-    assert!(outcome.imported.is_empty());
+    let plan = fixture.plan(&["../escape", "CON", "a/b"]);
+
+    assert!(plan.requests.is_empty());
     for id in ["../escape", "CON", "a/b"] {
         assert_eq!(
-            skip_reason(&outcome, id),
+            skip_reason(&plan, id),
             Some(ImportSkipReason::UnsafeVersionId),
             "{id} must be refused"
         );
@@ -197,121 +195,147 @@ fn rejects_an_identifier_that_is_not_a_single_path_segment() {
 }
 
 #[test]
-fn detects_an_inheritance_cycle() {
-    let fixture = Fixture::new("cycle");
-    fixture.write_source_version("one", r#"{"id":"one","inheritsFrom":"two"}"#);
-    fixture.write_source_version("two", r#"{"id":"two","inheritsFrom":"one"}"#);
-
-    let outcome = fixture.import(&["one"]);
-
-    assert!(outcome.imported.is_empty());
-    assert_eq!(
-        skip_reason(&outcome, "one"),
-        Some(ImportSkipReason::InheritanceCycle)
-    );
-}
-
-#[test]
-fn rejects_a_version_json_that_is_not_an_object() {
+fn a_version_json_that_is_not_an_object_is_refused() {
     let fixture = Fixture::new("bad-json");
     fixture.write_source_version("broken", "{");
 
-    let outcome = fixture.import(&["broken"]);
+    let plan = fixture.plan(&["broken"]);
 
-    assert!(outcome.imported.is_empty());
     assert_eq!(
-        skip_reason(&outcome, "broken"),
+        skip_reason(&plan, "broken"),
         Some(ImportSkipReason::InvalidVersionJson)
     );
 }
 
 #[test]
-fn a_second_import_of_the_same_version_is_reported_as_a_duplicate() {
-    let fixture = Fixture::new("duplicate");
-    fixture.write_source_version("1.20.1", r#"{"id":"1.20.1"}"#);
+fn an_oversized_version_json_is_refused_without_reading_it() {
+    let fixture = Fixture::new("big");
+    let path = fixture.write_source_version("big", "{}");
+    let file = fs::OpenOptions::new().write(true).open(&path).unwrap();
+    file.set_len(super::MAX_VERSION_JSON_BYTES + 1).unwrap();
 
-    assert_eq!(fixture.import(&["1.20.1"]).imported.len(), 1);
-    let second = fixture.import(&["1.20.1"]);
+    let plan = fixture.plan(&["big"]);
 
-    assert!(second.imported.is_empty());
     assert_eq!(
-        skip_reason(&second, "1.20.1"),
-        Some(ImportSkipReason::DuplicateName)
+        skip_reason(&plan, "big"),
+        Some(ImportSkipReason::VersionJsonTooLarge)
     );
 }
 
 #[test]
-fn one_failing_version_does_not_stop_the_others() {
+fn one_unusable_entry_does_not_stop_the_others() {
     let fixture = Fixture::new("partial");
     fixture.write_source_version("1.20.1", r#"{"id":"1.20.1"}"#);
 
-    let outcome = fixture.import(&["1.20.1", "absent"]);
+    let plan = fixture.plan(&["1.20.1", "absent"]);
 
-    assert_eq!(outcome.imported.len(), 1);
+    assert_eq!(plan.requests.len(), 1);
     assert_eq!(
-        skip_reason(&outcome, "absent"),
+        skip_reason(&plan, "absent"),
         Some(ImportSkipReason::MissingVersionJson)
     );
 }
 
 #[test]
-fn an_empty_selection_is_an_error() {
-    let fixture = Fixture::new("empty");
-    let error =
-        import_versions(&fixture.source(), &fixture.game(), &fixture.store(), &[]).unwrap_err();
-    assert!(matches!(error, ImportExecuteError::NothingSelected));
+fn a_repeated_identifier_is_planned_once() {
+    let fixture = Fixture::new("repeat");
+    fixture.write_source_version("1.20.1", r#"{"id":"1.20.1"}"#);
+
+    let plan = fixture.plan(&["1.20.1", "1.20.1"]);
+
+    assert_eq!(plan.requests.len(), 1);
+    assert!(plan.skipped.is_empty());
 }
 
 #[test]
-fn a_file_as_source_is_rejected() {
+fn the_selection_must_be_non_empty_and_bounded() {
+    let fixture = Fixture::new("selection");
+
+    assert!(matches!(
+        plan_folder_import(&fixture.source(), &[]),
+        Err(ImportExecuteError::NothingSelected)
+    ));
+    let too_many: Vec<String> = (0..=MAX_IMPORT_VERSIONS)
+        .map(|index| index.to_string())
+        .collect();
+    assert!(matches!(
+        plan_folder_import(&fixture.source(), &too_many),
+        Err(ImportExecuteError::TooManyVersions)
+    ));
+}
+
+#[test]
+fn a_file_or_missing_directory_as_source_is_rejected() {
     let fixture = Fixture::new("file-source");
     let file = fixture.root.join("not-a-directory");
     fs::write(&file, b"{}").unwrap();
 
-    let error = import_versions(
-        &file,
-        &fixture.game(),
-        &fixture.store(),
-        &["1.20.1".to_owned()],
-    )
-    .unwrap_err();
-
-    assert!(matches!(error, ImportExecuteError::InvalidSource));
+    for source in [file, fixture.root.join("absent")] {
+        assert!(matches!(
+            plan_folder_import(&source, &owned(&["1.20.1"])),
+            Err(ImportExecuteError::InvalidSource)
+        ));
+        assert!(matches!(
+            plan_prism_import(&source, &owned(&["a"])),
+            Err(ImportExecuteError::InvalidSource)
+        ));
+    }
 }
 
 #[test]
-fn a_missing_game_directory_aborts_the_import() {
-    let fixture = Fixture::new("missing-game");
-    fixture.write_source_version("1.20.1", r#"{"id":"1.20.1"}"#);
-    let game = fixture.root.join("game-not-created");
+fn a_vanilla_prism_instance_becomes_a_request_named_after_the_instance() {
+    let fixture = Fixture::new("prism");
+    fixture.write_prism_instance("survival", "Survival", "1.20.4", None);
 
-    let error = import_versions(
-        &fixture.source(),
-        &game,
-        &fixture.store(),
-        &["1.20.1".to_owned()],
-    )
-    .expect_err("an absent game directory must be rejected");
+    let plan = plan_prism_import(&fixture.source(), &owned(&["survival"])).unwrap();
 
-    assert!(
-        matches!(error, ImportExecuteError::InvalidGameRoot),
-        "expected InvalidGameRoot, got {error:?}"
+    assert_eq!(
+        plan.requests,
+        [ImportRequest {
+            id: "survival".to_owned(),
+            version: "1.20.4".to_owned(),
+            name: "Survival".to_owned(),
+        }]
     );
-    assert!(
-        !game.exists(),
-        "the game directory must not be created as a side effect"
+    assert_eq!(plan.seed, fs::canonicalize(fixture.source()).unwrap());
+}
+
+#[test]
+fn a_prism_instance_with_a_loader_needs_a_loader() {
+    let fixture = Fixture::new("prism-loader");
+    fixture.write_prism_instance(
+        "modded",
+        "Modded",
+        "1.20.4",
+        Some("net.fabricmc.fabric-loader"),
+    );
+
+    let plan = plan_prism_import(&fixture.source(), &owned(&["modded"])).unwrap();
+
+    assert!(plan.requests.is_empty());
+    assert_eq!(
+        skip_reason(&plan, "modded"),
+        Some(ImportSkipReason::NeedsLoader)
     );
 }
 
 #[test]
-fn a_repeated_identifier_is_imported_once() {
-    let fixture = Fixture::new("repeat");
-    fixture.write_source_version("1.20.1", r#"{"id":"1.20.1"}"#);
+fn a_prism_instance_without_a_pack_or_with_an_unsafe_id_is_refused() {
+    let fixture = Fixture::new("prism-bad");
+    fixture.write_prism_instance("ok", "Ok", "1.20.4", None);
+    fs::create_dir_all(fixture.source().join("instances").join("no-pack")).unwrap();
 
-    let outcome = fixture.import(&["1.20.1", "1.20.1"]);
+    let plan = plan_prism_import(&fixture.source(), &owned(&["no-pack", "../ok", "ok"])).unwrap();
 
-    assert_eq!(outcome.imported.len(), 1);
-    assert!(outcome.skipped.is_empty());
+    assert_eq!(
+        skip_reason(&plan, "no-pack"),
+        Some(ImportSkipReason::MissingPackMetadata)
+    );
+    assert_eq!(
+        skip_reason(&plan, "../ok"),
+        Some(ImportSkipReason::UnsafeVersionId)
+    );
+    assert_eq!(plan.requests.len(), 1);
 }
 
 #[test]
@@ -319,17 +343,22 @@ fn skip_reasons_have_stable_labels() {
     for (reason, label) in [
         (ImportSkipReason::UnsafeVersionId, "unsafe-version-id"),
         (ImportSkipReason::MissingVersionJson, "missing-version-json"),
+        (
+            ImportSkipReason::MissingPackMetadata,
+            "missing-pack-metadata",
+        ),
         (ImportSkipReason::UnsafeSource, "unsafe-source"),
         (
             ImportSkipReason::VersionJsonTooLarge,
             "version-json-too-large",
         ),
         (ImportSkipReason::InvalidVersionJson, "invalid-version-json"),
-        (ImportSkipReason::InheritanceTooDeep, "inheritance-too-deep"),
-        (ImportSkipReason::InheritanceCycle, "inheritance-cycle"),
+        (ImportSkipReason::NeedsLoader, "needs-loader"),
+        (ImportSkipReason::NotOfficial, "not-official"),
         (ImportSkipReason::DuplicateName, "duplicate-name"),
         (ImportSkipReason::InvalidName, "invalid-name"),
-        (ImportSkipReason::Io, "io"),
+        (ImportSkipReason::InstallFailed, "install-failed"),
+        (ImportSkipReason::Cancelled, "cancelled"),
     ] {
         assert_eq!(reason.as_str(), label);
         assert_eq!(reason.to_string(), label);
@@ -350,11 +379,11 @@ fn a_symlinked_version_json_is_refused() {
         return;
     }
 
-    let outcome = fixture.import(&["linked"]);
+    let plan = fixture.plan(&["linked"]);
 
-    assert!(outcome.imported.is_empty());
+    assert!(plan.requests.is_empty());
     assert_eq!(
-        skip_reason(&outcome, "linked"),
+        skip_reason(&plan, "linked"),
         Some(ImportSkipReason::UnsafeSource)
     );
 }
@@ -369,11 +398,11 @@ fn a_symlinked_version_json_is_refused() {
     fs::create_dir_all(&directory).unwrap();
     std::os::unix::fs::symlink(&outside, directory.join("linked.json")).unwrap();
 
-    let outcome = fixture.import(&["linked"]);
+    let plan = fixture.plan(&["linked"]);
 
-    assert!(outcome.imported.is_empty());
+    assert!(plan.requests.is_empty());
     assert_eq!(
-        skip_reason(&outcome, "linked"),
+        skip_reason(&plan, "linked"),
         Some(ImportSkipReason::UnsafeSource)
     );
 }

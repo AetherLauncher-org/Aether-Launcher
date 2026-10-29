@@ -18,6 +18,7 @@ The project follows [Semantic Versioning](https://semver.org/) once public relea
 - Navigation between home, instances, download, accounts, and settings; the navigation pane collapses to icons
 - Typed frontend IPC layer (`src/ipc`)
 - Architecture overview in `docs/architecture.md`
+- Import from PCL2, HMCL, BakaXL, Prism Launcher / MultiMC or a plain `.minecraft`: versions are installed into the launcher-owned game tree from the official manifest, reusing hash-matching files from the source folder as a read-only seed; loader versions are skipped
 - One-click Vanilla install (`install_vanilla_version`): official catalog, verified client JAR, libraries, native archives and assets, then a ready instance; already-verified files are skipped, progress arrives as `install://progress` events, and the install can be cancelled
 - Launch uses the launcher-owned game directory, an optional account UUID, and a `game_status` query so the UI notices when the game exits
 - Frameless window with a custom title bar, Mica material on Windows 11, Fluent 2 design tokens, a Fluent motion system with a reduced-motion switch, and a new Aether logo and icon set

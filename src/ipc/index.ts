@@ -49,18 +49,9 @@ export function listJavaRuntimes(): Promise<JavaRuntimeInfo[]> {
 // 带参数的命令封装与错误描述
 export { callCommand, describeCommandError } from "./call";
 
-// 实例列表与创建
-export {
-  emptyInstanceListing,
-  createInstance,
-  deleteInstance,
-  listInstances,
-  setGameDirectoryForAllInstances,
-} from "./instances";
+// 实例列表（实例由安装流程创建）
+export { emptyInstanceListing, listInstances } from "./instances";
 export type {
-  CreateInstanceInput,
-  GameDirectoryReport,
-  InstanceCategory,
   InstanceListing,
   InstanceState,
   InstanceSummary,
@@ -71,12 +62,13 @@ export type {
 export {
   detectLauncherInstallations,
   importVersions,
-  installImportedInstance,
+  listenImportItem,
   pickImportFolder,
   pickLauncherFolder,
 } from "./import";
 export type {
   ImportCandidate,
+  ImportItemProgress,
   ImportResult,
   ImportSkipped,
   ImportSource,

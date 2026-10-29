@@ -42,17 +42,19 @@ export function describeImportSkipReason(reason: string): string {
       return "版本 JSON 超过 8 MiB";
     case "invalid-version-json":
       return "版本 JSON 格式损坏";
-    case "inheritance-too-deep":
-      return "版本继承层数超过 32 层";
-    case "inheritance-cycle":
-      return "版本继承出现循环";
+    case "needs-loader":
+      return "需要 Fabric / Forge 等加载器，暂不支持导入";
+    case "not-official":
+      return "不是官方正式发布的版本，无法校验";
     case "duplicate-name":
       // 不是错误：这个版本已经导入过了，没有要补的东西。
       return "已经导入过，不需要再导入";
     case "invalid-name":
       return "版本号不能作为实例名称";
-    case "io":
-      return "读写文件失败";
+    case "install-failed":
+      return "下载或校验失败，可稍后重试";
+    case "cancelled":
+      return "已取消";
     default:
       return reason;
   }

@@ -225,35 +225,33 @@ describe("ImportInstancesDialog", () => {
     expect(onImported).not.toHaveBeenCalled();
   });
 
-  it("downloads the game files of the imported versions", async () => {
+  it("imports in one step and sends only the token and the ticked ids", async () => {
     enableTauri();
     mockCommands({
       pick_import_folder: folderSource,
       import_versions: { imported: [importedInstance], skipped: [] },
-      install_imported_instance: 12,
     });
 
-    renderDialog();
+    const onImported = renderDialog();
     fireEvent.click(
       screen.getByRole("button", { name: "选择 .minecraft 文件夹" }),
     );
     await screen.findByText("D:\\MC");
     fireEvent.click(screen.getByRole("button", { name: /导入选中/ }));
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "下载并补齐游戏文件" }),
-    );
-
-    expect(
-      await screen.findByText("已下载并校验 12 个文件。"),
-    ).toBeInTheDocument();
-    expect(invoke).toHaveBeenCalledWith("install_imported_instance", {
-      id: "a",
-      needsManifest: false,
+    expect(await screen.findByText("已导入 1 个实例")).toBeInTheDocument();
+    expect(onImported).toHaveBeenCalledWith([importedInstance]);
+    expect(invoke).toHaveBeenCalledWith("import_versions", {
+      token: folderSource.token,
+      ids: folderSource.candidates.map((candidate) => candidate.id),
     });
+    // The files are installed as part of the import, not by a second command.
+    expect(
+      screen.queryByRole("button", { name: "下载并补齐游戏文件" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("asks for the official manifest only for a Prism import", async () => {
+  it("tells a Prism user that loader instances are skipped", async () => {
     enableTauri();
     mockCommands({
       detect_launcher_installations: [
@@ -270,25 +268,18 @@ describe("ImportInstancesDialog", () => {
           ],
         },
       ],
-      import_versions: { imported: [importedInstance], skipped: [] },
-      install_imported_instance: 3,
+      import_versions: {
+        imported: [],
+        skipped: [{ id: "ranked", reason: "needs-loader" }],
+      },
     });
 
     renderDialog();
     fireEvent.click(screen.getByRole("tab", { name: "从启动器导入" }));
     fireEvent.click(await screen.findByRole("button", { name: /E:\\MultiMC/ }));
+    expect(screen.getByText(/带 Fabric、/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /导入选中/ }));
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "下载并补齐游戏文件" }),
-    );
-
-    expect(
-      await screen.findByText("已下载并校验 3 个文件。"),
-    ).toBeInTheDocument();
-    expect(invoke).toHaveBeenCalledWith("install_imported_instance", {
-      id: "a",
-      needsManifest: true,
-    });
+    expect(await screen.findByText(/需要 Fabric \/ Forge/)).toBeInTheDocument();
   });
 });

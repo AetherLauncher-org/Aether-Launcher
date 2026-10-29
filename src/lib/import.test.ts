@@ -42,11 +42,12 @@ describe("describeImportSkipReason", () => {
       "unsafe-source",
       "version-json-too-large",
       "invalid-version-json",
-      "inheritance-too-deep",
-      "inheritance-cycle",
+      "needs-loader",
+      "not-official",
       "duplicate-name",
       "invalid-name",
-      "io",
+      "install-failed",
+      "cancelled",
     ];
 
     for (const reason of reasons) {
