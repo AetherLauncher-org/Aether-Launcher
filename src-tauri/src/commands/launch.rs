@@ -140,9 +140,11 @@ pub(super) fn normalize_uuid(text: &str) -> Result<String, String> {
 }
 
 /// Launch only a verified managed instance, using backend-discovered Java.
-/// This MVP supports offline single-player only; Microsoft auth is not faked.
-/// `account_uuid` is optional: without it the standard offline UUID for the
-/// player name is used.
+///
+/// With `account_id` the game starts as that signed-in Microsoft account: the backend
+/// refreshes the sign-in and passes a fresh Minecraft token, which never crosses IPC.
+/// Without it the game starts offline under `offline_name`; `account_uuid` is optional
+/// there, and without it the standard offline UUID for the player name is used.
 #[tauri::command]
 pub async fn start_installed_instance(
     app: tauri::AppHandle,
@@ -150,28 +152,45 @@ pub async fn start_installed_instance(
     offline_name: String,
     memory_mib: u32,
     account_uuid: Option<String>,
+    account_id: Option<String>,
 ) -> Result<InstanceProcessStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let id = parse_id(&id)?;
-        validate_player_name(&offline_name).map_err(|error| error.to_string())?;
-        let uuid = match account_uuid {
-            Some(text) => normalize_uuid(&text)?,
-            None => offline_uuid(&offline_name)
-                .map_err(|error| error.to_string())?
-                .simple()
-                .to_string(),
-        };
+        let mut vars = BTreeMap::new();
+        match account_id {
+            Some(account) => {
+                let credentials = super::microsoft::launch_credentials_for(&app, &account)?;
+                vars.insert("auth_player_name".to_owned(), credentials.name);
+                vars.insert("auth_uuid".to_owned(), credentials.uuid);
+                vars.insert(
+                    "auth_access_token".to_owned(),
+                    credentials.access_token.expose().to_owned(),
+                );
+                vars.insert("user_type".to_owned(), "msa".to_owned());
+                vars.insert("xuid".to_owned(), credentials.xuid.clone());
+                vars.insert("auth_xuid".to_owned(), credentials.xuid);
+            }
+            None => {
+                validate_player_name(&offline_name).map_err(|error| error.to_string())?;
+                let uuid = match account_uuid {
+                    Some(text) => normalize_uuid(&text)?,
+                    None => offline_uuid(&offline_name)
+                        .map_err(|error| error.to_string())?
+                        .simple()
+                        .to_string(),
+                };
+                vars.insert("auth_player_name".to_owned(), offline_name);
+                vars.insert("auth_uuid".to_owned(), uuid);
+                vars.insert("auth_access_token".to_owned(), "0".to_owned());
+                vars.insert("user_type".to_owned(), "legacy".to_owned());
+                vars.insert("xuid".to_owned(), String::new());
+                vars.insert("auth_xuid".to_owned(), String::new());
+            }
+        }
         let root = instance_store_root(&app)?;
         let game = installed_game_directory(&app)?;
-        let mut vars = BTreeMap::new();
-        vars.insert("auth_player_name".to_owned(), offline_name);
-        vars.insert("auth_uuid".to_owned(), uuid);
-        vars.insert("auth_access_token".to_owned(), "0".to_owned());
-        vars.insert("user_type".to_owned(), "legacy".to_owned());
         vars.insert("version_type".to_owned(), "release".to_owned());
         vars.insert("clientid".to_owned(), String::new());
-        vars.insert("xuid".to_owned(), String::new());
-        vars.insert("auth_xuid".to_owned(), String::new());
         vars.insert("launcher_name".to_owned(), "Aether".to_owned());
         vars.insert(
             "launcher_version".to_owned(),

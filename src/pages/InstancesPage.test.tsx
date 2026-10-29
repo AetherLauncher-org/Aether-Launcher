@@ -125,6 +125,7 @@ describe("InstancesPage", () => {
         offlineName: "Steve",
         memoryMib: 8192,
         accountUuid: "0123456789abcdef0123456789abcdef",
+        accountId: null,
       }),
     );
     expect(await screen.findByText("运行中")).toBeInTheDocument();

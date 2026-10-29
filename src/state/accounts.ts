@@ -1,12 +1,14 @@
 import { createContext, useContext } from "react";
-import type { AccountBook, OfflineAccount } from "../lib/accounts";
+import type { Account, AccountBook, MicrosoftAccountEntry, OfflineAccount } from "../lib/accounts";
 
 export type AccountsApi = {
   book: AccountBook;
   /** 当前用来启动游戏的账户；没有账户时为 null */
-  active: OfflineAccount | null;
+  active: Account | null;
   add: (account: OfflineAccount) => void;
   remove: (id: string) => void;
+  /** 刚登录了一个微软账户：加进列表并设为当前账户 */
+  signInMicrosoft: (account: MicrosoftAccountEntry) => void;
   select: (id: string) => void;
 };
 

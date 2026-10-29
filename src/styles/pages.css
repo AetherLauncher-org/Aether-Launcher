@@ -1191,3 +1191,42 @@
     gap: 10px;
   }
 }
+
+/* 微软登录对话框：三步说明和大号的设备码 */
+.login-steps {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding-left: 22px;
+  list-style: decimal;
+}
+
+.login-steps li::marker {
+  color: var(--colorBrandForeground1);
+  font-weight: 600;
+}
+
+/* li 保持 list-item（grid 会让它失去序号），内容放在里面的 .login-step 里排版 */
+.login-step {
+  display: grid;
+  gap: 6px;
+}
+
+.login-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.device-code {
+  padding: 6px 14px;
+  border: 1px solid var(--colorNeutralStroke1);
+  border-radius: var(--borderRadiusMedium);
+  background: var(--colorNeutralBackground3);
+  font-family: var(--fontFamilyMonospace);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  user-select: all;
+}

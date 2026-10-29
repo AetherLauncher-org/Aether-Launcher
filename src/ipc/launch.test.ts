@@ -21,6 +21,22 @@ describe("startInstalledInstance", () => {
       offlineName: "Steve",
       memoryMib: 4096,
       accountUuid: null,
+      accountId: null,
+    });
+  });
+
+  it("starts as a Microsoft account by id only, with no name or token", async () => {
+    vi.mocked(invoke).mockResolvedValue(running);
+    const id = "069a79f4-44e9-4726-a5be-fca90e38aaf5";
+
+    await startInstalledInstance("a", "Notch", 4096, null, id);
+
+    expect(invoke).toHaveBeenCalledWith("start_installed_instance", {
+      id: "a",
+      offlineName: "Notch",
+      memoryMib: 4096,
+      accountUuid: null,
+      accountId: id,
     });
   });
 
@@ -35,6 +51,7 @@ describe("startInstalledInstance", () => {
       offlineName: "Steve",
       memoryMib: 2048,
       accountUuid: uuid,
+      accountId: null,
     });
   });
 
@@ -42,7 +59,13 @@ describe("startInstalledInstance", () => {
     vi.mocked(invoke).mockResolvedValue(running);
     await startInstalledInstance("a", "Steve", 4096);
     const sent = vi.mocked(invoke).mock.calls[0][1] as Record<string, unknown>;
-    expect(Object.keys(sent).sort()).toEqual(["accountUuid", "id", "memoryMib", "offlineName"]);
+    expect(Object.keys(sent).sort()).toEqual([
+      "accountId",
+      "accountUuid",
+      "id",
+      "memoryMib",
+      "offlineName",
+    ]);
   });
 });
 

@@ -30,6 +30,7 @@ describe("callCommand", () => {
       offlineName: "Steve",
       memoryMib: 4096,
       accountUuid: null,
+      accountId: null,
     });
 
     expect(invoke).toHaveBeenCalledWith("start_installed_instance", {
@@ -37,6 +38,7 @@ describe("callCommand", () => {
       offlineName: "Steve",
       memoryMib: 4096,
       accountUuid: null,
+      accountId: null,
     });
   });
 

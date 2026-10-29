@@ -3,7 +3,8 @@
  *
  * 规则与 Java 版用户名一致：3–16 位，只允许字母、数字和下划线。
  * 离线账户没有任何秘密：只有玩家名和 UUID，所以可以明文存在 `localStorage`。
- * 微软账户的令牌不经过这里。
+ * 微软账户在这里只有身份（名字和 UUID），令牌不经过这里：它们由后端保管，
+ * 真正的账户列表以后端为准，启动时用 `syncMicrosoftAccounts` 对齐。
  */
 
 export const minPlayerNameLength = 3;
@@ -114,6 +115,17 @@ export type OfflineAccount = {
   uuid: string | null;
 };
 
+/** 微软账户的身份。没有任何令牌字段；`id` 是后端的账户 ID（Minecraft 档案 UUID）。 */
+export type MicrosoftAccountEntry = {
+  id: string;
+  kind: "microsoft";
+  name: string;
+  /** 32 位小写十六进制 */
+  uuid: string;
+};
+
+export type Account = OfflineAccount | MicrosoftAccountEntry;
+
 export type AccountDraft = {
   name: string;
   mode: UuidMode;
@@ -136,7 +148,7 @@ const defaultGenerator: UuidGenerator = () => crypto.randomUUID();
  * 都会返回对应字段的错误；原列表不会被改动。
  */
 export function createOfflineAccount(
-  accounts: readonly OfflineAccount[],
+  accounts: readonly Account[],
   draft: AccountDraft,
   generate: UuidGenerator = defaultGenerator,
 ): AccountCreation {
@@ -178,7 +190,7 @@ export function createOfflineAccount(
 }
 
 /** 递增序号 ID：账户只存在本机，序号足够区分，且删除后不会复用同时存在的 ID。 */
-export function nextAccountId(existing: readonly OfflineAccount[]): string {
+export function nextAccountId(existing: readonly Account[]): string {
   const used = new Set(existing.map((account) => account.id));
   let index = existing.length + 1;
   while (used.has(`offline-${index}`)) {
@@ -189,7 +201,7 @@ export function nextAccountId(existing: readonly OfflineAccount[]): string {
 
 /** 账户簿：全部账户和当前选中的那个。 */
 export type AccountBook = {
-  accounts: OfflineAccount[];
+  accounts: Account[];
   activeId: string | null;
 };
 
@@ -198,7 +210,7 @@ export const emptyAccountBook: AccountBook = { accounts: [], activeId: null };
 export const accountBookStorageKey = "aether.accounts";
 
 /** 添加账户；第一个账户自动成为当前账户。 */
-export function addAccount(book: AccountBook, account: OfflineAccount): AccountBook {
+export function addAccount(book: AccountBook, account: Account): AccountBook {
   return {
     accounts: [...book.accounts, account],
     activeId: book.activeId ?? account.id,
@@ -220,20 +232,82 @@ export function selectAccount(book: AccountBook, id: string): AccountBook {
   return book.accounts.some((account) => account.id === id) ? { ...book, activeId: id } : book;
 }
 
-export function activeAccount(book: AccountBook): OfflineAccount | null {
+export function activeAccount(book: AccountBook): Account | null {
   return book.accounts.find((account) => account.id === book.activeId) ?? null;
 }
 
-/** 列表摘要，例如 `2 个离线账户`。 */
-export function summariseAccounts(accounts: readonly OfflineAccount[]): string {
-  return accounts.length === 0 ? "还没有账户" : `${accounts.length} 个离线账户`;
+/** 把后端的账户列表对齐到账户簿：后端没有的微软账户删掉，新的加进来，名字以后端为准。 */
+export function syncMicrosoftAccounts(
+  book: AccountBook,
+  signedIn: readonly MicrosoftAccountEntry[],
+): AccountBook {
+  const byId = new Map(signedIn.map((account) => [account.id, account]));
+  const kept: Account[] = [];
+  const seen = new Set<string>();
+  for (const account of book.accounts) {
+    if (account.kind !== "microsoft") {
+      kept.push(account);
+    } else {
+      const fresh = byId.get(account.id);
+      if (fresh !== undefined) {
+        kept.push(fresh);
+        seen.add(fresh.id);
+      }
+    }
+  }
+  for (const account of signedIn) {
+    if (!seen.has(account.id)) {
+      kept.push(account);
+    }
+  }
+  const activeId =
+    book.activeId !== null && kept.some((account) => account.id === book.activeId)
+      ? book.activeId
+      : (kept[0]?.id ?? null);
+  return { accounts: kept, activeId };
 }
 
-function parseAccount(value: unknown): OfflineAccount | null {
+/** 添加或更新一个刚登录的微软账户，并把它设为当前账户。 */
+export function signInMicrosoftAccount(
+  book: AccountBook,
+  account: MicrosoftAccountEntry,
+): AccountBook {
+  const others = book.accounts.filter((existing) => existing.id !== account.id);
+  return { accounts: [...others, account], activeId: account.id };
+}
+
+/** 列表摘要，例如 `2 个离线账户`、`1 个微软账户`。 */
+export function summariseAccounts(accounts: readonly Account[]): string {
+  if (accounts.length === 0) {
+    return "还没有账户";
+  }
+  const microsoft = accounts.filter((account) => account.kind === "microsoft").length;
+  if (microsoft === 0) {
+    return `${accounts.length} 个离线账户`;
+  }
+  if (microsoft === accounts.length) {
+    return `${accounts.length} 个微软账户`;
+  }
+  return `${accounts.length} 个账户（${microsoft} 个微软）`;
+}
+
+function parseAccount(value: unknown): Account | null {
   if (typeof value !== "object" || value === null) {
     return null;
   }
   const record = value as Record<string, unknown>;
+  if (record.kind === "microsoft") {
+    const uuid = typeof record.uuid === "string" ? normalizeUuid(record.uuid) : null;
+    if (
+      typeof record.id !== "string" ||
+      typeof record.name !== "string" ||
+      record.name.length === 0 ||
+      uuid === null
+    ) {
+      return null;
+    }
+    return { id: record.id, kind: "microsoft", name: record.name, uuid };
+  }
   if (
     typeof record.id !== "string" ||
     record.kind !== "offline" ||
@@ -272,7 +346,7 @@ export function parseAccountBook(raw: string | null): AccountBook {
   }
   const record = data as Record<string, unknown>;
   const seen = new Set<string>();
-  const accounts: OfflineAccount[] = [];
+  const accounts: Account[] = [];
   if (Array.isArray(record.accounts)) {
     for (const item of record.accounts) {
       const account = parseAccount(item);

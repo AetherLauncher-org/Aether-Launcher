@@ -22,6 +22,7 @@ pub mod http;
 pub mod minecraft;
 pub mod offline;
 pub mod secure_store;
+pub mod signin;
 pub mod store;
 pub mod token;
 pub mod xbox;
@@ -49,6 +50,13 @@ impl AccountId {
     #[must_use]
     pub fn as_uuid(&self) -> Uuid {
         self.0
+    }
+
+    /// Parses the hyphenated or compact UUID text an IPC caller sends back. Anything
+    /// else, including an empty string, is `None`.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        Uuid::parse_str(text.trim()).ok().map(Self)
     }
 }
 

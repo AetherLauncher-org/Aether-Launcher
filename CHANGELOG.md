@@ -18,6 +18,9 @@ The project follows [Semantic Versioning](https://semver.org/) once public relea
 - Navigation between home, instances, download, accounts, and settings; the navigation pane collapses to icons
 - Typed frontend IPC layer (`src/ipc`)
 - Architecture overview in `docs/architecture.md`
+- Microsoft sign-in (device code flow): refresh token in the OS credential vault, no token ever crosses IPC, launch as a signed-in account, `login://status` events; switched off until an Azure application id is configured (`AETHER_MS_CLIENT_ID`) and approved by Mojang (see `docs/modules/microsoft-login.md`)
+- Browser dev preview runs against a mock backend (`src/dev/mockBackend.ts`, dev server only; `?mock=off` disables it)
+- Memory slider snaps to 512 MiB (hold Shift for fine steps), shows tick marks, and no longer owes the pointer overshoot at either end
 - Import from PCL2, HMCL, BakaXL, Prism Launcher / MultiMC or a plain `.minecraft`: versions are installed into the launcher-owned game tree from the official manifest, reusing hash-matching files from the source folder as a read-only seed; loader versions are skipped
 - One-click Vanilla install (`install_vanilla_version`): official catalog, verified client JAR, libraries, native archives and assets, then a ready instance; already-verified files are skipped, progress arrives as `install://progress` events, and the install can be cancelled
 - Launch uses the launcher-owned game directory, an optional account UUID, and a `game_status` query so the UI notices when the game exits

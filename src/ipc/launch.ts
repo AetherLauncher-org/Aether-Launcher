@@ -15,6 +15,8 @@ declare module "./call" {
       offlineName: string;
       memoryMib: number;
       accountUuid: string | null;
+      /** 微软账户的 ID；有它时后端用刷新后的正版令牌启动，忽略玩家名和 UUID */
+      accountId: string | null;
     };
     stop_installed_instance: { id: string };
     game_status: { id: string };
@@ -28,20 +30,25 @@ declare module "./call" {
 }
 
 /**
- * 启动一个已安装的实例（离线模式）。`accountUuid` 为 null 时由后端用玩家名
- * 生成标准离线 UUID；否则必须是 32 位十六进制（可带连字符）。
+ * 启动一个已安装的实例。
+ *
+ * 离线：`accountUuid` 为 null 时由后端用玩家名生成标准离线 UUID；否则必须是 32 位
+ * 十六进制（可带连字符）。微软账户：传 `accountId`，后端刷新登录并用正版令牌启动，
+ * 令牌不经过前端。
  */
 export function startInstalledInstance(
   id: string,
   offlineName: string,
   memoryMib: number,
   accountUuid: string | null = null,
+  accountId: string | null = null,
 ): Promise<GameRunStatus> {
   return callCommand("start_installed_instance", {
     id,
     offlineName,
     memoryMib,
     accountUuid,
+    accountId,
   });
 }
 

@@ -12,6 +12,19 @@ fn account_id_wraps_an_existing_uuid() {
 }
 
 #[test]
+fn account_id_parses_hyphenated_and_compact_text_only() {
+    let id = AccountId::new();
+    assert_eq!(AccountId::parse(&id.as_uuid().to_string()), Some(id));
+    assert_eq!(
+        AccountId::parse(&id.as_uuid().simple().to_string()),
+        Some(id)
+    );
+    assert_eq!(AccountId::parse(""), None);
+    assert_eq!(AccountId::parse("not-a-uuid"), None);
+    assert_eq!(AccountId::parse("../../etc/passwd"), None);
+}
+
+#[test]
 fn account_ids_are_unique_per_call() {
     assert_ne!(AccountId::new(), AccountId::new());
 }

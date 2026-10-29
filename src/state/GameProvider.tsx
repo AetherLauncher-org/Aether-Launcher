@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   describeCommandError,
+  describeMicrosoftError,
   gameStatus,
   startInstalledInstance,
   stopInstalledInstance,
@@ -51,12 +52,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
           instance.id,
           account.name,
           await resolveLaunchMemoryMiB(),
-          account.uuid,
+          account.kind === "offline" ? account.uuid : null,
+          account.kind === "microsoft" ? account.id : null,
         );
         saveLastPlayedId(instance.id);
         setSession(instance.id, sessionFromStatus(status));
       } catch (error: unknown) {
-        setSession(instance.id, failedSession(describeCommandError(error)));
+        setSession(
+          instance.id,
+          failedSession(describeMicrosoftError(describeCommandError(error))),
+        );
       }
     },
     [setSession],

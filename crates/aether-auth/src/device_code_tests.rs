@@ -4,11 +4,11 @@ use std::time::{Duration, SystemTime};
 
 use super::{
     DEFAULT_SCOPE, DEVICE_CODE_URL, DeviceCode, DeviceCodeAuthorization, DeviceCodeEndpoints,
-    DeviceCodeError, DeviceCodePoll, DeviceCodeRequest, PollAction, PollOutcome, TOKEN_URL,
-    TokenPollRequest, parse_token_response,
+    DeviceCodeError, DeviceCodePoll, DeviceCodeRequest, PollAction, PollOutcome, RefreshRequest,
+    TOKEN_URL, TokenPollRequest, parse_refresh_response, parse_token_response,
 };
 use crate::http::{HttpError, HttpMethod, HttpRequest, HttpResponse, HttpTransport};
-use crate::token::MicrosoftTokens;
+use crate::token::{MicrosoftTokens, RefreshToken};
 
 /// A device code long enough to spare a redacted tail.
 const DEVICE_CODE: &str = "device-code-value-1234567890-abcd";
@@ -69,6 +69,53 @@ fn device_code_request_is_a_form_post_to_the_configured_endpoint() {
         request.body(),
         Some(format!("client_id={CLIENT_ID}&scope=XboxLive.signin+offline_access",).as_str())
     );
+}
+
+#[test]
+fn refresh_request_is_a_form_post_to_the_token_endpoint() {
+    let refresh = RefreshToken::new(REFRESH_TOKEN);
+    let request =
+        RefreshRequest::new(CLIENT_ID, &refresh).to_http(&DeviceCodeEndpoints::microsoft());
+
+    assert_eq!(request.method, HttpMethod::Post);
+    assert_eq!(request.url, TOKEN_URL);
+    assert_eq!(
+        request.body(),
+        Some(
+            format!(
+                "grant_type=refresh_token&client_id={CLIENT_ID}&refresh_token={REFRESH_TOKEN}&scope=XboxLive.signin+offline_access"
+            )
+            .as_str()
+        )
+    );
+    // The request redacts the secret even though its body carries it.
+    assert!(!format!("{request:?}").contains(REFRESH_TOKEN));
+}
+
+#[test]
+fn refresh_response_yields_rotated_tokens() {
+    let body = format!(
+        r#"{{"access_token":"{ACCESS_TOKEN}","refresh_token":"rotated-refresh-token-5555","expires_in":3600}}"#
+    );
+
+    let tokens = parse_refresh_response(200, &body, epoch()).expect("tokens");
+
+    assert_eq!(tokens.access.expose(), ACCESS_TOKEN);
+    assert_eq!(
+        tokens.refresh.as_ref().map(RefreshToken::expose),
+        Some("rotated-refresh-token-5555")
+    );
+}
+
+#[test]
+fn a_revoked_refresh_token_is_an_oauth_error_not_a_pending_poll() {
+    let error = parse_refresh_response(400, r#"{"error":"invalid_grant"}"#, epoch())
+        .expect_err("invalid_grant");
+    assert!(matches!(error, DeviceCodeError::OAuth { code } if code == "invalid_grant"));
+
+    let pending = parse_refresh_response(400, r#"{"error":"authorization_pending"}"#, epoch())
+        .expect_err("pending makes no sense for a refresh");
+    assert!(matches!(pending, DeviceCodeError::OAuth { .. }));
 }
 
 #[test]

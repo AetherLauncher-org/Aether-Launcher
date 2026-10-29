@@ -15,11 +15,13 @@ import {
   removeAccount,
   saveAccountBook,
   selectAccount,
+  signInMicrosoftAccount,
   summariseAccounts,
+  syncMicrosoftAccounts,
   uuidModes,
   validatePlayerName,
 } from "./accounts";
-import type { AccountBook, OfflineAccount } from "./accounts";
+import type { AccountBook, MicrosoftAccountEntry, OfflineAccount } from "./accounts";
 
 const fixedUuid = "0123456789abcdef0123456789abcdef";
 
@@ -232,5 +234,88 @@ describe("account book storage", () => {
 
   it("starts empty when nothing was saved", () => {
     expect(loadAccountBook()).toEqual(emptyAccountBook);
+  });
+});
+
+const microsoft: MicrosoftAccountEntry = {
+  id: "069a79f4-44e9-4726-a5be-fca90e38aaf5",
+  kind: "microsoft",
+  name: "Notch",
+  uuid: "069a79f444e94726a5befca90e38aaf5",
+};
+
+describe("Microsoft accounts in the book", () => {
+  it("signing in adds the account and makes it the current one", () => {
+    const book = signInMicrosoftAccount(addAccount(emptyAccountBook, account()), microsoft);
+
+    expect(book.accounts.map((entry) => entry.id)).toEqual(["offline-1", microsoft.id]);
+    expect(activeAccount(book)).toEqual(microsoft);
+  });
+
+  it("signing in again replaces the entry instead of duplicating it", () => {
+    const first = signInMicrosoftAccount(emptyAccountBook, microsoft);
+    const again = signInMicrosoftAccount(first, { ...microsoft, name: "Renamed" });
+
+    expect(again.accounts).toHaveLength(1);
+    expect(again.accounts[0].name).toBe("Renamed");
+  });
+
+  it("syncing keeps offline accounts, updates names, adds new and drops signed-out accounts", () => {
+    const stale: MicrosoftAccountEntry = { ...microsoft, id: "gone", name: "Old" };
+    const book: AccountBook = {
+      accounts: [account(), { ...microsoft, name: "Before" }, stale],
+      activeId: "gone",
+    };
+    const added: MicrosoftAccountEntry = { ...microsoft, id: "new", name: "Fresh" };
+
+    const synced = syncMicrosoftAccounts(book, [microsoft, added]);
+
+    expect(synced.accounts.map((entry) => [entry.id, entry.name])).toEqual([
+      ["offline-1", "Steve"],
+      [microsoft.id, "Notch"],
+      ["new", "Fresh"],
+    ]);
+    // 当前账户被退出了：回落到第一个
+    expect(synced.activeId).toBe("offline-1");
+  });
+
+  it("syncing with nothing signed in removes only the Microsoft accounts", () => {
+    const book = signInMicrosoftAccount(addAccount(emptyAccountBook, account()), microsoft);
+
+    expect(syncMicrosoftAccounts(book, []).accounts.map((entry) => entry.kind)).toEqual(["offline"]);
+  });
+
+  it("summarises by kind", () => {
+    expect(summariseAccounts([account()])).toBe("1 个离线账户");
+    expect(summariseAccounts([microsoft])).toBe("1 个微软账户");
+    expect(summariseAccounts([account(), microsoft])).toBe("2 个账户（1 个微软）");
+  });
+
+  it("round-trips through storage and drops malformed Microsoft entries", () => {
+    const stored = JSON.stringify({
+      accounts: [
+        microsoft,
+        { id: "x", kind: "microsoft", name: "", uuid: microsoft.uuid },
+        { id: "y", kind: "microsoft", name: "NoUuid", uuid: "nope" },
+        { id: 5, kind: "microsoft", name: "BadId", uuid: microsoft.uuid },
+      ],
+      activeId: microsoft.id,
+    });
+
+    const book = parseAccountBook(stored);
+
+    expect(book.accounts).toEqual([microsoft]);
+    expect(book.activeId).toBe(microsoft.id);
+  });
+
+  it("ignores any token field smuggled into a stored entry", () => {
+    const book = parseAccountBook(
+      JSON.stringify({
+        accounts: [{ ...microsoft, accessToken: "secret", refreshToken: "secret" }],
+        activeId: microsoft.id,
+      }),
+    );
+
+    expect(JSON.stringify(book)).not.toContain("secret");
   });
 });

@@ -1,46 +1,193 @@
+import { listen } from "@tauri-apps/api/event";
+import type { UnlistenFn } from "@tauri-apps/api/event";
+import { callCommand } from "./call";
 import { isTauri } from "./index";
 
 /**
- * 账户相关的 IPC。
+ * 微软账户登录的 IPC。
  *
- * 目前后端只有账户模型（`aether-auth` 的 `AccountProfile`），设备码登录流程
- * 还在开发中，所以这里**没有**发起任何命令：`startMicrosoftLogin()` 只负责
- * 报告当前环境能不能登录，避免界面上出现一个点了没反应的按钮。
+ * 命令定义在 `src-tauri/src/commands/microsoft.rs`。登录是设备码流程：
+ * `beginMicrosoftLogin()` 返回一个短码，用户在浏览器里输入后，后端在后台轮询并走完
+ * Xbox 与 Minecraft 的步骤，结果通过 `login://status` 事件推过来。
  *
- * 等 `src-tauri` 里注册了登录命令（例如 `start_microsoft_login`），
- * 把下面的实现换成 `callCommand("start_microsoft_login")` 即可，
- * 返回类型的含义保持不变：**只暴露阶段，永远不返回令牌**。
+ * **这里没有任何令牌。** 前端只看到账户身份（名字、UUID）、设备码的展示值和稳定的
+ * 失败分类；访问令牌和刷新令牌留在后端，刷新令牌在系统凭据库里。
  */
 
-/** 登录流程对外暴露的阶段。故意没有 token 字段。 */
-export type MicrosoftLoginStatus =
-  | { kind: "unavailable"; reason: string }
-  | { kind: "not-implemented"; reason: string };
+export type MicrosoftAccount = {
+  /** 启动器的账户 ID（Minecraft 档案 UUID，带连字符） */
+  id: string;
+  displayName: string;
+  /** Minecraft 档案 UUID，32 位小写十六进制 */
+  uuid: string;
+  xuid: string | null;
+};
 
-/**
- * 尝试开始微软登录。
- *
- * 浏览器预览：没有 Tauri 运行时，明确告诉用户要用桌面版。
- * 桌面版：命令还没注册，告诉用户流程仍在开发。
- *
- * 这里刻意不 reject —— 两个分支都是「预期内的不可用」，页面按普通状态渲染提示，
- * 而不是弹错误。
- */
-export function startMicrosoftLogin(): Promise<MicrosoftLoginStatus> {
-  if (!isTauri()) {
-    return Promise.resolve({
-      kind: "unavailable",
-      reason: "微软登录需要桌面版，浏览器预览里无法完成授权。",
-    });
+/** 用户需要在浏览器里完成登录的信息。 */
+export type DeviceCodeInfo = {
+  userCode: string;
+  verificationUri: string;
+  expiresInSecs: number;
+};
+
+export type LoginFailureReason =
+  | "expired"
+  | "denied"
+  | "network"
+  | "service"
+  | "storage"
+  | "no-xbox-profile"
+  | "child-account"
+  | "region"
+  | "not-entitled"
+  | "no-profile";
+
+export type LoginFailure = {
+  reason: LoginFailureReason;
+  /** 英文的一句话，没有任何秘密；只在不认识 `reason` 时兜底显示 */
+  message: string;
+};
+
+/** 登录过程中后端推送的状态。 */
+export type LoginEvent =
+  | { state: "waiting" }
+  | { state: "signed-in"; account: MicrosoftAccount }
+  | { state: "failed"; failure: LoginFailure }
+  | { state: "cancelled" };
+
+export const loginStatusEvent = "login://status";
+
+/** 后端用这几段固定文本表示需要界面特殊处理的错误。 */
+export const microsoftNotConfigured = "microsoft-not-configured";
+export const microsoftSignInRequired = "microsoft-sign-in-required";
+export const microsoftNotEntitled = "microsoft-not-entitled";
+
+declare module "./call" {
+  interface CommandArgs {
+    microsoft_login_available: void;
+    begin_microsoft_login: void;
+    cancel_microsoft_login: void;
+    open_microsoft_verification_page: void;
+    list_microsoft_accounts: void;
+    remove_microsoft_account: { id: string };
   }
 
-  return Promise.resolve({
-    kind: "not-implemented",
-    reason: "微软设备码登录还在开发中，完成后会在这里打开授权页面。",
-  });
+  interface CommandResults {
+    microsoft_login_available: boolean;
+    begin_microsoft_login: DeviceCodeInfo;
+    cancel_microsoft_login: boolean;
+    open_microsoft_verification_page: null;
+    list_microsoft_accounts: MicrosoftAccount[];
+    remove_microsoft_account: null;
+  }
 }
 
-/** 把状态转成界面上要显示的一句话。 */
-export function describeLoginStatus(status: MicrosoftLoginStatus): string {
-  return status.reason;
+const desktopOnly = "微软登录需要桌面版，浏览器预览里无法完成授权。";
+
+/** 这个构建能不能登录（有没有配置 Azure 应用 ID）。浏览器预览里是 false。 */
+export async function isMicrosoftLoginAvailable(): Promise<boolean> {
+  if (!isTauri()) {
+    return false;
+  }
+  try {
+    return await callCommand("microsoft_login_available");
+  } catch {
+    return false;
+  }
+}
+
+/** 申请设备码并开始后台轮询。 */
+export function beginMicrosoftLogin(): Promise<DeviceCodeInfo> {
+  if (!isTauri()) {
+    return Promise.reject(new Error(desktopOnly));
+  }
+  return callCommand("begin_microsoft_login");
+}
+
+/** 取消正在进行的登录；返回之前是否有登录在进行。 */
+export function cancelMicrosoftLogin(): Promise<boolean> {
+  if (!isTauri()) {
+    return Promise.resolve(false);
+  }
+  return callCommand("cancel_microsoft_login");
+}
+
+/** 在默认浏览器里打开本次登录的验证页面。页面地址由后端决定，前端不传。 */
+export async function openMicrosoftVerificationPage(): Promise<void> {
+  if (!isTauri()) {
+    throw new Error(desktopOnly);
+  }
+  await callCommand("open_microsoft_verification_page");
+}
+
+/**
+ * 本机已登录的微软账户。读不到（浏览器预览、后端出错）时返回 null，而不是空数组：
+ * 调用方据此区分「确实没有账户」和「不知道」，不会因为一次读取失败就清空账户簿。
+ */
+export async function listMicrosoftAccounts(): Promise<MicrosoftAccount[] | null> {
+  if (!isTauri()) {
+    return null;
+  }
+  try {
+    return await callCommand("list_microsoft_accounts");
+  } catch {
+    return null;
+  }
+}
+
+/** 退出一个微软账户：后端删除凭据库里的刷新令牌和账户信息。 */
+export async function removeMicrosoftAccount(id: string): Promise<void> {
+  if (!isTauri()) {
+    return;
+  }
+  await callCommand("remove_microsoft_account", { id });
+}
+
+/** 订阅登录状态。浏览器预览里没有事件源，返回一个空的取消函数。 */
+export async function listenLoginStatus(
+  handler: (event: LoginEvent) => void,
+): Promise<UnlistenFn> {
+  if (!isTauri()) {
+    return () => undefined;
+  }
+  return listen<LoginEvent>(loginStatusEvent, (event) => handler(event.payload));
+}
+
+const failureText: Record<LoginFailureReason, string> = {
+  expired: "验证码已过期，请重新开始登录。",
+  denied: "你在浏览器里拒绝了这次登录。",
+  network: "连接不上微软的登录服务，请检查网络后重试。",
+  service:
+    "微软或 Mojang 的登录服务拒绝了这次登录，请稍后重试。开发者注意：应用 ID 需要先通过 Mojang 的审核，见 docs/modules/microsoft-login.md。",
+  storage: "账户已验证，但无法保存到系统凭据库。请检查系统的凭据管理是否可用。",
+  "no-xbox-profile":
+    "这个微软账户还没有 Xbox 档案。先到 xbox.com 登录一次创建档案，再回来登录。",
+  "child-account":
+    "这是未成年人账户。需要成年人先把它加入微软家庭组，才能联机游玩。",
+  region: "这个账户所在的地区不支持 Xbox Live。",
+  "not-entitled":
+    "这个微软账户没有购买 Minecraft: Java 版。可以先用离线账户，或换一个账户登录。",
+  "no-profile": "这个账户还没有 Minecraft 玩家名。先在官方启动器里创建一个。",
+};
+
+/** 把登录失败翻译成可以直接显示的一句话；不认识的分类显示后端的英文。 */
+export function describeLoginFailure(failure: LoginFailure): string {
+  return failureText[failure.reason] ?? failure.message;
+}
+
+/**
+ * 把启动或登录命令的错误文本翻译成人话。不是微软相关的错误原样返回，
+ * 所以可以对任何命令错误调用。
+ */
+export function describeMicrosoftError(message: string): string {
+  switch (message) {
+    case microsoftNotConfigured:
+      return "这个版本还没有配置微软登录。";
+    case microsoftSignInRequired:
+      return "微软账户的登录已失效，请到「账户」页重新登录。";
+    case microsoftNotEntitled:
+      return failureText["not-entitled"];
+    default:
+      return message;
+  }
 }

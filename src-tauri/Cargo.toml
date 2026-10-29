@@ -32,6 +32,7 @@ aether-storage = { path = "../crates/aether-storage" }
 serde.workspace = true
 tauri-plugin-dialog = "2"
 tracing.workspace = true
+ureq.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

@@ -48,6 +48,9 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The Azure application (client) id is public, so it is a repository variable, not
+          # a secret. Without it the build ships with Microsoft sign-in switched off.
+          AETHER_MS_CLIENT_ID: ${{ vars.AETHER_MS_CLIENT_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Aether Launcher ${{ github.ref_name }}

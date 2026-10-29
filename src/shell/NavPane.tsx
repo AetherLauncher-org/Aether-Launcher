@@ -62,7 +62,7 @@ export function NavPane({ collapsed, onToggle, version }: NavPaneProps) {
           {active?.name ?? "添加账户"}
         </Text>
         <Text size={100} className="nav-account-kind">
-          {active ? "离线账户" : "还没有账户"}
+          {active ? (active.kind === "microsoft" ? "微软账户" : "离线账户") : "还没有账户"}
         </Text>
       </span>
     </button>

@@ -291,6 +291,67 @@ impl TokenPollRequest {
 }
 
 // --------------------------------------------------------------------------------------
+// Renewing a sign-in
+// --------------------------------------------------------------------------------------
+
+/// Exchanges a stored refresh token for a fresh access token, so the user signs in once
+/// and later launches need no browser.
+#[derive(Debug, Clone, Copy)]
+pub struct RefreshRequest<'a> {
+    pub client_id: &'a str,
+    pub refresh: &'a RefreshToken,
+    pub scope: &'a str,
+}
+
+impl<'a> RefreshRequest<'a> {
+    /// A request carrying [`DEFAULT_SCOPE`].
+    #[must_use]
+    pub fn new(client_id: &'a str, refresh: &'a RefreshToken) -> Self {
+        Self {
+            client_id,
+            refresh,
+            scope: DEFAULT_SCOPE,
+        }
+    }
+
+    /// Builds the form `POST` for the token endpoint.
+    #[must_use]
+    pub fn to_http(&self, endpoints: &DeviceCodeEndpoints) -> HttpRequest {
+        let body = format!(
+            "grant_type=refresh_token&client_id={}&refresh_token={}&scope={}",
+            form_encode(self.client_id),
+            form_encode(self.refresh.expose()),
+            form_encode(self.scope)
+        );
+        HttpRequest::post_form(endpoints.token_url.as_str(), body)
+    }
+}
+
+/// Interprets the answer to a [`RefreshRequest`].
+///
+/// A refresh answer is either tokens or an OAuth error; `invalid_grant` (the refresh
+/// token was revoked or expired) arrives as [`DeviceCodeError::OAuth`], which the caller
+/// treats as "sign in again". The device-flow outcomes (`authorization_pending` and
+/// friends) make no sense here and are reported the same way.
+///
+/// # Errors
+///
+/// Same as [`parse_token_response`], plus [`DeviceCodeError::OAuth`] for any outcome other
+/// than tokens.
+pub fn parse_refresh_response(
+    status: u16,
+    body: &str,
+    issued_at: SystemTime,
+) -> Result<MicrosoftTokens, DeviceCodeError> {
+    match parse_token_response(status, body, issued_at)? {
+        PollOutcome::Authorized(tokens) => Ok(tokens),
+        _ => Err(DeviceCodeError::OAuth {
+            code: "unexpected_refresh_outcome".to_owned(),
+        }),
+    }
+}
+
+// --------------------------------------------------------------------------------------
 // Step 3: interpret the poll answer
 // --------------------------------------------------------------------------------------
 

@@ -70,6 +70,7 @@ pub fn run() {
         .manage(commands::launch::LaunchState::default())
         .manage(commands::install::InstallState::default())
         .manage(commands::import::ImportState::default())
+        .manage(commands::microsoft::MicrosoftLoginState::default())
         .invoke_handler(tauri::generate_handler![
             application_info,
             list_java_runtimes,
@@ -85,6 +86,12 @@ pub fn run() {
             commands::import::detect_launcher_installations,
             commands::import::pick_launcher_folder,
             commands::import::import_versions,
+            commands::microsoft::microsoft_login_available,
+            commands::microsoft::begin_microsoft_login,
+            commands::microsoft::cancel_microsoft_login,
+            commands::microsoft::open_microsoft_verification_page,
+            commands::microsoft::list_microsoft_accounts,
+            commands::microsoft::remove_microsoft_account,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

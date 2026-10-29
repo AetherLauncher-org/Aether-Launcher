@@ -99,10 +99,26 @@ export { discoverJavaRuntimes } from "./java";
 export type { JavaRuntimeInfo } from "./java";
 
 // 微软账户登录
-export { describeLoginStatus, startMicrosoftLogin } from "./accounts";
-export type { MicrosoftLoginStatus } from "./accounts";
+export {
+  beginMicrosoftLogin,
+  cancelMicrosoftLogin,
+  describeLoginFailure,
+  describeMicrosoftError,
+  isMicrosoftLoginAvailable,
+  listenLoginStatus,
+  listMicrosoftAccounts,
+  openMicrosoftVerificationPage,
+  removeMicrosoftAccount,
+} from "./accounts";
+export type {
+  DeviceCodeInfo,
+  LoginEvent,
+  LoginFailure,
+  LoginFailureReason,
+  MicrosoftAccount,
+} from "./accounts";
 
-// Installed game lifecycle (offline only; no arbitrary executable or paths)
+// Installed game lifecycle (no arbitrary executable or paths)
 export { gameStatus, startInstalledInstance, stopInstalledInstance } from "./launch";
 export type { GameRunStatus } from "./launch";
 

@@ -80,7 +80,7 @@ export function InstancesPage({ page }: InstancesPageProps) {
 
       {desktop && instances.length > 0 && book.accounts.length === 0 ? (
         <MessageBar intent="info" className="page-notice">
-          <MessageBarBody>还没有账户，添加一个离线账户后才能启动游戏。</MessageBarBody>
+          <MessageBarBody>还没有账户，添加离线账户或登录微软账户后才能启动游戏。</MessageBarBody>
           <MessageBarActions>
             <Button size="small" onClick={() => navigate("accounts")}>
               去添加

@@ -144,11 +144,10 @@ describe("AccountsPage", () => {
     expect(JSON.parse(window.localStorage.getItem(accountBookStorageKey) ?? "{}").activeId).toBe("offline-1");
   });
 
-  it("reports honestly that Microsoft sign-in is not available yet", async () => {
+  it("says Microsoft sign-in needs the desktop app instead of a button that does nothing", async () => {
     renderAccounts();
 
-    fireEvent.click(screen.getByRole("button", { name: "使用微软账户登录" }));
-
     expect(await screen.findByText(/微软登录需要桌面版/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "登录微软账户" })).toBeDisabled();
   });
 });

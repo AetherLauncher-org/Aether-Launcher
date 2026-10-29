@@ -151,7 +151,7 @@ export function HomePage({ greeting, summary }: HomePageProps) {
           icon={<Person24Regular />}
           label="当前账户"
           value={active?.name ?? "未选择"}
-          hint={active ? "离线账户" : "添加账户后才能启动"}
+          hint={active ? (active.kind === "microsoft" ? "微软账户" : "离线账户") : "添加账户后才能启动"}
           onClick={() => navigate("accounts")}
         />
         <Stat
