@@ -8,7 +8,7 @@ export type Lang = "en" | "zh";
 export type PageId = "home" | "security" | "privacy";
 export type Route = { lang: Lang; page: PageId };
 
-export const siteOrigin = "https://aether.abnt.it";
+export const siteOrigin = "https://launcher.abnt.it";
 export const repositoryUrl = "https://github.com/AetherLauncher-org/Aether-Launcher";
 /** Shown on every page that states a date. Bump it when the content changes. */
 export const lastUpdated = "2026-10-29";

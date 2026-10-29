@@ -25,7 +25,7 @@ npx wrangler pages deploy site/dist --project-name aether-launcher --branch main
 
 - `site/public/_headers` sets a strict Content-Security-Policy and caching. The page needs `script-src 'self'` and `style-src 'unsafe-inline'` (Fluent injects style rules at run time) and nothing else.
 - With no `404.html`, Cloudflare Pages serves `index.html` for every unknown path, which is what the client-side router relies on.
-- The canonical origin is `https://aether.abnt.it` (`siteOrigin` in `src/router.ts`, `public/sitemap.xml`, `public/robots.txt`). Attach it under Workers & Pages, then `aether-launcher`, then Custom domains.
+- The canonical origin is `https://launcher.abnt.it` (`siteOrigin` in `src/router.ts`, `public/sitemap.xml`, `public/robots.txt`). Attach it under Workers & Pages, then `aether-launcher`, then Custom domains.
 
 ## Keeping it honest
 
