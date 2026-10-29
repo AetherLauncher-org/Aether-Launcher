@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+﻿import { invoke } from "@tauri-apps/api/core";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { accountBookStorageKey } from "../lib/accounts";
@@ -82,6 +82,18 @@ describe("InstancesPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "安装新版本" }));
 
     expect(navigate).toHaveBeenCalledWith("download");
+  });
+
+  it("opens the import dialog from the page header", async () => {
+    backend();
+    renderWithState(<InstancesPage page={page} />);
+    await screen.findByText("Survival");
+
+    fireEvent.click(screen.getByRole("button", { name: "导入实例" }));
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "从文件夹导入" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "从启动器导入" })).toBeInTheDocument();
   });
 
   it("asks for an account before anything can launch", async () => {

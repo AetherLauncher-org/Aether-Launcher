@@ -58,6 +58,24 @@ export type {
   SkippedInstance,
 } from "./instances";
 
+// 从现有 .minecraft 或其他启动器导入实例
+export {
+  detectLauncherInstallations,
+  importVersions,
+  listenImportItem,
+  pickImportFolder,
+  pickLauncherFolder,
+} from "./import";
+export type {
+  ImportCandidate,
+  ImportItemProgress,
+  ImportResult,
+  ImportSkipped,
+  ImportSource,
+  ImportSourceKind,
+  LauncherInstallation,
+} from "./import";
+
 // 官方 Minecraft 版本目录（只读）
 export { listMinecraftVersions } from "./catalog";
 export type { MinecraftCatalogVersion, MinecraftVersionCatalog } from "./catalog";

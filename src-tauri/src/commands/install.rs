@@ -21,6 +21,7 @@ use aether_download::{
     DownloadEngine, DownloadError, DownloadPlan, ProgressSink, is_safe_relative_path,
 };
 use aether_launch::build_install_plan;
+use aether_manifest::catalog::VersionCatalog;
 use aether_manifest::load_resolved_version_manifest;
 use aether_storage::{InstanceStore, create_instance, list_instances, validate_instance_name};
 use serde::Serialize;
@@ -28,7 +29,7 @@ use tauri::{Emitter, Manager};
 
 use super::instances::InstanceSummary;
 use super::launch::{activate_instance, current_environment};
-use super::vanilla::prepare_version;
+use super::vanilla::{prepare_version, prepare_version_from_catalog};
 
 /// Error text returned when the user cancels; the frontend matches on it.
 pub const CANCELLED: &str = "cancelled";
@@ -65,8 +66,8 @@ pub trait Reporter: Send + Sync {
     fn report(&self, progress: &InstallProgress);
 }
 
-struct EventReporter {
-    app: tauri::AppHandle,
+pub(super) struct EventReporter {
+    pub(super) app: tauri::AppHandle,
 }
 
 impl Reporter for EventReporter {
@@ -82,7 +83,7 @@ pub struct InstallState {
 }
 
 impl InstallState {
-    fn begin(&self) -> Result<CancellationToken, String> {
+    pub(super) fn begin(&self) -> Result<CancellationToken, String> {
         let mut active = self
             .active
             .lock()
@@ -95,7 +96,7 @@ impl InstallState {
         Ok(token)
     }
 
-    fn finish(&self) {
+    pub(super) fn finish(&self) {
         if let Ok(mut active) = self.active.lock() {
             *active = None;
         }
@@ -162,10 +163,61 @@ impl ProgressSink for AggregateSink<'_> {
     }
 }
 
-/// Download one plan, skipping files that already verify.
+/// Copies a file the user already has (typically in another launcher's folder)
+/// into the launcher-owned game tree, but only when its size and SHA-1 match the
+/// official plan. Returns whether the file is now in place.
+///
+/// `seed` is read-only and never a write destination. A file that fails the
+/// check, or any filesystem problem along the way, simply returns `false` and the
+/// caller downloads the file as usual — a bad seed can slow an import down but
+/// cannot change what ends up in the game tree.
+fn borrow_from_seed(seed: &Path, game_root: &Path, artifact: &DownloadArtifact) -> bool {
+    let Ok(source) = verify_local_artifact(seed, artifact) else {
+        return false;
+    };
+    let destination = game_root.join(&artifact.destination);
+    let (Some(parent), Some(name)) = (destination.parent(), destination.file_name()) else {
+        return false;
+    };
+    if fs::create_dir_all(parent).is_err() {
+        return false;
+    }
+    // The tree is launcher-owned, but refuse to write through a link that points
+    // somewhere else all the same.
+    let inside = match (fs::canonicalize(parent), fs::canonicalize(game_root)) {
+        (Ok(parent), Ok(root)) => parent.starts_with(root),
+        _ => false,
+    };
+    if !inside {
+        return false;
+    }
+
+    let mut staging_name = name.to_os_string();
+    staging_name.push(".seed");
+    let staging = parent.join(staging_name);
+    let staged = DownloadArtifact {
+        destination: artifact
+            .destination
+            .with_file_name(staging.file_name().unwrap_or(name)),
+        ..artifact.clone()
+    };
+    let placed = fs::copy(&source, &staging).is_ok()
+        // Hash what was actually copied: the seed could change between checks.
+        && verify_local_artifact(game_root, &staged).is_ok()
+        && fs::rename(&staging, &destination).is_ok();
+    if !placed {
+        let _ = fs::remove_file(&staging);
+    }
+    placed
+}
+
+/// Download one plan, skipping files that already verify and borrowing files
+/// from `seed` when it has verified copies.
+#[allow(clippy::too_many_arguments)]
 fn run_stage(
     engine: &DownloadEngine<'_>,
     game_root: &Path,
+    seed: Option<&Path>,
     plan: &DownloadPlan,
     stage: Stage,
     version: &str,
@@ -180,7 +232,9 @@ fn run_stage(
         if cancel.is_cancelled() {
             return Err(CANCELLED.to_owned());
         }
-        if verify_local_artifact(game_root, artifact).is_ok() {
+        if verify_local_artifact(game_root, artifact).is_ok()
+            || seed.is_some_and(|seed| borrow_from_seed(seed, game_root, artifact))
+        {
             base_files += 1;
             base_bytes += artifact.size;
         } else {
@@ -231,9 +285,23 @@ fn run_stage(
 
 /// Download the client JAR, libraries, natives and assets of a version whose
 /// JSON is already cached under `game_root`. Returns the number of files.
+#[cfg(test)]
 pub(super) fn install_version(
     transport: &dyn HttpTransport,
     game_root: &Path,
+    version: &str,
+    cancel: &CancellationToken,
+    reporter: &dyn Reporter,
+) -> Result<usize, String> {
+    install_version_with(transport, game_root, None, version, cancel, reporter)
+}
+
+/// [`install_version`] that may borrow already-downloaded files from `seed`
+/// (see [`borrow_from_seed`]).
+pub(super) fn install_version_with(
+    transport: &dyn HttpTransport,
+    game_root: &Path,
+    seed: Option<&Path>,
     version: &str,
     cancel: &CancellationToken,
     reporter: &dyn Reporter,
@@ -253,6 +321,7 @@ pub(super) fn install_version(
     let mut total = run_stage(
         &engine,
         game_root,
+        seed,
         &plan,
         Stage::Files,
         version,
@@ -280,6 +349,7 @@ pub(super) fn install_version(
         total += run_stage(
             &engine,
             game_root,
+            seed,
             &index_plan,
             Stage::Assets,
             version,
@@ -291,6 +361,7 @@ pub(super) fn install_version(
         total += run_stage(
             &engine,
             game_root,
+            seed,
             &objects,
             Stage::Assets,
             version,
@@ -357,6 +428,16 @@ fn check_instance_name(base: &Path, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Optional inputs to [`install_and_create_with`].
+#[derive(Default, Clone, Copy)]
+pub(super) struct InstallOptions<'a> {
+    /// A read-only folder laid out like a `.minecraft` whose verified files may
+    /// be copied instead of downloaded.
+    pub seed: Option<&'a Path>,
+    /// An already-read official catalog, so a batch reads it once.
+    pub catalog: Option<&'a VersionCatalog>,
+}
+
 /// Install a Vanilla version and create a ready-to-launch instance for it.
 /// `base` is the application data directory; the game tree is `base/game`.
 pub(super) fn install_and_create(
@@ -364,6 +445,27 @@ pub(super) fn install_and_create(
     base: &Path,
     version: &str,
     name: &str,
+    cancel: &CancellationToken,
+    reporter: &dyn Reporter,
+) -> Result<InstanceSummary, String> {
+    install_and_create_with(
+        transport,
+        base,
+        version,
+        name,
+        InstallOptions::default(),
+        cancel,
+        reporter,
+    )
+}
+
+/// [`install_and_create`] with a seed folder and/or a reused catalog.
+pub(super) fn install_and_create_with(
+    transport: &dyn HttpTransport,
+    base: &Path,
+    version: &str,
+    name: &str,
+    options: InstallOptions<'_>,
     cancel: &CancellationToken,
     reporter: &dyn Reporter,
 ) -> Result<InstanceSummary, String> {
@@ -378,12 +480,22 @@ pub(super) fn install_and_create(
         bytes_done: 0,
         bytes_total: 0,
     });
-    prepare_version(transport, &game_root, version)?;
+    match options.catalog {
+        Some(catalog) => prepare_version_from_catalog(transport, catalog, &game_root, version)?,
+        None => prepare_version(transport, &game_root, version)?,
+    };
     if cancel.is_cancelled() {
         return Err(CANCELLED.to_owned());
     }
 
-    install_version(transport, &game_root, version, cancel, reporter)?;
+    install_version_with(
+        transport,
+        &game_root,
+        options.seed,
+        version,
+        cancel,
+        reporter,
+    )?;
 
     reporter.report(&InstallProgress {
         version: version.to_owned(),

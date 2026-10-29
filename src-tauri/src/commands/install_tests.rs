@@ -179,6 +179,81 @@ fn a_second_run_skips_files_that_already_verify() {
     );
 }
 
+fn install_seeded(
+    transport: &FakeTransport,
+    fixture: &Fixture,
+    seed: &Path,
+) -> Result<usize, String> {
+    install_version_with(
+        transport,
+        fixture.root(),
+        Some(seed),
+        "1.21.1",
+        &CancellationToken::new(),
+        &NoopReporter,
+    )
+}
+
+#[test]
+fn a_seed_with_matching_files_replaces_the_downloads() {
+    let fixture = Fixture::new();
+    let seed = Fixture::new();
+    let (transport, json) = standard_transport();
+    fixture.cache_version(&json);
+    fs::create_dir_all(seed.root().join("versions/1.21.1")).unwrap();
+    fs::write(
+        seed.root().join("versions/1.21.1/1.21.1.jar"),
+        b"client-bytes",
+    )
+    .unwrap();
+    fs::create_dir_all(seed.root().join("libraries/com/example/a/1")).unwrap();
+    fs::write(
+        seed.root().join("libraries/com/example/a/1/a-1.jar"),
+        b"library-bytes",
+    )
+    .unwrap();
+
+    assert_eq!(install_seeded(&transport, &fixture, seed.root()), Ok(2));
+    assert_eq!(transport.requests(), 0, "everything came from the seed");
+    assert_eq!(
+        fs::read(fixture.root().join("versions/1.21.1/1.21.1.jar")).unwrap(),
+        b"client-bytes"
+    );
+    assert!(
+        !fixture
+            .root()
+            .join("versions/1.21.1/1.21.1.jar.seed")
+            .exists(),
+        "no staging file is left behind"
+    );
+}
+
+#[test]
+fn a_seed_file_that_does_not_match_the_official_hash_is_ignored() {
+    let fixture = Fixture::new();
+    let seed = Fixture::new();
+    let (transport, json) = standard_transport();
+    fixture.cache_version(&json);
+    fs::create_dir_all(seed.root().join("versions/1.21.1")).unwrap();
+    fs::write(
+        seed.root().join("versions/1.21.1/1.21.1.jar"),
+        b"tampered!!!!",
+    )
+    .unwrap();
+
+    assert_eq!(install_seeded(&transport, &fixture, seed.root()), Ok(2));
+    assert_eq!(transport.requests(), 2, "both files were downloaded");
+    assert_eq!(
+        fs::read(fixture.root().join("versions/1.21.1/1.21.1.jar")).unwrap(),
+        b"client-bytes"
+    );
+    assert_eq!(
+        fs::read(seed.root().join("versions/1.21.1/1.21.1.jar")).unwrap(),
+        b"tampered!!!!",
+        "the seed is never written to"
+    );
+}
+
 #[test]
 fn reports_monotonic_progress_that_ends_complete() {
     let fixture = Fixture::new();

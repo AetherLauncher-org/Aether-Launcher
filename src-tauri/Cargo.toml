@@ -30,6 +30,7 @@ aether-manifest = { path = "../crates/aether-manifest" }
 aether-runtime = { path = "../crates/aether-runtime" }
 aether-storage = { path = "../crates/aether-storage" }
 serde.workspace = true
+tauri-plugin-dialog = "2"
 tracing.workspace = true
 
 [dev-dependencies]

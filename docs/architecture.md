@@ -62,7 +62,7 @@ src/
 ## IPC 边界
 
 - 前端只通过 `src/ipc/` 调用后端，组件里不直接 `invoke`。
-- 命令在 `src-tauri/src/lib.rs` 里用 `#[tauri::command]` 定义，并列进 `generate_handler!`。目前有 `application_info`、`list_java_runtimes`、`system_memory`、`list_minecraft_versions`、`list_instances`、`install_vanilla_version`、`cancel_vanilla_install`、`start_installed_instance`、`stop_installed_instance` 和 `game_status`。安装进度走 `install://progress` 事件。
+- 命令在 `src-tauri/src/lib.rs` 里用 `#[tauri::command]` 定义，并列进 `generate_handler!`。目前有 `application_info`、`list_java_runtimes`、`system_memory`、`list_minecraft_versions`、`list_instances`、`install_vanilla_version`、`cancel_vanilla_install`、`start_installed_instance`、`stop_installed_instance`、`game_status`，以及导入用的 `pick_import_folder`、`detect_launcher_installations`、`pick_launcher_folder` 和 `import_versions`（见 [import.md](modules/import.md)）。安装进度走 `install://progress` 事件，导入进度走 `import://item` 事件。
 - 窗口权限在 `src-tauri/capabilities/default.json`：`core:default`，加上自绘标题栏需要的最小化、最大化、关闭、拖动和设置主题。这个目录在 CODEOWNERS 里单独列出。
 - 命令是窄化的领域操作（导入这个实例、启动这个实例），参数用类型表达。不提供执行任意命令、读写任意路径的入口。
 
