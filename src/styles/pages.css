@@ -985,10 +985,30 @@
   pointer-events: none;
 }
 
-.memory-track:has(.memory-input:focus-visible) {
-  outline: 2px solid var(--colorStrokeFocus2);
-  outline-offset: 6px;
-  border-radius: 8px;
+/* 键盘操作时的焦点：只在蓝色手柄上画一圈，不在整条轨道外面套框 */
+.memory-bar[data-keyboard="true"] .memory-track:has(.memory-input:focus) .memory-thumb.right {
+  box-shadow: 0 0 0 3px var(--colorStrokeFocus2), var(--shadow4);
+}
+
+/* 吸附网格的刻度：画在胶囊下沿，每 512 MiB 一根，整 GiB 更长 */
+.memory-tick {
+  position: absolute;
+  top: calc((var(--thumb) + var(--track-h)) / 2 + 3px);
+  width: 1px;
+  height: 4px;
+  margin-left: -0.5px;
+  background: var(--colorNeutralStrokeAccessible);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.memory-tick.major {
+  height: 7px;
+  opacity: 1;
+}
+
+.memory-bar[data-disabled="true"] .memory-tick {
+  opacity: 0.4;
 }
 
 @keyframes thumb-pop {

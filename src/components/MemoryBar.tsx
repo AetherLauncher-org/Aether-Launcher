@@ -5,6 +5,7 @@ import type { SystemMemory } from "../ipc";
 import { exceedsAvailable, formatMiB, memorySliderStep, minMemoryMiB, sliderMaxMiB } from "../lib/memory";
 import {
   barGeometry,
+  memoryTicks,
   thumbForTrackPress,
   valueFromDrag,
   valueFromLeftThumb,
@@ -34,6 +35,8 @@ type Drag = { thumb: Thumb; startX: number; startValue: number };
  * 往左拖橙色），橙色才真的往左走进红区，那一段是橙色，**不推荐**，因为分配得比可用
  * 内存还多，会把内存挤爆。反方向则是橙色先退回分界线，再往下蓝色才减少。
  *
+ * 拖动默认吸附到 512 MiB 的整数倍；按住 Shift 拖动则不吸附（32 MiB 的细粒度）。
+ *
  * 屏幕上的手柄用指针拖动；真正的 `<input type="range">` 在旁边，只是看不见：
  * 键盘方向键、读屏和表单语义都由它承担，值和手柄始终一致。
  */
@@ -42,9 +45,13 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
   const inputRef = useRef<HTMLInputElement>(null);
   const drag = useRef<Drag | null>(null);
   const [dragging, setDragging] = useState<Thumb | null>(null);
+  // 焦点环只在真正用键盘操作时出现：浏览器的 :focus-visible 在鼠标聚焦之后
+  // 按一下 Shift 也会亮起来，整条轨道外面突然多一圈白框，很丑
+  const [keyboard, setKeyboard] = useState(false);
   const interactive = !disabled && onChange !== undefined;
 
   const geometry = barGeometry(valueMiB, system);
+  const ticks = memoryTicks(system);
   const max = sliderMaxMiB(system);
   const over = exceedsAvailable(geometry.valueMiB, system);
   const free = system?.availableMib;
@@ -74,6 +81,7 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
     // 不拦住默认行为，浏览器会把这次按下当成选中文字或拖拽元素的开头：
     // 指针立刻变成「禁止」图标，后面的 pointermove 也就收不到了
     event.preventDefault();
+    setKeyboard(false);
     inputRef.current?.focus({ preventScroll: true });
     const target = event.target as HTMLElement;
     const onLeftThumb = target.closest(".memory-thumb.left") !== null;
@@ -85,7 +93,10 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
     // 抓住手柄：什么都不变，之后相对于这里拖。直接点在轨道上：先把手柄放到那里，再从那里接着拖
     let startValue = geometry.valueMiB;
     if (!onLeftThumb && !onRightThumb) {
-      startValue = thumb === "right" ? valueFromRightThumb(pct, system) : valueFromLeftThumb(pct, system);
+      startValue =
+        thumb === "right"
+          ? valueFromRightThumb(pct, system, event.shiftKey)
+          : valueFromLeftThumb(pct, system, event.shiftKey);
       onChange?.(startValue);
     }
     drag.current = { thumb, startX: event.clientX, startValue };
@@ -101,7 +112,12 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
     // 不夹在轨道里：指针被捕获，拖到轨道外面也要继续算，这样把蓝色一路往右推也能推过「满」
     const movedPct = ((event.clientX - current.startX) / width) * 100;
     onChange?.(
-      valueFromDrag(current.startValue, current.thumb === "right" ? movedPct : -movedPct, system),
+      valueFromDrag(
+        current.startValue,
+        current.thumb === "right" ? movedPct : -movedPct,
+        system,
+        event.shiftKey,
+      ),
     );
   };
 
@@ -113,7 +129,14 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
   const cancelNativeDrag = (event: DragEvent) => event.preventDefault();
 
   return (
-    <div className="memory-bar" style={style} data-over={over === true} data-disabled={!interactive} data-dragging={dragging !== null}>
+    <div
+      className="memory-bar"
+      style={style}
+      data-over={over === true}
+      data-disabled={!interactive}
+      data-dragging={dragging !== null}
+      data-keyboard={keyboard}
+    >
       <div
         ref={trackRef}
         className="memory-track"
@@ -132,6 +155,15 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
         ) : null}
         <span className="memory-seg alloc" />
         {geometry.overMiB > 0 ? <span className="memory-seg over" /> : null}
+
+        {ticks.map((tick) => (
+          <span
+            key={tick.valueMiB}
+            className={`memory-tick${tick.major ? " major" : ""}`}
+            style={{ left: `${tick.pct}%` }}
+            aria-hidden="true"
+          />
+        ))}
 
         <span
           className={`memory-thumb right${dragging === "right" ? " dragging" : ""}`}
@@ -156,6 +188,12 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
           disabled={!interactive}
           aria-valuetext={formatMiB(geometry.valueMiB)}
           onChange={(event) => onChange?.(Number(event.target.value))}
+          onKeyDown={(event) => {
+            if (!["Shift", "Control", "Alt", "Meta"].includes(event.key)) {
+              setKeyboard(true);
+            }
+          }}
+          onBlur={() => setKeyboard(false)}
         />
       </div>
 
@@ -210,7 +248,7 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
         </Text>
       ) : geometry.usedMib !== null && interactive ? (
         <Text size={200} className="muted">
-          蓝色是分配给游戏的内存。往右拖蓝色手柄、或往左拖橙色手柄都是多分配；超过可用内存的部分会变成橙色，不推荐。
+          蓝色是分配给游戏的内存。往右拖蓝色手柄、或往左拖橙色手柄都是多分配；超过可用内存的部分会变成橙色，不推荐。拖动时吸附到 512 MiB，按住 Shift 可以关闭吸附。
         </Text>
       ) : null}
       {system === null ? (

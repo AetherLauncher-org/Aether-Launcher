@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   barGeometry,
+  memoryTicks,
+  snapStepMiB,
   thumbForTrackPress,
   valueFromDrag,
   valueFromLeftThumb,
@@ -106,19 +108,45 @@ describe("valueFromDrag", () => {
   // 1% 的轨道 = 163.84 MiB；指针取整粒度 32 MiB，所以手柄看上去是连续的
   it("allocates more for a positive move and less for a negative one", () => {
     expect(valueFromDrag(1024, 0, machine)).toBe(1024);
-    expect(valueFromDrag(1024, 5, machine)).toBe(1856);
+    // 1024 + 819.2 = 1843.2，吸附到最近的 512 的倍数
+    expect(valueFromDrag(1024, 5, machine)).toBe(2048);
+    expect(valueFromDrag(1024, 5, machine, true)).toBe(1856);
     // 4096 少掉 25%（4096）就到了下限，不会变成 0 或负数
     expect(valueFromDrag(4096, -25, machine)).toBe(512);
   });
 
-  it("moves in steps fine enough to look continuous, not in the 256 MiB steps of the keyboard", () => {
-    const values = [0.1, 0.2, 0.3, 0.4, 0.5].map((pct) => valueFromDrag(1024, pct, machine));
+  it("snaps to multiples of 512 MiB by default", () => {
+    for (const pct of [0.7, 1.3, 2.9, 6.1, 11.4, 17.8]) {
+      expect(valueFromDrag(1024, pct, machine) % snapStepMiB).toBe(0);
+      expect(valueFromRightThumb(75 + pct, machine) % snapStepMiB).toBe(0);
+    }
+    // 小于半格的移动不会让值动
+    expect(valueFromDrag(1024, 0.5, machine)).toBe(1024);
+    // 从不在网格上的值出发，第一次移动就落到网格上
+    expect(valueFromDrag(1100, 0.1, machine)).toBe(1024);
+  });
+
+  it("still reaches the minimum and the end of the track when they are not on the grid", () => {
+    const odd = { totalMib: 8448, availableMib: 2304 }; // 8448 = 16.5 × 512
+    expect(valueFromDrag(1024, 500, odd)).toBe(8448);
+    expect(valueFromDrag(1024, -500, odd)).toBe(512);
+  });
+
+  it("snaps the orange thumb's total allocation, not just the part past full", () => {
+    // 从「满」(4096) 开始加红区；4096 + 700 = 4796 → 4608（吸附），细粒度 4800
+    const pct = 75 - (700 / 16_384) * 100;
+    expect(valueFromLeftThumb(pct, machine)).toBe(4608);
+    expect(valueFromLeftThumb(pct, machine, true)).toBe(4800);
+  });
+
+  it("moves in steps fine enough to look continuous when Shift turns snapping off, not in the 256 MiB steps of the keyboard", () => {
+    const values = [0.1, 0.2, 0.3, 0.4, 0.5].map((pct) => valueFromDrag(1024, pct, machine, true));
 
     for (const value of values) {
       expect(value % 32).toBe(0);
     }
     expect(new Set(values).size).toBeGreaterThan(1);
-    expect(valueFromDrag(1024, 0.5, machine)).toBeLessThan(1024 + 256);
+    expect(valueFromDrag(1024, 0.5, machine, true)).toBeLessThan(1024 + 256);
   });
 
   it("grows the blue share first: below full an increasing drag only raises the value, with the orange thumb still on the divider", () => {
@@ -152,6 +180,48 @@ describe("valueFromDrag", () => {
   it("stays between the minimum and the installed memory", () => {
     expect(valueFromDrag(1024, -100, machine)).toBe(512);
     expect(valueFromDrag(1024, 500, machine)).toBe(16_384);
+  });
+});
+
+describe("memoryTicks", () => {
+  it("puts a tick on every 512 MiB the thumbs can snap to, at the position the thumb would have", () => {
+    const ticks = memoryTicks(machine);
+
+    expect(ticks[0].valueMiB).toBe(512);
+    expect(ticks.every((tick) => tick.valueMiB % 512 === 0)).toBe(true);
+    for (const tick of ticks) {
+      const geometry = barGeometry(tick.valueMiB, machine);
+      const where = tick.valueMiB > geometry.fullMib ? geometry.leftPct : geometry.rightPct;
+      expect(tick.pct).toBeCloseTo(where ?? -1, 5);
+    }
+  });
+
+  it("continues into the red area past the divider", () => {
+    const beyond = memoryTicks(machine).filter((tick) => tick.valueMiB > 4096);
+
+    expect(beyond.length).toBeGreaterThan(0);
+    expect(beyond.every((tick) => tick.pct < 75)).toBe(true);
+  });
+
+  it("marks whole GiB as major", () => {
+    const ticks = memoryTicks(machine);
+
+    expect(ticks.find((tick) => tick.valueMiB === 1024)?.major).toBe(true);
+    expect(ticks.find((tick) => tick.valueMiB === 1536)?.major).toBe(false);
+  });
+
+  it("thins out on a big machine instead of drawing hundreds of ticks", () => {
+    const ticks = memoryTicks({ totalMib: 131_072, availableMib: 65_536 });
+
+    expect(ticks.length).toBeLessThanOrEqual(33);
+    expect(ticks[1].valueMiB - ticks[0].valueMiB).toBeGreaterThan(512);
+  });
+
+  it("spans the whole track when the used memory is unknown", () => {
+    const ticks = memoryTicks({ totalMib: 8192, availableMib: null });
+
+    expect(ticks[0].pct).toBeCloseTo((512 / 8192) * 100);
+    expect(ticks[ticks.length - 1].pct).toBeCloseTo(100);
   });
 });
 

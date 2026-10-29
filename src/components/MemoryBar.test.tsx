@@ -36,8 +36,8 @@ function barGeometryOver(valueMiB: number): number {
 }
 
 /** jsdom 的指针事件不带坐标，用带 clientX 的鼠标事件冒充同名事件。 */
-function pointer(target: Element, type: string, clientX: number): MouseEvent {
-  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX });
+function pointer(target: Element, type: string, clientX: number, shiftKey = false): MouseEvent {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX, shiftKey });
   act(() => {
     target.dispatchEvent(event);
   });
@@ -112,13 +112,44 @@ describe("MemoryBar dragging", () => {
   const blue = (container: HTMLElement) => container.querySelector(".memory-thumb.right") as HTMLElement;
   const orange = (container: HTMLElement) => container.querySelector(".memory-thumb.left") as HTMLElement;
 
-  it("jumps the blue thumb to a press in the free area, in steps fine enough to look continuous", () => {
+  it("jumps the blue thumb to a press in the free area, snapped to 512 MiB", () => {
     const { onChange, track } = renderBar({ valueMiB: 1024 });
 
-    // 90% 处 = 分界线右边 15% = 2457.6 MiB，指针粒度 32 MiB
+    // 90% 处 = 分界线右边 15% = 2457.6 MiB → 2560
     pointer(track, "pointerdown", 900);
 
+    expect(onChange).toHaveBeenLastCalledWith(2560);
+  });
+
+  it("does not snap a press made with Shift held, in steps fine enough to look continuous", () => {
+    const { onChange, track } = renderBar({ valueMiB: 1024 });
+
+    pointer(track, "pointerdown", 900, true);
+
     expect(onChange).toHaveBeenLastCalledWith(2464);
+  });
+
+  it("snaps every move to a multiple of 512 MiB, until Shift is held", () => {
+    const { onChange, container } = renderBar({ valueMiB: 1024 });
+
+    pointer(blue(container), "pointerdown", 812);
+    for (const x of [822, 835, 851, 870, 893]) {
+      pointer(blue(container), "pointermove", x);
+      expect((onChange.mock.calls[onChange.mock.calls.length - 1][0] as number) % 512).toBe(0);
+    }
+
+    pointer(blue(container), "pointermove", 893, true);
+    expect((onChange.mock.calls[onChange.mock.calls.length - 1][0] as number) % 512).not.toBe(0);
+  });
+
+  it("lets Shift be pressed and released in the middle of one drag", () => {
+    const { onChange, container } = renderBar({ valueMiB: 1024 });
+
+    pointer(blue(container), "pointerdown", 812);
+    pointer(blue(container), "pointermove", 862, true); // +5% = 819 → 1843.2 → 1856（细）
+    expect(onChange).toHaveBeenLastCalledWith(1856);
+    pointer(blue(container), "pointermove", 862); // 松开 Shift：回到网格
+    expect(onChange).toHaveBeenLastCalledWith(2048);
   });
 
   it("grabbing either thumb changes nothing until it moves", () => {
@@ -135,7 +166,7 @@ describe("MemoryBar dragging", () => {
 
     // 手柄在 81.25%，抓在它偏右一点的 830 处；向右拖 50px = 5% = 819 MiB
     pointer(blue(container), "pointerdown", 830);
-    pointer(blue(container), "pointermove", 880);
+    pointer(blue(container), "pointermove", 880, true);
 
     expect(onChange).toHaveBeenLastCalledWith(1856);
   });
@@ -144,7 +175,7 @@ describe("MemoryBar dragging", () => {
     const { onChange, container } = renderBar({ valueMiB: 1024 });
 
     pointer(blue(container), "pointerdown", 812);
-    pointer(blue(container), "pointermove", 792); // 左移 2% = 328 MiB
+    pointer(blue(container), "pointermove", 792, true); // 左移 2% = 328 MiB
     expect(onChange).toHaveBeenLastCalledWith(704);
 
     pointer(blue(container), "pointermove", 700);
@@ -195,7 +226,7 @@ describe("MemoryBar dragging", () => {
     expect(onChange).toHaveBeenLastCalledWith(8192);
 
     // 从按下的地方继续：再往左 10% = 再多分配 1638 MiB
-    pointer(track, "pointermove", 400);
+    pointer(track, "pointermove", 400, true);
     expect(onChange).toHaveBeenLastCalledWith(8192 + 1632);
   });
 
@@ -203,8 +234,8 @@ describe("MemoryBar dragging", () => {
     const { onChange, container } = renderBar({ valueMiB: 1024 });
 
     pointer(orange(container), "pointerdown", 750);
-    // 向左 50px = 5% = 819 MiB，指针粒度 32 MiB
-    pointer(orange(container), "pointermove", 700);
+    // 向左 50px = 5% = 819 MiB，按住 Shift 时指针粒度 32 MiB
+    pointer(orange(container), "pointermove", 700, true);
 
     expect(onChange).toHaveBeenLastCalledWith(1856);
     expect(barGeometryOver(1856)).toBe(0);
@@ -255,6 +286,29 @@ describe("MemoryBar dragging", () => {
     pointer(orange(container), "pointermove", 500);
 
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("draws the snapping ticks on the track", () => {
+    const { container } = renderBar({ valueMiB: 1024 });
+
+    expect(container.querySelectorAll(".memory-tick").length).toBeGreaterThan(10);
+    expect(container.querySelectorAll(".memory-tick.major").length).toBeGreaterThan(0);
+  });
+
+  it("shows the focus ring only for real keyboard use, not for a press or the Shift key", () => {
+    const { container, track } = renderBar({ valueMiB: 1024 });
+    const bar = container.querySelector(".memory-bar") as HTMLElement;
+    const input = screen.getByRole("slider", { name: "游戏内存上限" });
+
+    pointer(track, "pointerdown", 900);
+    fireEvent.keyDown(input, { key: "Shift" });
+    expect(bar).toHaveAttribute("data-keyboard", "false");
+
+    fireEvent.keyDown(input, { key: "ArrowRight" });
+    expect(bar).toHaveAttribute("data-keyboard", "true");
+
+    pointer(track, "pointerdown", 900);
+    expect(bar).toHaveAttribute("data-keyboard", "false");
   });
 
   it("takes over the press so the browser never starts a text selection or native drag", () => {
