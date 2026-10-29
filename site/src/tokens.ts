@@ -37,6 +37,17 @@ export const sizes = {
   hairline: "1px",
   /** The line under the current page in the header. */
   indicator: "2px",
+  /** Inner padding of a solid panel that carries prose. */
+  panel: "32px",
+} as const;
+
+/**
+ * The page backdrop: a solid fallback colour plus one original, low-contrast SVG per
+ * theme (public/backdrop-*.svg). These are the only colours the site writes by hand.
+ */
+export const backdrop = {
+  dark: { color: "#0a0f22", image: 'url("/backdrop-dark.svg")' },
+  light: { color: "#eef1f9", image: 'url("/backdrop-light.svg")' },
 } as const;
 
 /** Breakpoints, as ready-made media queries. */

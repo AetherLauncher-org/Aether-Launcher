@@ -1,18 +1,25 @@
 import { MessageBar, MessageBarBody, Text, makeStyles, tokens } from "@fluentui/react-components";
 import type { ReactNode } from "react";
-import { screen, space, textSize, widths } from "./tokens";
+import { screen, sizes, space, textSize, widths } from "./tokens";
 
 const useStyles = makeStyles({
+  // The same 960 container as the header; the text sits in a solid panel on the backdrop.
   article: {
-    display: "grid",
-    rowGap: space.m,
-    // The same 960 container as the header, with the text in a left-aligned reading column.
-    gridTemplateColumns: `minmax(0, ${widths.prose})`,
     maxWidth: widths.page,
     marginInline: "auto",
     paddingTop: space.page,
     paddingInline: space.xl,
-    [screen.phone]: { paddingInline: space.l },
+    [screen.phone]: { paddingInline: space.l, paddingTop: space.xl },
+  },
+  panel: {
+    display: "grid",
+    rowGap: space.m,
+    maxWidth: widths.prose,
+    padding: sizes.panel,
+    backgroundColor: tokens.colorNeutralBackground1,
+    border: `${sizes.hairline} solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusXLarge,
+    [screen.phone]: { padding: space.xl },
   },
   header: { display: "grid", rowGap: space.s },
   meta: { color: tokens.colorNeutralForeground3 },
@@ -44,6 +51,7 @@ export function Article({ title, meta, children }: { title: string; meta: ReactN
   const styles = useStyles();
   return (
     <article className={styles.article}>
+      <div className={styles.panel}>
       <div className={styles.header}>
         <Text as="h1" size={textSize.title} weight="semibold">
           {title}
@@ -53,6 +61,7 @@ export function Article({ title, meta, children }: { title: string; meta: ReactN
         </Text>
       </div>
       {children}
+      </div>
     </article>
   );
 }

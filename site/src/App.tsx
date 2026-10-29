@@ -1,4 +1,4 @@
-import { FluentProvider, makeStyles, tokens, webDarkTheme, webLightTheme } from "@fluentui/react-components";
+import { FluentProvider, makeStyles, mergeClasses, tokens, webDarkTheme, webLightTheme } from "@fluentui/react-components";
 import { useEffect, useState } from "react";
 import { SiteFooter, SiteHeader } from "./chrome";
 import { chrome, meta } from "./copy";
@@ -8,13 +8,19 @@ import { Privacy } from "./pages/Privacy";
 import { Security } from "./pages/Security";
 import { hrefFor, siteOrigin } from "./router";
 import type { Route } from "./router";
+import { backdrop } from "./tokens";
 
 const useStyles = makeStyles({
   root: {
     minHeight: "100vh",
-    backgroundColor: tokens.colorNeutralBackground1,
     color: tokens.colorNeutralForeground1,
+    backgroundRepeat: "no-repeat",
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundAttachment: "fixed",
   },
+  dark: { backgroundColor: backdrop.dark.color, backgroundImage: backdrop.dark.image },
+  light: { backgroundColor: backdrop.light.color, backgroundImage: backdrop.light.image },
   main: { outlineStyle: "none" },
 });
 
@@ -68,7 +74,7 @@ export default function App() {
   useDocumentHead(route);
 
   return (
-    <FluentProvider theme={dark ? webDarkTheme : webLightTheme} className={styles.root}>
+    <FluentProvider theme={dark ? webDarkTheme : webLightTheme} className={mergeClasses(styles.root, dark ? styles.dark : styles.light)}>
       <SiteHeader route={route} />
       <main id="main" tabIndex={-1} className={styles.main}>
         <Page route={route} />

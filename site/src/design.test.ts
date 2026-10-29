@@ -73,6 +73,25 @@ describe("the site follows DESIGN.md", () => {
     expect(violations(/\bsize=\{\d+\}/g, (match) => allowed.has(match.replace(/\D/g, "")))).toEqual([]);
   });
 
+  it("ships its own backdrop art, self-contained: no embedded images, links or scripts", () => {
+    const art = import.meta.glob("../public/backdrop-*.svg", {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    }) as Record<string, string>;
+
+    expect(Object.keys(art)).toHaveLength(2);
+    for (const svg of Object.values(art)) {
+      const withoutNamespace = svg.replace('xmlns="http://www.w3.org/2000/svg"', "");
+      expect(withoutNamespace).not.toMatch(/https?:|<image|href=|<script|<foreignObject|@import/i);
+      expect(svg).toContain("Original artwork");
+    }
+  });
+
+  it("never points at another site for art, fonts or scripts", () => {
+    expect(violations(/https?:\/\/(?!github\.com|account\.live\.com|www\.cloudflare\.com|launcher\.abnt\.it)[^\s"'`)]+/g)).toEqual([]);
+  });
+
   it("does not use a different theme than Fluent's own", () => {
     expect(violations(/createLightTheme|createDarkTheme|BrandVariants/g)).toEqual([]);
   });

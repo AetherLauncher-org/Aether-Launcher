@@ -7,11 +7,13 @@ The goal is calm: one background, one accent, one rhythm. If something looks lou
 ## Colour
 
 - **Theme:** Fluent's stock `webLightTheme` / `webDarkTheme`, following the system. We do not make up a brand ramp for the site; Fluent's own is calibrated for contrast.
-- **Surfaces:** the page and the header use `colorNeutralBackground1`. Cards have no fill and a 1px `colorNeutralStroke2` border. One surface, separated by lines, never by shadow or tint.
-- **Text:** `colorNeutralForeground1` for headings and body, `colorNeutralForeground2` for leads and secondary text, `colorNeutralForeground3` for captions and dates.
+- **Backdrop:** a deep navy (dark) or pale blue-grey (light) fill with one **original** SVG per theme (`public/backdrop-*.svg`): a few large, soft, low-contrast planes with a faint edge line and a handful of tiny stars. It is fixed behind the page and never carries text. The two backdrop colours in `tokens.ts` are the only hand-written colours.
+- **Surfaces:** everything that carries text is a **solid** Fluent surface (`colorNeutralBackground1`) with a 1px `colorNeutralStroke2` border and a large radius: the header, every card, the status list and each prose page. No translucency, blur or shadow on a surface.
+- **Text:** `colorNeutralForeground1` for headings and body, `colorNeutralForeground2` for leads and secondary text, `colorNeutralForeground3` for captions and dates. Text that sits directly on the backdrop (the home hero, section headings, the footer) uses these same tokens.
 - **Accent:** `colorBrand*` only on the primary button, links and the current-page underline. Nowhere else.
 - **Status:** two chromatic badges at most (available = success, in progress = brand). "Planned" is a neutral outline badge.
-- **Forbidden:** raw hex or `rgb()` values, gradients, glows, drop shadows, translucent overlays, blur.
+- **Forbidden in code:** raw hex or `rgb()` values, gradients, glows, drop shadows, blur. The backdrop is an image, not CSS.
+- **Third-party art:** none. We do not copy or hotlink another company's artwork, and we do not imitate the look of Microsoft's sign-in pages, so nobody mistakes this site for them.
 
 ## Spacing
 
@@ -23,6 +25,7 @@ One scale, in pixels: **4, 8, 12, 16, 24, 32, 48, 64**. Nothing else, ever.
 | Gap between paragraphs, list items | 12 and 8 |
 | Gap between cards | 16 |
 | Card padding | 24 (gap inside a card: 12) |
+| Prose panel padding | 32 (24 on a phone) |
 | Page gutter | 24 (16 on a phone) |
 | Between sections | 48 |
 | Top of the page, below the header | 64 |
