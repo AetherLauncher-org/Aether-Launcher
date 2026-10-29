@@ -12,6 +12,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "site:dev": "vite --config site/vite.config.ts",
+    "site:build": "tsc --noEmit -p site && vite build --config site/vite.config.ts",
+    "site:preview": "vite preview --config site/vite.config.ts --port 5191",
     "tauri": "tauri"
   },
   "dependencies": {

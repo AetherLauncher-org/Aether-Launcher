@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="A transparent, resilient Minecraft: Java Edition launcher built with Rust, Tauri 2 and Fluent 2." />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <title>Aether Launcher: a transparent Minecraft launcher</title>
+    <style>
+      html { background: #fafafa; }
+      @media (prefers-color-scheme: dark) { html { background: #141414; } }
+      body { margin: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <p style="font-family: system-ui, sans-serif; max-width: 640px; margin: 48px auto; padding: 0 16px; line-height: 1.6">
+        <strong>Aether Launcher</strong> is an unofficial, open-source Minecraft: Java Edition launcher
+        built with Rust, Tauri 2 and Fluent 2. It is not approved by or associated with Mojang Studios or
+        Microsoft. This site needs JavaScript; the source, license and issues are on
+        <a href="https://github.com/AetherLauncher-org/Aether-Launcher">GitHub</a>.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

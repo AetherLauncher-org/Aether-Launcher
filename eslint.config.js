@@ -7,6 +7,7 @@ export default tseslint.config(
   {
     ignores: [
       "dist/**",
+      "site/dist/**",
       "target/**",
       "target-fresh/**",
       "src-tauri/target/**",
