@@ -111,14 +111,16 @@ export function MemoryBar({ system, valueMiB, onChange, disabled = false }: Memo
     }
     // 不夹在轨道里：指针被捕获，拖到轨道外面也要继续算，这样把蓝色一路往右推也能推过「满」
     const movedPct = ((event.clientX - current.startX) / width) * 100;
-    onChange?.(
-      valueFromDrag(
-        current.startValue,
-        current.thumb === "right" ? movedPct : -movedPct,
-        system,
-        event.shiftKey,
-      ),
-    );
+    const increasePct = current.thumb === "right" ? movedPct : -movedPct;
+    onChange?.(valueFromDrag(current.startValue, increasePct, system, event.shiftKey));
+
+    // 推到最小值或最大值之后，指针继续走多远都不该欠账：把锚点重置在这个极限上，
+    // 指针一掉头手柄就立刻跟着走，而不是先把多走的那一段原路退回来
+    const raw = current.startValue + (increasePct / 100) * geometry.totalMib;
+    if (raw > max || raw < minMemoryMiB) {
+      current.startValue = raw > max ? max : minMemoryMiB;
+      current.startX = event.clientX;
+    }
   };
 
   const stopDragging = () => {

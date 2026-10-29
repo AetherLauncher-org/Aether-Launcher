@@ -288,6 +288,28 @@ describe("MemoryBar dragging", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("does not owe the overshoot: after pushing past the end, turning around moves the thumb at once", () => {
+    const { onChange, container } = renderBar({ valueMiB: 4096 });
+
+    pointer(blue(container), "pointerdown", 1000);
+    pointer(blue(container), "pointermove", 1800); // 4096 + 80% × 16384 远远推过最大值（16384）
+    expect(onChange).toHaveBeenLastCalledWith(16_384);
+
+    pointer(blue(container), "pointermove", 1750); // 掉头 5% = 819 MiB
+    expect(onChange).toHaveBeenLastCalledWith(16_384 - 1024);
+  });
+
+  it("does not owe the overshoot at the minimum either", () => {
+    const { onChange, container } = renderBar({ valueMiB: 1024 });
+
+    pointer(blue(container), "pointerdown", 812);
+    pointer(blue(container), "pointermove", 300);
+    expect(onChange).toHaveBeenLastCalledWith(512);
+
+    pointer(blue(container), "pointermove", 350); // 回头 5%
+    expect(onChange).toHaveBeenLastCalledWith(1536);
+  });
+
   it("draws the snapping ticks on the track", () => {
     const { container } = renderBar({ valueMiB: 1024 });
 
