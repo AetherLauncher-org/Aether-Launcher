@@ -72,11 +72,12 @@ pub fn list_modloader_choices(game_version: &str) -> Vec<ModLoaderChoice> {
         let source = MetaSource::new(forge::DEFAULT_MAVEN_BASE, HttpMetaFetcher::new());
         match forge::fetch_maven_versions(&source) {
             Ok(list) => {
-                let versions: Vec<String> = list
+                let mut versions: Vec<String> = list
                     .into_iter()
                     .filter(|entry| entry.game_version == game_version)
                     .map(|entry| entry.version)
                     .collect();
+                newest_first(&mut versions);
                 ModLoaderChoice {
                     kind: "forge".to_owned(),
                     label: "Forge".to_owned(),
@@ -96,11 +97,12 @@ pub fn list_modloader_choices(game_version: &str) -> Vec<ModLoaderChoice> {
         let source = MetaSource::new(neoforge::DEFAULT_MAVEN_BASE, HttpMetaFetcher::new());
         match neoforge::fetch_versions(&source) {
             Ok(list) => {
-                let versions: Vec<String> = list
+                let mut versions: Vec<String> = list
                     .into_iter()
                     .filter(|entry| entry.game_version == game_version)
                     .map(|entry| entry.version)
                     .collect();
+                newest_first(&mut versions);
                 ModLoaderChoice {
                     kind: "neoforge".to_owned(),
                     label: "NeoForge".to_owned(),
@@ -118,6 +120,56 @@ pub fn list_modloader_choices(game_version: &str) -> Vec<ModLoaderChoice> {
     // 不兼容不再由后端写死：PCL 是拿**已选项**去判（`SelectedFabric IsNot Nothing`），
     // 所以只有前端知道该标哪一行，这里只负责给出每个加载器各自的可用性。
     choices
+}
+
+/// Sorts loader versions newest first.
+///
+/// A maven `maven-metadata.xml` lists versions oldest first, and the picker marks
+/// `versions[0]` as the latest and preselects it, so Forge and NeoForge have to be put in
+/// the order Fabric's API already returns. Dotted numbers compare numerically (`10` after
+/// `9`), a version without a suffix is newer than the same numbers with one
+/// (`21.0.0` over `21.0.0-beta`), and anything else falls back to text order so the result
+/// is always deterministic.
+fn newest_first(versions: &mut [String]) {
+    versions.sort_by(|a, b| compare_versions(b, a));
+}
+
+fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
+    let (a_numbers, a_suffix) = split_version(a);
+    let (b_numbers, b_suffix) = split_version(b);
+    for index in 0..a_numbers.len().max(b_numbers.len()) {
+        let left = a_numbers.get(index).copied().unwrap_or(0);
+        let right = b_numbers.get(index).copied().unwrap_or(0);
+        if left != right {
+            return left.cmp(&right);
+        }
+    }
+    // Same numbers: a release is newer than a pre-release.
+    match (a_suffix.is_empty(), b_suffix.is_empty()) {
+        (true, false) => std::cmp::Ordering::Greater,
+        (false, true) => std::cmp::Ordering::Less,
+        _ => a_suffix.cmp(b_suffix).then_with(|| a.cmp(b)),
+    }
+}
+
+/// `"21.0.0-beta"` → `([21, 0, 0], "-beta")`. Stops at the first part that is not a number.
+fn split_version(version: &str) -> (Vec<u64>, &str) {
+    let mut numbers = Vec::new();
+    let mut rest = version;
+    loop {
+        let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+        // `parse` fails on an absurdly long run of digits; treat that as "not a number".
+        let Some(number) = rest[..digits].parse::<u64>().ok().filter(|_| digits > 0) else {
+            break;
+        };
+        numbers.push(number);
+        rest = &rest[digits..];
+        match rest.strip_prefix('.') {
+            Some(after) => rest = after,
+            None => break,
+        }
+    }
+    (numbers, rest)
 }
 
 fn unavailable(kind: &str, label: &str, error: impl std::fmt::Display) -> ModLoaderChoice {
@@ -141,3 +193,7 @@ pub fn parse_kind(kind: &str) -> Option<ModLoaderKind> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+#[path = "order_tests.rs"]
+mod order_tests;
