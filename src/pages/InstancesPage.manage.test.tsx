@@ -5,6 +5,7 @@ import { instanceSettingsKey } from "../lib/instanceSettings";
 import type { PageDefinition } from "../navigation";
 import { pretendBrowser, pretendDesktop, renderWithState, routeInvoke } from "../test/support";
 import type { Handlers } from "../test/support";
+import { previews } from "../lib/schematic/previewQueue";
 import { InstancesPage } from "./InstancesPage";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -62,7 +63,32 @@ async function openManagement(name = "Survival") {
   return screen.findByRole("heading", { level: 1, name });
 }
 
+// A tiny schematic: 2×1×1, one stone block. runs = [(1,1),(0,1)] in base64.
+const schematicView = (name = "House.litematic") => ({
+  fileName: name,
+  format: "litematic",
+  name: "Little House",
+  author: "Aether",
+  description: "",
+  dataVersion: 3955,
+  size: [2, 1, 1],
+  solidBlocks: 1,
+  palette: [
+    { name: "minecraft:air", properties: [], air: true, count: 1 },
+    { name: "minecraft:stone", properties: [], air: false, count: 1 },
+  ],
+  runs: btoa(String.fromCharCode(1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0)),
+  runCount: 2,
+  blockEntities: [],
+  blockEntityTotal: 0,
+});
+
+const schematicFiles = [{ name: "House.litematic", sizeBytes: 485, enabled: true, isFolder: false }];
+
 beforeEach(() => {
+  previews.forget("");
+  // jsdom has no canvas; the cards then show no picture but still describe the file.
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
   window.localStorage.clear();
   vi.mocked(invoke).mockReset();
   pretendDesktop();
@@ -70,6 +96,7 @@ beforeEach(() => {
 
 afterEach(() => {
   pretendBrowser();
+  vi.restoreAllMocks();
 });
 
 describe("instance management page", () => {
@@ -294,5 +321,177 @@ describe("instance management page", () => {
 
     expect(await screen.findByText("读取实例失败")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重新读取" })).toBeInTheDocument();
+  });
+
+  describe("the schematics tab", () => {
+    const withSchematics = (overrides: Handlers = {}) =>
+      backend({
+        list_instance_content: (args) => ((args as { kind: string }).kind === "schematics" ? schematicFiles : []),
+        read_instance_schematic: (args) => schematicView((args as { name: string }).name),
+        ...overrides,
+      });
+
+    it("shows a card per file with what the file says about itself", async () => {
+      withSchematics();
+      await openManagement();
+
+      fireEvent.click(await screen.findByRole("tab", { name: /^投影/ }));
+
+      expect(await screen.findByText("Little House")).toBeInTheDocument();
+      expect(screen.getByText("Litematica")).toBeInTheDocument();
+      expect(screen.getByText(/2×1×1 · 1 方块/)).toBeInTheDocument();
+      expect(screen.getByText("数据版本 3955")).toBeInTheDocument();
+      expect(calls("read_instance_schematic")[0][1]).toEqual({ id: "i1", name: "House.litematic" });
+    });
+
+    it("explains a file it cannot read, and does not offer to open or convert it", async () => {
+      withSchematics({
+        read_instance_schematic: () => {
+          throw "the file is not a Litematica, Sponge or structure file";
+        },
+      });
+      await openManagement();
+
+      fireEvent.click(await screen.findByRole("tab", { name: /^投影/ }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("not a Litematica");
+      expect(screen.getByRole("button", { name: "3D 查看" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "转换…" })).toBeDisabled();
+    });
+
+    it("opens the 3D preview for the chosen file, and says so when WebGL is missing", async () => {
+      withSchematics();
+      await openManagement();
+      fireEvent.click(await screen.findByRole("tab", { name: /^投影/ }));
+      await screen.findByText("Little House");
+
+      fireEvent.click(screen.getByRole("button", { name: "3D 查看" }));
+
+      expect(await screen.findByRole("dialog", { name: "Little House 的 3D 预览" })).toBeInTheDocument();
+      // jsdom has no WebGL, which is the same message a machine without it gets.
+      expect(await screen.findByText(/不支持 WebGL/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "关闭预览" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: /3D 预览/ })).not.toBeInTheDocument());
+    });
+
+    it("converts to another format and version with a plain file name, then lists the new file and the warnings", async () => {
+      let files = [...schematicFiles];
+      withSchematics({
+        list_instance_content: (args) => ((args as { kind: string }).kind === "schematics" ? files : []),
+        schematic_conversion_targets: () => ({
+          formats: [
+            { label: "litematic", name: "Litematica (.litematic)" },
+            { label: "schem", name: "Sponge / WorldEdit (.schem)" },
+            { label: "nbt", name: "原版结构文件 (.nbt)" },
+          ],
+          versions: [{ dataVersion: 3465, name: "1.20.1" }, { dataVersion: 3955, name: "1.21.1" }],
+        }),
+        convert_instance_schematic: () => {
+          files = [...files, { name: "House (converted).schem", sizeBytes: 500, enabled: true, isFolder: false }];
+          return {
+            fileName: "House (converted).schem",
+            format: "schem",
+            dataVersion: 3955,
+            renamedBlocks: 3,
+            warnings: ["Item data that changed format was left out."],
+          };
+        },
+      });
+      await openManagement();
+      fireEvent.click(await screen.findByRole("tab", { name: /^投影/ }));
+      await screen.findByText("Little House");
+
+      fireEvent.click(screen.getByRole("button", { name: "转换…" }));
+      const dialog = await screen.findByRole("dialog", { name: "转换投影" });
+      // The current format (litematic) is not the default target.
+      const format = await within(dialog).findByRole("combobox", { name: "目标格式" });
+      await within(dialog).findByRole("option", { name: /Sponge/ });
+      expect(format).toHaveValue("schem");
+      fireEvent.change(within(dialog).getByRole("combobox", { name: "目标版本" }), { target: { value: "3955" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "转换" }));
+
+      await waitFor(() => expect(calls("convert_instance_schematic")).toHaveLength(1));
+      expect(calls("convert_instance_schematic")[0][1]).toEqual({
+        id: "i1",
+        name: "House.litematic",
+        format: "schem",
+        dataVersion: 3955,
+      });
+      expect(await within(dialog).findByText(/已保存为「House \(converted\)\.schem」/)).toBeInTheDocument();
+      expect(within(dialog).getByText("3 个方块换了新 ID。")).toBeInTheDocument();
+      expect(within(dialog).getByText("Item data that changed format was left out.")).toBeInTheDocument();
+      fireEvent.click(within(dialog).getByRole("button", { name: "完成" }));
+      expect(await screen.findAllByText("Little House")).not.toHaveLength(0);
+      await waitFor(() => expect(calls("list_instance_content").filter(([, a]) => (a as { kind: string }).kind === "schematics").length).toBeGreaterThan(1));
+    });
+
+    it("keeps the version when asked to, sending no version at all", async () => {
+      withSchematics({
+        schematic_conversion_targets: () => ({
+          formats: [{ label: "litematic", name: "Litematica" }, { label: "nbt", name: "Structure" }],
+          versions: [],
+        }),
+        convert_instance_schematic: () => ({ fileName: "x.nbt", format: "nbt", dataVersion: 3955, renamedBlocks: 0, warnings: [] }),
+      });
+      await openManagement();
+      fireEvent.click(await screen.findByRole("tab", { name: /^投影/ }));
+      await screen.findByText("Little House");
+
+      fireEvent.click(screen.getByRole("button", { name: "转换…" }));
+      const dialog = await screen.findByRole("dialog", { name: "转换投影" });
+      await within(dialog).findByRole("option", { name: /Structure/ });
+      fireEvent.click(within(dialog).getByRole("button", { name: "转换" }));
+
+      await waitFor(() => expect(calls("convert_instance_schematic")).toHaveLength(1));
+      expect(calls("convert_instance_schematic")[0][1]).toMatchObject({ format: "nbt", dataVersion: null });
+    });
+
+    it("does not convert with a made-up version number", async () => {
+      withSchematics({ schematic_conversion_targets: () => ({ formats: [{ label: "nbt", name: "Structure" }], versions: [] }) });
+      await openManagement();
+      fireEvent.click(await screen.findByRole("tab", { name: /^投影/ }));
+      await screen.findByText("Little House");
+
+      fireEvent.click(screen.getByRole("button", { name: "转换…" }));
+      const dialog = await screen.findByRole("dialog", { name: "转换投影" });
+      await within(dialog).findByRole("option", { name: /Structure/ });
+      fireEvent.change(within(dialog).getByRole("combobox", { name: "目标版本" }), { target: { value: "custom" } });
+      fireEvent.change(within(dialog).getByRole("textbox", { name: "数据版本号" }), { target: { value: "-5" } });
+
+      expect(within(dialog).getByText("数据版本是 1 到 1000000 之间的整数")).toBeInTheDocument();
+      expect(within(dialog).getByRole("button", { name: "转换" })).toBeDisabled();
+    });
+
+    it("shows the backend's refusal in the dialog", async () => {
+      withSchematics({
+        schematic_conversion_targets: () => ({ formats: [{ label: "nbt", name: "Structure" }], versions: [] }),
+        convert_instance_schematic: () => {
+          throw "cannot access the instance files: disk full";
+        },
+      });
+      await openManagement();
+      fireEvent.click(await screen.findByRole("tab", { name: /^投影/ }));
+      await screen.findByText("Little House");
+
+      fireEvent.click(screen.getByRole("button", { name: "转换…" }));
+      const dialog = await screen.findByRole("dialog", { name: "转换投影" });
+      await within(dialog).findByRole("option", { name: /Structure/ });
+      fireEvent.click(within(dialog).getByRole("button", { name: "转换" }));
+
+      expect(await within(dialog).findByRole("alert")).toHaveTextContent("disk full");
+    });
+
+    it("deletes a schematic through the same confirmation as everything else", async () => {
+      withSchematics();
+      await openManagement();
+      fireEvent.click(await screen.findByRole("tab", { name: /^投影/ }));
+      await screen.findByText("Little House");
+
+      fireEvent.click(screen.getByRole("button", { name: "删除 House.litematic" }));
+      fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "删除" }));
+
+      await waitFor(() => expect(calls("remove_instance_content")).toHaveLength(1));
+      expect(calls("remove_instance_content")[0][1]).toEqual({ id: "i1", kind: "schematics", name: "House.litematic" });
+    });
   });
 });

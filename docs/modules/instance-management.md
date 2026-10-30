@@ -29,6 +29,7 @@
 | `remove_instance_content` | 删除一项（文件，或世界这样的整个文件夹） |
 | `list_instance_logs` / `read_instance_log` | 最近一次日志和崩溃报告；只读末尾 256 KiB，且已脱敏 |
 | `open_instance_folder` | 在文件管理器里打开某个标签对应的文件夹，不存在就先建 |
+| `read_instance_schematic` / `convert_instance_schematic` / `schematic_conversion_targets` | 投影的 3D 预览、转换和转换对话框的选项，见 [投影原理图](schematics.md) |
 
 ## 日志的处理
 
@@ -43,5 +44,6 @@
 - **每个实例选 Java。** 设置页里选的 Java 目前**不影响启动**：后端按游戏要求的主版本自己从扫描结果里挑。要让「全局 / 每个实例选 Java」真的生效，前端得告诉后端选哪一个，而 [启动与进程](../design/launch-and-process.md) 规定前端不传 Java 路径，`launch.test.ts` 里也有一条测试守着这个。比较稳妥的做法是后端给每个扫描到的 Java 发一个不透明的 id，前端只存和回传 id，后端在自己扫描到的列表里按 id 查（找不到或主版本不符就自动挑）。这改动设置页和启动命令的契约，需要先定，所以这一轮没做。
 - **模组信息。** 列表现在只有文件名和大小。读 `fabric.mod.json` / `mods.toml` 里的名字、版本、图标要打开不可信的 jar，需要先定大小和条目上限，以及放在哪一层。
 - **投影的子文件夹。** Litematica 的 `schematics/` 允许建子文件夹，这里只列最上层的文件。
+- **投影的卡片、3D 预览和转换**已经做了，见 [投影原理图](schematics.md)。
 - **导入内容、搬运存档、导出整合包。** 不在这一轮。
 - **复制实例。** 需要决定要不要带存档，也要避开同名冲突，没做。

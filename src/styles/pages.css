@@ -1731,3 +1731,327 @@
     transform: rotate(360deg);
   }
 }
+
+/* ---- 投影：卡片 ----------------------------------------------------------------------- */
+
+.schematic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.schematic-card {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--borderRadiusLarge);
+  background: var(--card-bg);
+}
+
+.schematic-thumb {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 8 / 5;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--card-stroke);
+  background: var(--colorNeutralBackground3);
+  color: var(--colorNeutralForeground3);
+  cursor: pointer;
+}
+
+.schematic-thumb:disabled {
+  cursor: default;
+}
+
+.schematic-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.schematic-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px 14px;
+}
+
+.schematic-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.schematic-problem {
+  color: var(--colorPaletteRedForeground1);
+}
+
+.schematic-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.convert-warnings {
+  display: grid;
+  gap: 4px;
+}
+
+.convert-warnings ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* ---- 投影：3D 预览 ------------------------------------------------------------------- */
+
+.viewer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #0b1020;
+  color: #fff;
+  user-select: none;
+}
+
+.viewer-loading {
+  display: grid;
+  place-items: center;
+}
+
+.viewer-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* 渲染分辨率可以低于窗口，放大时不要糊成一片 */
+  image-rendering: pixelated;
+  outline: none;
+}
+
+.viewer-bar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: linear-gradient(rgb(0 0 0 / 0.55), transparent);
+  pointer-events: none;
+}
+
+.viewer-bar button {
+  pointer-events: auto;
+  color: #fff;
+}
+
+.viewer-title {
+  display: grid;
+}
+
+.viewer-meta {
+  color: rgb(255 255 255 / 0.75);
+}
+
+.viewer-crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  opacity: 0.35;
+  pointer-events: none;
+  background:
+    linear-gradient(#fff, #fff) center / 2px 100% no-repeat,
+    linear-gradient(#fff, #fff) center / 100% 2px no-repeat;
+  mix-blend-mode: difference;
+}
+
+.viewer-crosshair[data-locked="true"] {
+  opacity: 0.9;
+}
+
+.viewer-help {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 8px 12px;
+  font-size: var(--fontSizeBase200);
+  color: rgb(255 255 255 / 0.85);
+  text-align: center;
+  background: linear-gradient(transparent, rgb(0 0 0 / 0.55));
+  pointer-events: none;
+}
+
+.viewer-failure {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  gap: 12px;
+  padding: 20px 24px;
+  border-radius: var(--borderRadiusLarge);
+  background: rgb(0 0 0 / 0.7);
+  transform: translate(-50%, -50%);
+}
+
+.viewer-stats {
+  position: absolute;
+  top: 56px;
+  left: 12px;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--borderRadiusMedium);
+  background: rgb(0 0 0 / 0.6);
+  font-size: var(--fontSizeBase200);
+  pointer-events: none;
+}
+
+/* Jade 风格的方块提示 */
+.jade {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+  max-width: min(420px, 90vw);
+  padding: 10px 12px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: var(--borderRadiusMedium);
+  background: rgb(10 14 28 / 0.82);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.jade-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.jade-swatch {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 1px solid rgb(255 255 255 / 0.35);
+  border-radius: 4px;
+}
+
+.jade-names {
+  display: grid;
+  min-width: 0;
+}
+
+.jade-id,
+.jade-pos,
+.jade-key,
+.jade-hint {
+  color: rgb(255 255 255 / 0.7);
+}
+
+.jade-props,
+.jade-items,
+.inspector-items {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fontSizeBase200);
+}
+
+.jade-props li,
+.jade-items li {
+  display: flex;
+  gap: 8px;
+}
+
+.jade-key {
+  min-width: 56px;
+}
+
+.jade-entity {
+  color: #ffd866;
+}
+
+.jade-nbt,
+.inspector-nbt {
+  max-height: 160px;
+  margin: 0;
+  padding: 6px 8px;
+  overflow: auto;
+  border-radius: var(--borderRadiusSmall);
+  background: rgb(0 0 0 / 0.35);
+  font-family: var(--fontFamilyMonospace);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.inspector {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  bottom: 40px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  width: min(380px, 40vw);
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: var(--borderRadiusMedium);
+  background: rgb(10 14 28 / 0.9);
+  user-select: text;
+}
+
+.inspector-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inspector-head button {
+  margin-left: auto;
+  color: #fff;
+}
+
+.inspector-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  font-size: var(--fontSizeBase200);
+}
+
+.inspector-list div {
+  display: flex;
+  gap: 12px;
+}
+
+.inspector-list dt {
+  min-width: 64px;
+  color: rgb(255 255 255 / 0.7);
+}
+
+.inspector-list dd {
+  margin: 0;
+}
+
+.inspector-items li {
+  display: grid;
+  gap: 2px;
+  padding: 4px 0;
+  border-top: 1px solid rgb(255 255 255 / 0.12);
+}
+
+.inspector-nbt {
+  max-height: none;
+}

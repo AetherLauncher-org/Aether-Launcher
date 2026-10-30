@@ -22,6 +22,8 @@ import type { JavaRuntimeInfo } from "../ipc/java";
 import type { ContentItem, ContentKind, InstanceDetails, LogContent, LogEntry } from "../ipc/manage";
 import type { BrowserLoginInfo, DeviceCodeInfo, LoginEvent, MicrosoftAccount } from "../ipc/accounts";
 import type { SystemMemory } from "../ipc/system";
+import type { ConversionResult, SchematicFormat } from "../ipc/schematics";
+import { mockConversionTargets, mockSchematicView } from "./mockSchematics";
 
 type Args = Record<string, unknown> | undefined;
 type Listener = { event: string; handlerId: number };
@@ -268,7 +270,12 @@ function seedContent(): Record<ContentKind, ContentItem[]> {
     resourcepacks: [file("Faithful 32x.zip", 14_200_000), folder("我的资源包", 3_100_000)],
     shaderpacks: [file("BSL_v8.2.zip", 1_900_000)],
     saves: [folder("新的世界", 84_000_000), folder("创造测试", 12_500_000)],
-    schematics: [file("House.litematic", 42_000), file("Tower.litematic", 118_000)],
+    schematics: [
+      file("Small House.litematic", 485),
+      file("Watch Tower.litematic", 446),
+      file("Pixel Heart.litematic", 377),
+      file("Checker Platform 16.litematic", 399),
+    ],
   };
 }
 
@@ -339,6 +346,29 @@ function toggleMod(id: string, name: string, enabled: boolean) {
   }
   item.name = next;
   item.enabled = enabled;
+}
+
+function convertMock(id: string, name: string, format: SchematicFormat, dataVersion: number | null): ConversionResult {
+  const content = contentOf(id);
+  if (!content.schematics.some((item) => item.name === name)) {
+    throw "that item does not exist";
+  }
+  const stem = name.replace(/\.[^.]+$/, "");
+  let fileName = `${stem} (converted).${format}`;
+  for (let attempt = 2; content.schematics.some((item) => item.name === fileName); attempt += 1) {
+    fileName = `${stem} (converted) ${attempt}.${format}`;
+  }
+  content.schematics.push(file(fileName, 500));
+  return {
+    fileName,
+    format,
+    dataVersion: dataVersion ?? 3955,
+    renamedBlocks: dataVersion !== null && dataVersion >= 3698 ? 2 : 0,
+    warnings:
+      dataVersion === null
+        ? []
+        : ["Blocks are not checked against the target version's block list; a block that does not exist there will not load."],
+  };
 }
 
 function renameMock(id: string, name: string): InstanceSummary {
@@ -512,6 +542,22 @@ async function handle(command: string, args: Args): Promise<unknown> {
     case "open_instance_folder":
       contentOf(String(args?.id));
       return null;
+    case "read_instance_schematic": {
+      const content = contentOf(String(args?.id));
+      if (!content.schematics.some((item) => item.name === args?.name)) {
+        throw "that item does not exist";
+      }
+      return mockSchematicView(String(args?.name));
+    }
+    case "convert_instance_schematic":
+      return convertMock(
+        String(args?.id),
+        String(args?.name),
+        args?.format as SchematicFormat,
+        (args?.dataVersion as number | null) ?? null,
+      );
+    case "schematic_conversion_targets":
+      return mockConversionTargets;
     case "pick_import_folder":
       await sleep(300);
       return importSources[0];

@@ -124,6 +124,18 @@ export type {
 export { gameStatus, startInstalledInstance, stopInstalledInstance } from "./launch";
 export type { GameRunStatus } from "./launch";
 
+// 投影原理图：3D 预览、转换
+export { convertInstanceSchematic, getConversionTargets, readInstanceSchematic } from "./schematics";
+export type {
+  BlockEntityView,
+  ConversionResult,
+  ConversionTargets,
+  ItemView,
+  PaletteEntry,
+  SchematicFormat,
+  SchematicView,
+} from "./schematics";
+
 // 实例管理：详情、改名、删除、内容文件夹、日志、打开文件夹
 export {
   contentKinds,
