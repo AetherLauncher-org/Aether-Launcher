@@ -249,6 +249,33 @@ fn entries_without_a_loader_version_are_skipped() {
 }
 
 #[test]
+fn a_placeholder_intermediary_is_reported_as_unsupported() {
+    // 26.x 这类游戏版本 Fabric 还没发布 intermediary 映射，接口给 `0.0.0`。
+    // 该构件只有几百字节，装上必定启动失败，所以要能被识别出来。
+    let json = r#"[{"loader":{"version":"0.20.1","stable":true},"intermediary":{"version":"0.0.0","stable":true}}]"#;
+
+    let versions = parse_loader_versions("26.1.2", json).unwrap();
+
+    assert_eq!(versions[0].intermediary_version, "0.0.0");
+    let reason = versions[0]
+        .unsupported_reason()
+        .expect("0.0.0 must be reported as unsupported");
+    assert!(
+        reason.contains("intermediary"),
+        "unexpected reason: {reason}"
+    );
+}
+
+#[test]
+fn a_real_intermediary_is_supported() {
+    let json = r#"[{"loader":{"version":"0.16.9","stable":true},"intermediary":{"version":"1.21.1","stable":true}}]"#;
+
+    let versions = parse_loader_versions("1.21.1", json).unwrap();
+
+    assert_eq!(versions[0].unsupported_reason(), None);
+}
+
+#[test]
 fn libraries_follow_client_then_common_then_server_and_dedupe_by_name() {
     let json = r#"[
       {"loader":{"version":"0.16.0","stable":true},"intermediary":{"version":"1.21.1"},
