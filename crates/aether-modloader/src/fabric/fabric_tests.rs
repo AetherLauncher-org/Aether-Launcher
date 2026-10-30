@@ -249,23 +249,41 @@ fn entries_without_a_loader_version_are_skipped() {
 }
 
 #[test]
-fn a_placeholder_intermediary_is_reported_as_unsupported() {
-    // 26.x 这类游戏版本 Fabric 还没发布 intermediary 映射，接口给 `0.0.0`。
-    // 该构件只有几百字节，装上必定启动失败，所以要能被识别出来。
+fn a_placeholder_intermediary_is_skipped_not_downloaded() {
+    // 26.x 起 Fabric 改用官方映射：接口仍在 intermediary 里填占位值 `0.0.0`
+    // （572 字节的空壳），但官方 profile 不再包含这一件，所以这里也要跳过它。
     let json = r#"[{"loader":{"version":"0.20.1","stable":true},"intermediary":{"version":"0.0.0","stable":true}}]"#;
 
     let versions = parse_loader_versions("26.1.2", json).unwrap();
+    let entry = &versions[0];
 
-    assert_eq!(versions[0].intermediary_version, "0.0.0");
-    let reason = versions[0]
-        .unsupported_reason()
-        .expect("0.0.0 must be reported as unsupported");
+    assert_eq!(entry.intermediary_version, "0.0.0");
+    // 能装：不是「不支持」，只是不需要 intermediary。
+    assert_eq!(entry.unsupported_reason(), None);
+
+    // 版本 JSON 和下载步骤里都不能出现 intermediary。
+    let plan = entry.install_plan("26.1.2", DEFAULT_MAVEN_BASE);
+    let json_content = plan
+        .steps
+        .iter()
+        .find_map(|step| match step {
+            InstallStep::WriteVersionJson { content, .. } => Some(content),
+            _ => None,
+        })
+        .expect("plan ends with a version json");
+    let listed = json_content["libraries"].as_array().expect("libraries");
     assert!(
-        reason.contains("intermediary"),
-        "unexpected reason: {reason}"
+        !listed.iter().any(|l| l["name"]
+            .as_str()
+            .is_some_and(|n| n.contains("intermediary"))),
+        "intermediary must not be listed: {listed:?}"
+    );
+    assert_eq!(
+        downloads(&plan).len(),
+        listed.len(),
+        "JSON 与下载步骤一一对应"
     );
 }
-
 #[test]
 fn a_real_intermediary_is_supported() {
     let json = r#"[{"loader":{"version":"0.16.9","stable":true},"intermediary":{"version":"1.21.1","stable":true}}]"#;

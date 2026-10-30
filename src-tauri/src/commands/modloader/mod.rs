@@ -61,20 +61,15 @@ pub fn list_modloader_choices(game_version: &str) -> Vec<ModLoaderChoice> {
         let source = MetaSource::new(fabric::DEFAULT_META_BASE, HttpMetaFetcher::new());
         match fabric::fetch_loader_versions(&source, game_version) {
             Ok(list) => {
-                // intermediary 是占位版本（`0.0.0`）的条目说明 Fabric 还没真正支持这个
-                // 游戏版本，剔掉它们，免得装出一个打不开的实例。
-                let versions: Vec<String> = list
-                    .into_iter()
-                    .filter(|entry| entry.unsupported_reason().is_none())
-                    .map(|entry| entry.loader_version)
-                    .collect();
+                let versions: Vec<String> =
+                    list.into_iter().map(|entry| entry.loader_version).collect();
                 ModLoaderChoice {
                     kind: "fabric".to_owned(),
                     label: "Fabric".to_owned(),
                     available: !versions.is_empty(),
-                    reason: versions.is_empty().then(|| {
-                        "Fabric 还没有发布这个游戏版本的 intermediary 映射，暂时装不了".to_owned()
-                    }),
+                    reason: versions
+                        .is_empty()
+                        .then(|| format!("Fabric 没有支持 {game_version} 的加载器版本")),
                     versions,
                     // Fabric API 是绝大多数 Fabric 模组的硬依赖，装上加载器就该一起装。
                     companions: vec![fabric_api_companion(game_version)],

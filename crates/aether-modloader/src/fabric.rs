@@ -167,20 +167,23 @@ impl FabricLoaderVersion {
         })
     }
 
-    /// 这个加载器版本能不能真正用起来。
+    /// 这个加载器版本有没有无法安装的已知问题。
     ///
-    /// Fabric 对还没发布 intermediary 映射的游戏版本（例如 26.x）会把占位版本 `0.0.0`
-    /// 填进来。该构件的 jar 只有几百字节，装上必定启动失败，所以在构造计划之前就拒掉，
-    /// 而不是装出一个打不开的实例。
+    /// 目前没有：`intermediary` 是占位版本 `0.0.0` 只说明这个游戏版本不需要它
+    /// （26.x 起 Fabric 改用官方映射），官方 profile 里也同样没有这一件，
+    /// 照常安装即可 —— 见 [`Self::has_real_intermediary`]。
     pub fn unsupported_reason(&self) -> Option<String> {
-        (self.intermediary_version == "0.0.0")
-            .then(|| "Fabric 还没有发布这个游戏版本的 intermediary 映射，暂时装不了".to_owned())
+        None
     }
 
-    /// 两件核心库的坐标（版本号为空时跳过对应的一件）。
+    /// 核心库坐标：`fabric-loader` 一定需要，`intermediary` 只在有真实映射时才加。
+    ///
+    /// 26.x 起 Fabric 改用官方映射，接口仍会在 `intermediary` 字段里填占位版本
+    /// `0.0.0`（那是 572 字节的空壳），但官方 profile 已经不再包含它。这里跟官方
+    /// profile 保持一致：占位版本直接跳过，而不是把它写进版本 JSON。
     fn core_libraries(&self) -> Vec<String> {
         let mut core = Vec::new();
-        if !self.intermediary_version.trim().is_empty() {
+        if self.has_real_intermediary() {
             core.push(format!(
                 "net.fabricmc:intermediary:{}",
                 self.intermediary_version
@@ -193,6 +196,15 @@ impl FabricLoaderVersion {
             ));
         }
         core
+    }
+
+    /// intermediary 是否是一个真实存在的映射。
+    ///
+    /// `0.0.0` 是 Fabric 对「这个游戏版本不再需要 intermediary」给出的占位值；
+    /// 空串表示接口没给。两种情况都不该去下载它。
+    fn has_real_intermediary(&self) -> bool {
+        let version = self.intermediary_version.trim();
+        !version.is_empty() && version != "0.0.0"
     }
 }
 

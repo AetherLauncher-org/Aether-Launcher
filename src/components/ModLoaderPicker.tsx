@@ -39,6 +39,18 @@ type ModLoaderPickerProps = {
 /** 加载器的固定顺序：PCL 的习惯是 Forge 在前，Fabric 在后。 */
 const loaderOrder: readonly ModLoaderKind[] = ["forge", "neoforge", "fabric", "quilt"];
 
+/** 还没拿到元数据时也要能画出名字的对照表。 */
+const LOADER_LABELS: Record<ModLoaderKind, string> = {
+  forge: "Forge",
+  neoforge: "NeoForge",
+  fabric: "Fabric",
+  quilt: "Quilt",
+};
+
+function loaderLabel(kind: ModLoaderKind): string {
+  return LOADER_LABELS[kind];
+}
+
 /** 中间那段状态文字。 */
 function describeChoice(
   choice: ModLoaderChoice,
@@ -188,9 +200,29 @@ export function ModLoaderPicker({ gameVersion, value, onChange }: ModLoaderPicke
           需要桌面版：浏览器预览拿不到模组加载器列表。
         </Text>
       ) : loading ? (
-        <Text className="muted modloader-note" role="status">
-          正在读取可用的加载器…
-        </Text>
+        // 列表读回来之前就先把四行画出来，和 PCL 一样：每行只写「获取中……」，
+        // 数据到了再逐行替换。整块空白会让人以为卡住了。
+        <ul className="modloader-list" aria-label="模组加载器" aria-busy="true">
+          {loaderOrder.map((kind, index) => (
+            <li
+              key={kind}
+              className="modloader-item"
+              style={{ "--i": index } as CSSProperties}
+              data-band={kind}
+            >
+              <div className="modloader-row" aria-disabled="true" data-available="false">
+                <span className="modloader-name">
+                  <span className="modloader-band" aria-hidden="true" />
+                  <Text weight="semibold">{loaderLabel(kind)}</Text>
+                </span>
+                <span className="modloader-status">
+                  <span className="modloader-status-text">获取中……</span>
+                </span>
+                <span className="modloader-chevron-placeholder" aria-hidden="true" />
+              </div>
+            </li>
+          ))}
+        </ul>
       ) : error !== null && choices.length === 0 ? (
         <div className="modloader-empty" role="alert">
           <Text className="modloader-error">{error}</Text>

@@ -116,6 +116,30 @@ describe("ModLoaderPicker", () => {
     expect(listVersions).toHaveBeenCalledWith("1.21.1");
   });
 
+  it("shows the four rows while the list is still loading", async () => {
+    let finish: (value: ModLoaderChoice[]) => void = () => undefined;
+    listVersions.mockImplementation(
+      () =>
+        new Promise<ModLoaderChoice[]>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderPicker();
+
+    // 数据还没回来，四行已经在了，每行写「获取中……」。
+    const list = screen.getByRole("list", { name: "模组加载器" });
+    expect(list).toHaveAttribute("aria-busy", "true");
+    expect(within(list).getAllByText("获取中……")).toHaveLength(4);
+    expect(within(list).getByText("Forge")).toBeInTheDocument();
+    expect(within(list).getByText("Quilt")).toBeInTheDocument();
+
+    finish(choices());
+
+    // 数据到了就换成真实状态，不再有「获取中」。
+    await waitFor(() => expect(screen.queryByText("获取中……")).not.toBeInTheDocument());
+    expect(await rowOf("Fabric")).toBeInTheDocument();
+  });
+
   it("collapses the list and reports the pick", async () => {
     const { changes } = renderPicker();
 
