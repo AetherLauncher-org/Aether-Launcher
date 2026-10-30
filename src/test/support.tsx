@@ -34,13 +34,39 @@ export function renderWithState(ui: ReactElement, options: RenderOptions = {}) {
   return { navigate, ...result };
 }
 
-/** 假装在 Tauri 桌面环境里运行（`isTauri()` 变为 true）。 */
+/**
+ * 假装在 Tauri 桌面环境里运行（`isTauri()` 变为 true）。
+ *
+ * 事件监听要整条链路可用才不报错：`listen` 先用 `transformCallback` 拿一个数字
+ * id，再 invoke 注册；退订时走 `__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener`。
+ * 少任何一环，挂载了 `InstallProvider` 的用例都会抛 unhandled rejection。
+ */
 export function pretendDesktop() {
-  Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true });
+  let callbacks = 0;
+  Object.defineProperty(window, "__TAURI_INTERNALS__", {
+    value: {
+      transformCallback: () => {
+        callbacks += 1;
+        return callbacks;
+      },
+      unregisterCallback: () => undefined,
+      // 这里故意 reject：测试里真实的后端不在，调用方本来就应该走自己的
+      // 失败分支。返回 undefined 反而会让「取到了空数据」的分支崩在 .map 上。
+      invoke: async () => {
+        throw new Error("no backend in tests");
+      },
+    },
+    configurable: true,
+  });
+  Object.defineProperty(window, "__TAURI_EVENT_PLUGIN_INTERNALS__", {
+    value: { unregisterListener: () => undefined },
+    configurable: true,
+  });
 }
 
 export function pretendBrowser() {
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
+  Reflect.deleteProperty(window, "__TAURI_EVENT_PLUGIN_INTERNALS__");
 }
 
 export type Handlers = Record<string, (args: unknown) => unknown>;

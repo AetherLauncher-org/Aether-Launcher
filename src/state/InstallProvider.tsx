@@ -39,13 +39,19 @@ export function InstallProvider({ children }: { children: ReactNode }) {
       );
     };
 
-    void listenInstallProgress(onProgress).then((stop) => {
-      if (cancelled) {
-        stop();
-      } else {
-        unlisten = stop;
-      }
-    });
+    // 订阅失败不该让页面崩掉：丢的只是进度条，安装本身照常跑。没有 catch 的话
+    // 异常会变成 unhandled rejection。
+    void listenInstallProgress(onProgress)
+      .then((stop) => {
+        if (cancelled) {
+          stop();
+        } else {
+          unlisten = stop;
+        }
+      })
+      .catch(() => {
+        // 没有进度事件源，静默降级。
+      });
 
     return () => {
       cancelled = true;
