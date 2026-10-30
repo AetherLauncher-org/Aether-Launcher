@@ -7,6 +7,7 @@
 - Bug、功能建议和下载源问题请使用对应的 Issue Form。
 - 较大的交互或兼容性改动应先在 Discussions 说明目标、边界和替代方案。
 - 安全漏洞不要提交公开 Issue，按照 [SECURITY.md](SECURITY.md) 私密报告。
+- 如果你正在使用 AI 向该仓库贡献，请自行先 Review 一遍且标明使用的模型（例如 Claude Sonnet 5.5）。
 
 ## 开发流程
 
@@ -26,7 +27,7 @@ cargo test --workspace
 
 ## 提交与 PR
 
-推荐使用 Conventional Commits：
+请使用 Conventional Commits：
 
 ```text
 feat(download): add immutable artifact plan
