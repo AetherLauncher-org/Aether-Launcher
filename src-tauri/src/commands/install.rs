@@ -47,6 +47,32 @@ pub enum Stage {
     Files,
     Assets,
     Finalize,
+    /// 模组加载器安装：下载 installer / 运行 installer / 写版本文件。
+    ///
+    /// 加载器安装没有可以提前算出的字节数，所以这一阶段的进度按**步骤**计
+    /// （`files_done` / `files_total` 表示第几个步骤），`bytes_*` 恒为 0。
+    ModLoader,
+}
+
+/// 当前阶段是模组加载器安装时，`version` 字段里放的加载器版本 id
+/// （例如 `fabric-loader-0.16.0-1.21.1`），而不是原版版本号。
+impl InstallProgress {
+    /// 构造一条模组加载器安装的进度：按步骤计数，没有字节数。
+    pub(super) fn mod_loader(
+        version: impl Into<String>,
+        stage: Stage,
+        steps_done: usize,
+        steps_total: usize,
+    ) -> Self {
+        Self {
+            version: version.into(),
+            stage,
+            files_done: steps_done.min(steps_total),
+            files_total: steps_total,
+            bytes_done: 0,
+            bytes_total: 0,
+        }
+    }
 }
 
 /// Progress of the current stage. Byte and file counts include files that were

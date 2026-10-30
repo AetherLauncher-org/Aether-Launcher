@@ -130,3 +130,15 @@ export {
   toggleMaximizeWindow,
   watchMaximized,
 } from "./window";
+
+// 模组加载器：可用版本列表与安装器下载
+export {
+  downloadModLoaderInstaller,
+  installModLoaderVersion,
+  listModLoaderVersions,
+} from "./modloader";
+export type {
+  ModLoaderChoice,
+  ModLoaderInstallResult,
+  ModLoaderKind,
+} from "./modloader";

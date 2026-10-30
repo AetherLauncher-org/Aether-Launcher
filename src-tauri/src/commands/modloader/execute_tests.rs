@@ -1,0 +1,70 @@
+//! `execute` 的单元测试。
+//!
+//! 这里只测**不联网、不启动进程**的部分：路径约束、maven 坐标解析、错误文案截断。
+//! 真正下载和跑 installer 依赖官方源与网络，留在手工验证里。
+
+use super::*;
+
+#[test]
+fn rejects_destinations_that_escape_the_game_root() {
+    let root = std::path::Path::new("C:/game");
+
+    assert!(safe_target(root, "versions/1.21.1/1.21.1.json").is_ok());
+
+    // 上跳两级就会跳出 game 根目录。
+    assert!(safe_target(root, "../../evil.json").is_err());
+    // 绝对路径同样拒绝。
+    assert!(safe_target(root, "C:/Windows/evil.dll").is_err());
+    // 反斜杠也要当成分隔符处理，否则 Windows 上能绕过去。
+    assert!(safe_target(root, "..\\..\\evil.json").is_err());
+}
+
+#[test]
+fn builds_maven_paths_for_plain_and_classified_artifacts() {
+    assert_eq!(
+        maven_relative_path("net.fabricmc:fabric-loader:0.16.0").as_deref(),
+        Some("net/fabricmc/fabric-loader/0.16.0/fabric-loader-0.16.0.jar")
+    );
+    assert_eq!(
+        maven_relative_path("net.minecraftforge:installer:1.20.1-47.4.0:shrunk").as_deref(),
+        Some("net/minecraftforge/installer/1.20.1-47.4.0/installer-1.20.1-47.4.0-shrunk.jar")
+    );
+}
+
+#[test]
+fn rejects_malformed_maven_coordinates() {
+    // 段数不对。
+    assert!(maven_relative_path("net.fabricmc").is_none());
+    assert!(maven_relative_path("net.fabricmc:fabric-loader").is_none());
+    assert!(maven_relative_path("a:b:c:d:e").is_none());
+    // 空段。
+    assert!(maven_relative_path(":artifact:1.0").is_none());
+    assert!(maven_relative_path("group::1.0").is_none());
+    // 路径穿越。
+    assert!(maven_relative_path("group:../evil:1.0").is_none());
+    assert!(maven_relative_path("group:artifact:../../../etc/passwd").is_none());
+}
+
+#[test]
+fn tail_keeps_the_end_of_a_long_message() {
+    let text = "a".repeat(1000);
+    let kept = tail(&text, 10);
+    assert_eq!(kept.chars().count(), 10);
+
+    // 短消息原样返回，并且去掉首尾空白。
+    assert_eq!(tail("  short  ", 100), "short");
+}
+
+#[test]
+fn tail_counts_characters_not_bytes() {
+    // 600 个汉字是 1800 字节，按字节截会切坏 UTF-8。
+    let text = "汉".repeat(700);
+    let kept = tail(&text, 600);
+    assert_eq!(kept.chars().count(), 600);
+}
+
+#[test]
+fn quilt_is_reported_as_unsupported_before_any_io() {
+    let error = build_plan(ModLoaderKind::Quilt, "1.21.1", "0.27.0").unwrap_err();
+    assert!(error.contains("Quilt"), "unexpected error: {error}");
+}

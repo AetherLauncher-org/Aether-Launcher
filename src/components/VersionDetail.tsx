@@ -18,6 +18,7 @@ import { useNavigation } from "../state/navigation";
 import { GameControls } from "./GameControls";
 import { InstallFailure, InstallProgressCard } from "./InstallProgressCard";
 import { InstanceCover } from "./InstanceCover";
+import { ModLoaderPicker } from "./ModLoaderPicker";
 
 type VersionDetailProps = {
   version: MinecraftCatalogVersion;
@@ -158,6 +159,7 @@ export function VersionDetail({ version, isLatest, onBack }: VersionDetailProps)
                   </Text>
                 </div>
               </form>
+              <ModLoaderPicker gameVersion={version.id} />
             </>
           )}
         </div>

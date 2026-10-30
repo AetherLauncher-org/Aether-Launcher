@@ -59,6 +59,23 @@ impl JavaRuntime {
     }
 }
 
+/// A [`Command`] that never flashes a console window.
+///
+/// Launching a delimited console app from a windowed process makes Windows
+/// allocate a console for it. `CREATE_NO_WINDOW` asks for one that stays
+/// invisible; it has no effect on other platforms.
+pub fn hidden_command(program: &Path) -> Command {
+    let mut command = Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        /// `CREATE_NO_WINDOW`, from `winbase.h`.
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
 #[derive(Debug, Error)]
 pub enum RuntimeError {
     #[error("failed to execute java command at {0:?}: {1}")]

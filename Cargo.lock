@@ -49,6 +49,7 @@ dependencies = [
  "aether-download",
  "aether-launch",
  "aether-manifest",
+ "aether-modloader",
  "aether-runtime",
  "aether-storage",
  "serde",
