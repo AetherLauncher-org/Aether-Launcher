@@ -23,6 +23,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 aether-core = { path = "../crates/aether-core" }
+aether-diagnose = { path = "../crates/aether-diagnose" }
 aether-auth = { path = "../crates/aether-auth" }
 aether-download = { path = "../crates/aether-download" }
 aether-launch = { path = "../crates/aether-launch" }

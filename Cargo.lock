@@ -47,6 +47,7 @@ version = "0.1.0"
 dependencies = [
  "aether-auth",
  "aether-core",
+ "aether-diagnose",
  "aether-download",
  "aether-launch",
  "aether-manifest",

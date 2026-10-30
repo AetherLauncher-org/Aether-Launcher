@@ -25,6 +25,11 @@ pub struct InstanceSummary {
 }
 
 impl InstanceSummary {
+    /// The stable state label (`ready`, `incomplete`, …).
+    pub(super) fn state_label(&self) -> &'static str {
+        self.state
+    }
+
     pub(super) fn from_instance(instance: &GameInstance) -> Self {
         Self {
             id: instance.id.to_string(),

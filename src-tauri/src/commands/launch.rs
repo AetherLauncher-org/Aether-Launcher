@@ -12,7 +12,8 @@ use aether_download::assets::verify_installed_assets;
 use aether_download::verify::verify_local_artifact;
 use aether_download::{ArtifactSource, DownloadArtifact};
 use aether_launch::{
-    CoordinatorError, InstanceLaunchCoordinator, InstanceProcessStatus, RegistryError,
+    CoordinatorError, InstanceLaunchCoordinator, InstanceProcessStatus, InstanceRunState,
+    RegistryError,
 };
 use aether_manifest::load_resolved_version_manifest;
 use aether_manifest::rules::Environment;
@@ -223,6 +224,24 @@ pub async fn start_installed_instance(
     })
     .await
     .map_err(|error| format!("game launch task failed: {error}"))?
+}
+
+/// Whether this session has a running game for the instance. Managing an instance's files
+/// (deleting it, switching mods) is refused while its game runs.
+pub(super) fn is_instance_running(app: &tauri::AppHandle, id: InstanceId) -> Result<bool, String> {
+    let state = app.state::<LaunchState>();
+    let mut guard = state
+        .coordinator
+        .lock()
+        .map_err(|_| "game process registry is unavailable".to_owned())?;
+    let Some(coordinator) = guard.as_mut() else {
+        return Ok(false);
+    };
+    match coordinator.status(id) {
+        Ok(status) => Ok(status.state == InstanceRunState::Running),
+        Err(CoordinatorError::Registry(RegistryError::UnknownInstance)) => Ok(false),
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 /// Current state of a game started in this session; `None` when this session
