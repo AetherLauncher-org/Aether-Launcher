@@ -85,3 +85,80 @@ fn every_downloaded_library_is_a_safe_destination() {
         );
     }
 }
+
+/// 不关心进度的 reporter。
+struct SilentReporter;
+
+impl Reporter for SilentReporter {
+    fn report(&self, _progress: &InstallProgress) {}
+}
+
+/// 真联网、真写盘的端到端验证，默认跳过。
+///
+/// ```text
+/// cargo test -p aether-desktop --lib -- --ignored live_install
+/// ```
+///
+/// 这条用例存在的意义是：下载校验、路径约束和实例创建都改过之后，
+/// 仍要能拿官方源把一个加载器版本真正装出来。它依赖网络和官方 maven，
+/// 所以不进默认的测试集合。
+#[test]
+#[ignore = "needs the official maven and a network connection"]
+fn live_install_downloads_verifies_and_creates_an_instance() {
+    let base = std::env::temp_dir().join(format!("aether-live-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).expect("create temp base");
+
+    let transport = KernelHttpTransport::new(UreqKernel::new());
+    let cancel = CancellationToken::new();
+
+    let result = install_with(
+        &transport,
+        InstallRequest {
+            base: &base,
+            kind: ModLoaderKind::Fabric,
+            game_version: "26.1.2",
+            loader_version: "0.20.1",
+            name: "live-e2e",
+        },
+        &cancel,
+        &SilentReporter,
+    )
+    .expect("a real fabric install should succeed");
+
+    // 版本 JSON 落在游戏树里。
+    let version_json = base
+        .join("game")
+        .join("versions")
+        .join(&result.version_id)
+        .join(format!("{}.json", result.version_id));
+    assert!(
+        version_json.is_file(),
+        "version json missing: {}",
+        version_json.display()
+    );
+
+    // fabric-loader 的 jar 必须真的下下来了 —— 这一步以前是漏的。
+    let loader_jar = base
+        .join("game")
+        .join("libraries")
+        .join("net/fabricmc/fabric-loader/0.20.1/fabric-loader-0.20.1.jar");
+    let size = std::fs::metadata(&loader_jar)
+        .map(|meta| meta.len())
+        .unwrap_or_default();
+    assert!(
+        size > 1_000_000,
+        "fabric-loader jar looks wrong: {size} bytes at {}",
+        loader_jar.display()
+    );
+
+    // 实例也建好了，而且用的是刚建出来的那个 id。
+    let record = base.join("instances").join(result.instance.id());
+    assert!(
+        record.is_dir(),
+        "instance record missing: {}",
+        record.display()
+    );
+
+    let _ = std::fs::remove_dir_all(&base);
+}
