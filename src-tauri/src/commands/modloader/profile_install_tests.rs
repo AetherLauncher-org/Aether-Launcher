@@ -435,6 +435,52 @@ fn a_processor_that_produces_the_wrong_output_fails_the_install() {
     );
 }
 
+/// 在描述的库列表里加一个没有下载地址、installer 里也没有的库。
+fn with_generated_library(path: &str, sha1: &str) -> impl Fn(String) -> String {
+    let entry = format!(
+        r#""libraries": [
+          {{"name": "net.example:gen:1.0", "downloads": {{"artifact": {{
+             "path": "{path}", "url": "", "sha1": "{sha1}", "size": 1}}}}}},"#
+    );
+    move |profile: String| profile.replace(r#""libraries": ["#, &entry)
+}
+
+#[test]
+fn a_library_that_a_processor_produces_is_not_downloaded_up_front() {
+    // Forge 26.x 的版本 JSON 把打过补丁的 `forge-…-client.jar` 列成一个 url 为空的库。
+    let fixture = Fixture::with(
+        "generated",
+        with_generated_library("net/example/out/1.0/out-1.0-slim.jar", &sha1_hex(OUTPUT)),
+        &processor_jar(),
+    );
+    let runner = FakeRunner::new(OUTPUT);
+
+    fixture
+        .install(&runner)
+        .expect("a processor-made library is accepted once it exists");
+    assert!(
+        fixture
+            .game_root()
+            .join("libraries/net/example/out/1.0/out-1.0-slim.jar")
+            .is_file()
+    );
+}
+
+#[test]
+fn a_library_nobody_provides_still_fails_the_install() {
+    let fixture = Fixture::with(
+        "ungenerated",
+        with_generated_library("net/example/ghost/1.0/ghost-1.0.jar", &sha1_hex(b"ghost")),
+        &processor_jar(),
+    );
+    let runner = FakeRunner::new(OUTPUT);
+
+    let error = fixture.install(&runner).expect_err("must fail");
+
+    assert!(error.contains("no processor produced it"), "{error}");
+    assert!(!fixture.game_root().join("versions").exists());
+}
+
 #[test]
 fn a_failing_processor_reports_the_error_and_writes_no_version() {
     let fixture = Fixture::standard("procfail");

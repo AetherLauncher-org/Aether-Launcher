@@ -343,6 +343,17 @@
   margin-top: 16px;
 }
 
+/* 错误信息里常有一长串不带空格的路径；不让它把整页撑宽。 */
+.install-failure {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.install-failure > * {
+  min-width: 0;
+}
+
 .stat-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

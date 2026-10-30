@@ -453,8 +453,18 @@ impl ClientInstall<'_> {
         libraries.extend(parse_libraries(version.get("libraries"))?);
         libraries.sort_by(|a, b| a.path.cmp(&b.path));
         libraries.dedup_by(|a, b| a.path == b.path);
+        // 没有下载地址、installer 里也没有的库，是处理器的产物（例如打过补丁的
+        // `forge-…-client.jar`）：先不管，处理器跑完后再按描述里的 SHA-1 检查它在不在。
+        let mut generated: Vec<&ProfileLibrary> = Vec::new();
         for library in &libraries {
             self.check_cancelled()?;
+            if library.url.is_none()
+                && !file_matches(&self.libraries_dir().join(&library.path), &library.sha1)
+                && archive.by_name(&format!("maven/{}", library.path)).is_err()
+            {
+                generated.push(library);
+                continue;
+            }
             self.ensure_library(&mut archive, library)?;
         }
 
@@ -466,6 +476,14 @@ impl ClientInstall<'_> {
         let outcome = self.run_processors(&mut archive, &profile, &work);
         let _ = fs::remove_dir_all(&work);
         outcome?;
+        for library in generated {
+            if !file_matches(&self.libraries_dir().join(&library.path), &library.sha1) {
+                return Err(format!(
+                    "{} has no download URL, is not in the installer, and no processor produced it",
+                    library.path
+                ));
+            }
+        }
 
         // 3. 最后写版本 JSON：它在，就说明前面都成功了。
         let relative = format!("versions/{version_id}/{version_id}.json");
