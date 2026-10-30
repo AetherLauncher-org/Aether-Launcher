@@ -1,5 +1,5 @@
 import { Badge, Button, Field, Input, MessageBar, MessageBarBody, Text } from "@fluentui/react-components";
-import { ArrowDownload20Regular, ArrowLeft20Regular, CheckmarkCircle24Filled } from "@fluentui/react-icons";
+import { ArrowDownload20Regular, ArrowLeft20Regular } from "@fluentui/react-icons";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import type { MinecraftCatalogVersion } from "../ipc";
@@ -14,8 +14,7 @@ import {
 } from "../lib/versions";
 import { useInstall } from "../state/install";
 import { useInstances } from "../state/instances";
-import { useNavigation } from "../state/navigation";
-import { GameControls } from "./GameControls";
+import { AutoReturn } from "./AutoReturn";
 import { InstallFailure, InstallProgressCard } from "./InstallProgressCard";
 import { InstanceCover } from "./InstanceCover";
 import { ModLoaderPicker } from "./ModLoaderPicker";
@@ -34,7 +33,6 @@ type VersionDetailProps = {
 export function VersionDetail({ version, isLatest, onBack }: VersionDetailProps) {
   const { job, start, cancel, dismiss } = useInstall();
   const { instances } = useInstances();
-  const { navigate } = useNavigation();
 
   /** 选中的加载器；`null` 表示装原版。 */
   const [loader, setLoader] = useState<ModLoaderSelection | null>(null);
@@ -77,15 +75,6 @@ export function VersionDetail({ version, isLatest, onBack }: VersionDetailProps)
         loader === null ? null : { kind: loader.kind, version: loader.version },
       );
     }
-  };
-
-  const handleAnother = () => {
-    if (thisJob !== null) {
-      setNameEdited(false);
-      setTypedName(null);
-      setTouched(false);
-    }
-    dismiss();
   };
 
   return (
@@ -131,20 +120,14 @@ export function VersionDetail({ version, isLatest, onBack }: VersionDetailProps)
           {thisJob !== null && thisJob.status === "running" ? (
             <InstallProgressCard job={thisJob} onCancel={cancel} />
           ) : thisJob !== null && thisJob.status === "done" && thisJob.instance !== null ? (
-            <section className="status-panel success-card" aria-live="polite">
-              <CheckmarkCircle24Filled className="success-icon" aria-hidden="true" />
-              <Text as="h2" size={500} weight="semibold">
-                安装完成
-              </Text>
-              <Text className="muted">实例「{thisJob.instance.name}」已创建，所有文件都已通过校验，可以启动了。</Text>
-              <div className="success-actions">
-                <GameControls instance={thisJob.instance} size="large" hideBadge />
-                <Button onClick={() => navigate("instances")}>查看实例</Button>
-                <Button appearance="subtle" onClick={handleAnother}>
-                  再装一个
-                </Button>
-              </div>
-            </section>
+            /*
+             * 安装成功后自动回到实例页。
+             *
+             * 安装完成的预期结果就是「能启动了」，留在详情页只会让人以为程序卡住
+             * （深色主题下那块成功卡片几乎是空的）。`dismiss` 同时把 job 清掉，
+             * 下次进来不会又看到上一次的成功状态。
+             */
+            <AutoReturn to="instances" onLeaving={dismiss} />
           ) : (
             <>
               {thisJob !== null ? <InstallFailure job={thisJob} onRetry={() => void start(thisJob.version, thisJob.name)} /> : null}

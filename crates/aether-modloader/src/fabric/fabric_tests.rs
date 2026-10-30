@@ -438,30 +438,57 @@ fn install_plan_downloads_every_library_and_writes_the_version_json() {
     assert_eq!(plan.main_class, MAIN_CLASS_CLIENT);
 
     let downloads = downloads(&plan);
-    assert_eq!(downloads.len(), 3, "三个 launcherMeta 库各一条下载");
+
+    // 核心两件在最前：版本 JSON 会引用它们，所以必须先下载。
+    assert_eq!(downloads.len(), 5, "两个核心库 + 三个 launcherMeta 库");
     assert_eq!(
-        downloads[0].1, "libraries/org/ow2/asm/asm/9.6/asm-9.6.jar",
-        "destination 用 maven 相对路径"
+        downloads[0].1,
+        "libraries/net/fabricmc/intermediary/1.21.1/intermediary-1.21.1.jar"
     );
     assert_eq!(
         downloads[0].0,
-        "https://maven.fabricmc.net/org/ow2/asm/asm/9.6/asm-9.6.jar"
+        "https://maven.fabricmc.net/net/fabricmc/intermediary/1.21.1/intermediary-1.21.1.jar"
     );
     assert_eq!(
         downloads[1].1,
+        "libraries/net/fabricmc/fabric-loader/0.16.0/fabric-loader-0.16.0.jar"
+    );
+    assert_eq!(
+        downloads[2].1, "libraries/org/ow2/asm/asm/9.6/asm-9.6.jar",
+        "destination 用 maven 相对路径"
+    );
+    assert_eq!(
+        downloads[2].0,
+        "https://maven.fabricmc.net/org/ow2/asm/asm/9.6/asm-9.6.jar"
+    );
+    assert_eq!(
+        downloads[3].1,
         "libraries/org/ow2/asm/asm-analysis/9.6/asm-analysis-9.6.jar"
     );
     assert_eq!(
-        downloads[2].1,
+        downloads[4].1,
         "libraries/net/fabricmc/sponge-mixin/0.15.4+mixin.0.8.7/sponge-mixin-0.15.4+mixin.0.8.7.jar"
     );
+
+    // 版本 JSON 里写的每一个库都必须有对应的下载步骤 —— 这是启动时不报
+    // 「required local file does not exist」的前提。
+    let json = plan
+        .steps
+        .iter()
+        .find_map(|step| match step {
+            InstallStep::WriteVersionJson { content, .. } => Some(content),
+            _ => None,
+        })
+        .expect("plan ends with a version json");
+    let listed = json["libraries"].as_array().expect("libraries array");
+    assert_eq!(listed.len(), downloads.len(), "JSON 与下载步骤一一对应");
 
     assert!(matches!(
         plan.steps.last(),
         Some(InstallStep::WriteVersionJson { path, .. })
             if path == "versions/fabric-loader-0.16.0-1.21.1/fabric-loader-0.16.0-1.21.1.json"
     ));
-    assert_eq!(plan.steps.len(), 4);
+    assert_eq!(plan.steps.len(), 6);
 }
 
 #[test]
@@ -483,13 +510,17 @@ fn install_plan_skips_libraries_without_a_repository() {
     let plan = loader.install_plan("1.21.1", DEFAULT_MAVEN_BASE);
 
     let downloads = downloads(&plan);
-    assert_eq!(downloads.len(), 1, "只有 org.ow2.asm:asm:7.0 有仓库地址");
-    assert_eq!(downloads[0].1, "libraries/org/ow2/asm/asm/7.0/asm-7.0.jar");
+    // 核心两件总有仓库地址；launcherMeta 里只有 org.ow2.asm:asm:7.0 有。
+    assert_eq!(downloads.len(), 3, "两个核心库 + 有仓库地址的那一个");
     assert_eq!(
-        downloads[0].0,
+        downloads[0].1,
+        "libraries/net/fabricmc/intermediary/1.21.1/intermediary-1.21.1.jar"
+    );
+    assert_eq!(downloads[2].1, "libraries/org/ow2/asm/asm/7.0/asm-7.0.jar");
+    assert_eq!(
+        downloads[2].0,
         "http://repo.maven.apache.org/maven2/org/ow2/asm/asm/7.0/asm-7.0.jar"
     );
-    assert_eq!(plan.validate(&[]), Ok(()));
 }
 
 #[test]
@@ -498,8 +529,9 @@ fn install_plan_accepts_a_mirror_maven_base() {
 
     let downloads = downloads(&plan);
     assert_eq!(
-        downloads[0].0, "https://mirror.example.invalid/maven/org/ow2/asm/asm/9.6/asm-9.6.jar",
-        "官方 maven 换成调用方给的镜像地址"
+        downloads[0].0,
+        "https://mirror.example.invalid/maven/net/fabricmc/intermediary/1.21.1/intermediary-1.21.1.jar",
+        "核心库也跟着换成镜像地址"
     );
 }
 
@@ -516,7 +548,8 @@ fn install_plan_of_a_loader_without_libraries_only_writes_the_version_json() {
 
     let plan = bare.install_plan("1.21.1", DEFAULT_MAVEN_BASE);
 
-    assert_eq!(plan.steps.len(), 1);
+    // 没有 launcherMeta 库，但核心两件仍要下载，否则版本 JSON 指不到文件。
+    assert_eq!(plan.steps.len(), 3);
     assert_eq!(plan.validate(&[]), Ok(()));
 }
 

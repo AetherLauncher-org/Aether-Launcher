@@ -105,6 +105,10 @@ impl FabricLoaderVersion {
 
     /// 安装计划：每个能定位到的库一条下载步骤，最后写入版本 JSON。
     ///
+    /// 核心两件（`intermediary`、`fabric-loader`）与 `launcherMeta` 里的库都会被写进版本
+    /// JSON，所以**两者都必须生成下载步骤** —— 只写 JSON 不下载，启动时就会报
+    /// 「required local file does not exist」。
+    ///
     /// - 下载目标：`libraries/<maven 相对路径>`，URL 用库自己的仓库地址；仓库地址是官方
     ///   [`DEFAULT_MAVEN_BASE`] 时换成调用方给的 `maven_base`，方便走镜像。
     /// - 没有仓库地址的库（例如老加载器里的 `net.minecraft:launchwrapper`）来自被继承的
@@ -120,7 +124,28 @@ impl FabricLoaderVersion {
         .with_target(target.clone())
         .with_main_class(self.main_class.clone());
 
+        // 核心两件（intermediary、fabric-loader）与 launcherMeta 里的库都会被写进版本
+        // JSON，所以两者都必须生成下载步骤 —— 只写 JSON 不下载，启动时就会报
+        // 「required local file does not exist」。
+        let core = self.core_libraries();
+        for coordinate in &core {
+            let Some(relative) = maven_relative_path(coordinate) else {
+                continue;
+            };
+            plan = plan.push(InstallStep::Download {
+                url: join_repository(maven_base, &relative),
+                destination: format!("libraries/{relative}"),
+                sha1: None,
+                size: None,
+                label: coordinate.clone(),
+            });
+        }
+
         for library in &self.libraries {
+            // 核心两件已经在上面按 maven_base 加过了，避免重复下载。
+            if core.contains(&library.name) {
+                continue;
+            }
             let Some(relative) = maven_relative_path(&library.name) else {
                 continue;
             };
@@ -140,6 +165,16 @@ impl FabricLoaderVersion {
             path: format!("versions/{target}/{target}.json"),
             content: self.to_version_json(game_version),
         })
+    }
+
+    /// 这个加载器版本能不能真正用起来。
+    ///
+    /// Fabric 对还没发布 intermediary 映射的游戏版本（例如 26.x）会把占位版本 `0.0.0`
+    /// 填进来。该构件的 jar 只有几百字节，装上必定启动失败，所以在构造计划之前就拒掉，
+    /// 而不是装出一个打不开的实例。
+    pub fn unsupported_reason(&self) -> Option<String> {
+        (self.intermediary_version == "0.0.0")
+            .then(|| "Fabric 还没有发布这个游戏版本的 intermediary 映射，暂时装不了".to_owned())
     }
 
     /// 两件核心库的坐标（版本号为空时跳过对应的一件）。
