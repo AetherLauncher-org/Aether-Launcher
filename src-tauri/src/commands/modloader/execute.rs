@@ -389,7 +389,10 @@ fn tail(text: &str, limit: usize) -> String {
 
 /// 找一个能跑 installer 的 Java：installer 是普通程序，挑主版本最高的那个。
 fn find_java() -> Result<PathBuf, String> {
-    let mut runtimes = aether_runtime::discover_java_runtimes();
+    // Only Javas that are safe to run: the known install locations (and anything the user
+    // imported is deliberately not used here). The Settings rescan also lists folders found
+    // on drive roots, but those are never executed, so they must not be picked for this.
+    let mut runtimes = aether_runtime::discover_java_runtimes(&[]);
     runtimes.sort_by_key(|runtime| std::cmp::Reverse(runtime.major_version));
     runtimes
         .into_iter()
