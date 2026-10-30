@@ -43,6 +43,8 @@ jobs:
         with:
           name: site-dist
           path: site/dist
+          # `.well-known/` (Microsoft publisher verification) is a hidden folder.
+          include-hidden-files: true
           retention-days: 3
 
   deploy:
