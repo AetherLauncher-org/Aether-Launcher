@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,8 +15,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decide which parts changed. Jobs are skipped (not left out of the workflow), so a
+  # skipped job still satisfies a required status check. A manual run, a first push or an
+  # unreachable base commit runs everything. The site has its own workflow (site.yml).
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          everything=false
+          if [ "$EVENT" = workflow_dispatch ] || [ -z "$BASE" ] \
+            || [ "$BASE" = 0000000000000000000000000000000000000000 ] \
+            || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            everything=true
+            files=""
+          else
+            files=$(git diff --name-only "$BASE" "$HEAD")
+          fi
+          echo "$files"
+
+          changed() {
+            [ "$everything" = true ] || printf '%s\n' "$files" | grep -Eq "$1"
+          }
+          workflow='\.github/workflows/ci\.yml$'
+          if changed "^(crates/|src-tauri/|Cargo\.(toml|lock)$|rust-toolchain|$workflow)"; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+          fi
+          if changed "^(src/|public/|index\.html$|package(-lock)?\.json$|[^/]+\.(ts|js|mjs|cjs|json)$|$workflow)"; then
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend=false" >> "$GITHUB_OUTPUT"
+          fi
+
   frontend:
     name: Frontend
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +77,8 @@ jobs:
 
   rust-core:
     name: Rust core
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,8 +92,11 @@ jobs:
       - name: Verify dependency lockfile is current
         run: git diff --exit-code -- Cargo.lock
 
+  # The desktop shell embeds the built frontend, so it runs for either side.
   desktop:
     name: Desktop shell (Windows)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

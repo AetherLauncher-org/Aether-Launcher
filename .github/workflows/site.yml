@@ -9,6 +9,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/site.yml"
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
@@ -35,6 +36,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm run lint
       - run: npm run test -- site
       - run: npm run site:build
       - uses: actions/upload-artifact@v4
@@ -46,7 +48,7 @@ jobs:
   deploy:
     name: Deploy to Cloudflare Pages
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: site
     steps:
