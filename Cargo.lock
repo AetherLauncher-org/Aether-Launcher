@@ -53,6 +53,7 @@ dependencies = [
  "aether-manifest",
  "aether-modloader",
  "aether-runtime",
+ "aether-schematic",
  "aether-storage",
  "serde",
  "serde_json",

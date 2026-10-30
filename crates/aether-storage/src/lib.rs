@@ -24,6 +24,7 @@ pub mod create;
 pub mod import;
 pub mod list;
 pub mod manage;
+pub mod schematic_files;
 pub mod update;
 
 pub use create::{CreateError, create_instance};

@@ -47,6 +47,15 @@ fn load(app: &tauri::AppHandle, id: &str) -> Result<(PathBuf, GameInstance), Str
     Ok((base, instance))
 }
 
+/// The instance and the store root for an id from IPC; shared with the other instance
+/// commands (`schematics`).
+pub(super) fn load_instance(
+    app: &tauri::AppHandle,
+    id: &str,
+) -> Result<(PathBuf, GameInstance), String> {
+    load(app, id)
+}
+
 fn parse_kind(label: &str) -> Result<ContentKind, String> {
     ContentKind::parse(label).ok_or_else(|| "unknown content folder".to_owned())
 }
