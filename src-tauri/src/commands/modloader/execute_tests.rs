@@ -153,3 +153,103 @@ fn live_install_downloads_verifies_and_creates_an_instance() {
 
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// 真联网、真起 Java：按 installer 的描述做一次完整的客户端安装。
+///
+/// 先准备原版（版本 JSON 和客户端 jar，处理器要给它打补丁），再把计划里的步骤逐条执行：
+/// 下载并校验 installer，然后读它的描述、下载并校验全部库、按顺序跑处理器。
+fn live_profile_install(
+    kind: ModLoaderKind,
+    game_version: &str,
+    loader_version: &str,
+    expected_id: &str,
+    patched_client: &str,
+) {
+    let base =
+        std::env::temp_dir().join(format!("aether-live-{expected_id}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let game_root = base.join("game");
+    std::fs::create_dir_all(&game_root).expect("create game root");
+
+    let transport = KernelHttpTransport::new(UreqKernel::new());
+    let cancel = CancellationToken::new();
+
+    crate::commands::vanilla::prepare_version(&transport, &game_root, game_version)
+        .expect("vanilla metadata");
+    let resolved = aether_manifest::load_resolved_version_manifest(&game_root, game_version)
+        .expect("resolved manifest");
+    let client = resolved
+        .manifest
+        .downloads
+        .as_ref()
+        .and_then(|downloads| downloads.client.as_ref())
+        .expect("client download");
+    download_into(
+        &transport,
+        &game_root,
+        &client.url,
+        &format!("versions/{game_version}/{game_version}.jar"),
+        Some(&client.sha1),
+        Some(client.size),
+    )
+    .expect("vanilla client jar");
+
+    let plan = build_plan(kind, game_version, loader_version).expect("plan");
+    let mut installed = None;
+    for step in &plan.steps {
+        if let Some(id) = step_execute(&transport, &game_root, step, &cancel)
+            .unwrap_or_else(|error| panic!("{} failed: {error}", step.describe()))
+        {
+            installed = Some(id);
+        }
+    }
+
+    assert_eq!(installed.as_deref(), Some(expected_id));
+    assert!(
+        game_root
+            .join(format!("versions/{expected_id}/{expected_id}.json"))
+            .is_file()
+    );
+    // 最后一个处理器（binarypatcher）的输出：打过补丁的客户端。
+    let patched = game_root.join(patched_client);
+    let size = std::fs::metadata(&patched)
+        .map(|meta| meta.len())
+        .unwrap_or_default();
+    assert!(size > 1_000_000, "patched client looks wrong: {size} bytes");
+
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// Forge 1.20.1。默认跳过：
+///
+/// ```text
+/// cargo test -p aether-desktop --lib -- --ignored live_forge
+/// ```
+#[test]
+#[ignore = "needs the official mavens, a network connection and a Java 17+"]
+fn live_forge_client_install_runs_the_installer_profile() {
+    live_profile_install(
+        ModLoaderKind::Forge,
+        "1.20.1",
+        "47.4.0",
+        "1.20.1-forge-47.4.0",
+        "libraries/net/minecraftforge/forge/1.20.1-47.4.0/forge-1.20.1-47.4.0-client.jar",
+    );
+}
+
+/// NeoForge 21.1.72（Minecraft 1.21.1）。默认跳过：
+///
+/// ```text
+/// cargo test -p aether-desktop --lib -- --ignored live_neoforge
+/// ```
+#[test]
+#[ignore = "needs the official mavens, a network connection and a Java 21+"]
+fn live_neoforge_client_install_runs_the_installer_profile() {
+    live_profile_install(
+        ModLoaderKind::NeoForge,
+        "1.21.1",
+        "21.1.72",
+        "neoforge-21.1.72",
+        "libraries/net/neoforged/neoforge/21.1.72/neoforge-21.1.72-client.jar",
+    );
+}

@@ -470,3 +470,103 @@ fn live_download_is_verified_against_the_official_sidecar() {
     );
     assert!(!dir.has_part_file());
 }
+
+// ---- 瞬时网络错误的重试 -------------------------------------------------------------
+
+/// 前 `failures` 次返回连接错误，之后正常返回 `body`。
+struct FlakyTransport {
+    failures: usize,
+    body: Vec<u8>,
+    calls: Mutex<usize>,
+}
+
+impl HttpTransport for FlakyTransport {
+    fn get(&self, request: &TransportRequest) -> Result<TransportResponse, TransportError> {
+        let mut calls = self.calls.lock().expect("lock");
+        *calls += 1;
+        if *calls <= self.failures {
+            return Err(TransportError::Connect {
+                url: request.url.clone(),
+                source: std::io::Error::other("connection reset"),
+            });
+        }
+        Ok(TransportResponse {
+            status: 200,
+            content_length: Some(self.body.len() as u64),
+            supports_range: false,
+            content_range: None,
+            body: Box::new(Cursor::new(self.body.clone())),
+        })
+    }
+}
+
+#[test]
+fn a_connection_blip_is_retried_and_the_download_still_verifies() {
+    let dir = TempDir::new("retry");
+    let transport = FlakyTransport {
+        failures: 2,
+        body: BODY.to_vec(),
+        calls: Mutex::new(0),
+    };
+
+    download_into(
+        &transport,
+        &dir.path,
+        URL,
+        "libraries/thing.jar",
+        Some(BODY_SHA1),
+        None,
+    )
+    .expect("two blips then success is fine");
+
+    assert_eq!(*transport.calls.lock().expect("lock"), 3);
+}
+
+#[test]
+fn a_dead_connection_gives_up_after_a_few_attempts() {
+    let dir = TempDir::new("giveup");
+    let transport = FlakyTransport {
+        failures: usize::MAX,
+        body: BODY.to_vec(),
+        calls: Mutex::new(0),
+    };
+
+    let error = download_into(
+        &transport,
+        &dir.path,
+        URL,
+        "libraries/thing.jar",
+        Some(BODY_SHA1),
+        None,
+    )
+    .expect_err("a connection that never works must fail");
+
+    assert!(error.contains("cannot download"), "{error}");
+    assert_eq!(
+        *transport.calls.lock().expect("lock"),
+        3,
+        "three attempts, no more"
+    );
+}
+
+#[test]
+fn a_missing_file_is_not_retried() {
+    let dir = TempDir::new("noretry");
+    let transport = RoutedTransport::new(&[]);
+
+    download_into(
+        &transport,
+        &dir.path,
+        URL,
+        "libraries/thing.jar",
+        Some(BODY_SHA1),
+        None,
+    )
+    .expect_err("404 must fail");
+
+    assert_eq!(
+        transport.requests().len(),
+        1,
+        "a 404 does not get better by asking again"
+    );
+}

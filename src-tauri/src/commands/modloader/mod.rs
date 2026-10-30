@@ -7,6 +7,7 @@
 pub mod commands;
 pub(super) mod execute;
 mod fetch;
+mod profile_install;
 
 use aether_modloader::transport::MetaSource;
 use aether_modloader::{ModLoaderKind, fabric, forge, neoforge};

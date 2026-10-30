@@ -59,6 +59,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tracing",
  "ureq",
+ "zip",
 ]
 
 [[package]]

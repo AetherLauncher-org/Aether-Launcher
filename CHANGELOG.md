@@ -19,7 +19,7 @@ The project follows [Semantic Versioning](https://semver.org/) once public relea
 - Typed frontend IPC layer (`src/ipc`)
 - Architecture overview in `docs/architecture.md`
 - Project website in `site/` (React + Fluent UI v9, English and Chinese: home, security model, privacy), deployed to Cloudflare Pages
-- Install Forge, NeoForge and Fabric from the version page (the version is installed first, then the loader, and the instance is created last); every loader download is checked against the SHA-1 published next to it on the official maven, and new instances start in Chinese with the accessibility wizard skipped
+- Install Forge, NeoForge and Fabric from the version page (the version is installed first, then the loader, and the instance is created last); Forge and NeoForge are installed by the launcher itself from the installer's own profile (every library SHA-1-checked, processors run only from verified jars) instead of running the official installer as a black box, every other loader download is checked against the SHA-1 published next to it on the official maven, and new instances start in Chinese with the accessibility wizard skipped
 - Microsoft sign-in (device code flow): refresh token in the OS credential vault, no token ever crosses IPC, launch as a signed-in account, `login://status` events; switched off until an Azure application id is configured (`AETHER_MS_CLIENT_ID`) and approved by Mojang (see `docs/modules/microsoft-login.md`)
 - Browser dev preview runs against a mock backend (`src/dev/mockBackend.ts`, dev server only; `?mock=off` disables it)
 - Memory slider snaps to 512 MiB (hold Shift for fine steps), shows tick marks, and no longer owes the pointer overshoot at either end

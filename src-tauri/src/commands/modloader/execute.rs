@@ -25,14 +25,12 @@ use serde::Serialize;
 
 use super::HttpMetaFetcher;
 use super::fetch::download_into;
+use super::profile_install::{ClientInstall, ProcessorRunner};
 use crate::commands::install::{
     InstallOptions, InstallProgress, Reporter, Stage, check_instance_name, create_ready_instance,
     install_game_files,
 };
 use crate::commands::instances::InstanceSummary;
-
-/// 跑 installer 时传给它的 `--launcherDir` 参数名。
-const LAUNCHER_DIR_FLAG: &str = "--launcherDir";
 
 /// 一个加载器版本装好之后返回给前端的结果。
 #[derive(Debug, Clone, Serialize)]
@@ -107,14 +105,19 @@ pub(super) fn install_with(
         reporter,
     )?;
 
-    // 加载器自己的步骤。
+    // 加载器自己的步骤。Forge / NeoForge 的安装步骤会报告 installer 里写的真实版本 id，
+    // 以它为准建实例。
     let total = plan.steps.len();
+    let mut installed_id: Option<String> = None;
     for (index, step) in plan.steps.iter().enumerate() {
         if cancel.is_cancelled() {
             return Err("installation cancelled".to_owned());
         }
-        step_execute(transport, &game_root, step)
-            .map_err(|error| format!("{} 失败：{error}", step.describe()))?;
+        if let Some(id) = step_execute(transport, &game_root, step, cancel)
+            .map_err(|error| format!("{} 失败：{error}", step.describe()))?
+        {
+            installed_id = Some(id);
+        }
         reporter.report(&InstallProgress::mod_loader(
             &plan.loader_version,
             Stage::ModLoader,
@@ -124,6 +127,7 @@ pub(super) fn install_with(
     }
 
     // 全部装好了才建实例，版本直接是加载器的版本 id。
+    let version_id = installed_id.unwrap_or(version_id);
     let instance = create_ready_instance(base, &instance_name, &version_id, reporter)?;
     Ok(ModLoaderInstallResult {
         instance,
@@ -177,11 +181,14 @@ fn display_meta_error(error: MetaError) -> String {
 }
 
 /// 执行单条步骤。所有路径都相对 `game_root`。
+///
+/// 返回 `Some(id)` 表示这一步写下了一个版本，`id` 是它真实的版本 id。
 fn step_execute(
     transport: &KernelHttpTransport<UreqKernel>,
     game_root: &Path,
     step: &InstallStep,
-) -> Result<(), String> {
+    cancel: &CancellationToken,
+) -> Result<Option<String>, String> {
     match step {
         InstallStep::Download {
             url,
@@ -197,13 +204,15 @@ fn step_execute(
             sha1.as_deref(),
             *size,
         )
-        .map(|_| ()),
+        .map(|_| None),
         InstallStep::WriteVersionJson { path, content } => {
             let text = serde_json::to_string_pretty(content)
                 .map_err(|error| format!("cannot serialise version json: {error}"))?;
-            write_file(game_root, path, text.as_bytes())
+            write_file(game_root, path, text.as_bytes()).map(|()| None)
         }
-        InstallStep::WriteFile { path, content } => write_file(game_root, path, content.as_bytes()),
+        InstallStep::WriteFile { path, content } => {
+            write_file(game_root, path, content.as_bytes()).map(|()| None)
+        }
         InstallStep::CopyFile { from, to } => {
             let source = safe_target(game_root, from)?;
             let target = safe_target(game_root, to)?;
@@ -211,7 +220,7 @@ fn step_execute(
                 fs::create_dir_all(parent)
                     .map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
             }
-            fs::copy(&source, &target).map(|_| ()).map_err(|error| {
+            fs::copy(&source, &target).map(|_| None).map_err(|error| {
                 format!(
                     "cannot copy {} to {}: {error}",
                     source.display(),
@@ -222,12 +231,22 @@ fn step_execute(
         InstallStep::CopyLibraries {
             repository,
             coordinates,
-        } => copy_libraries(repository, coordinates),
-        InstallStep::RunInstaller {
-            jar_path,
-            args,
-            output_dir,
-        } => run_installer(game_root, jar_path, args, output_dir.as_deref()),
+        } => copy_libraries(repository, coordinates).map(|()| None),
+        // 不再把 installer 当黑盒运行：读它的安装描述，自己下载、校验、跑处理器。
+        // `--installClient` 之类的参数对官方 installer 才有意义，这里用不到。
+        InstallStep::RunInstaller { jar_path, .. } => {
+            let installer = safe_target(game_root, jar_path)?;
+            let runner = JavaProcessRunner { java: find_java()? };
+            ClientInstall {
+                transport,
+                game_root,
+                installer: &installer,
+                runner: &runner,
+                cancel,
+            }
+            .run()
+            .map(Some)
+        }
     }
 }
 
@@ -267,53 +286,96 @@ fn copy_libraries(repository: &str, coordinates: &[String]) -> Result<(), String
     ))
 }
 
-/// 用 Java 跑加载器自带的 installer jar。
+/// 用 Java 运行一个处理器：`java -cp <classpath> <main> <args>`。
 ///
-/// Forge / NeoForge 的 installer 需要 `--launcherDir` 才知道往哪写版本文件，
-/// 不给就会写进当前工作目录，所以这里总是把 `game_root` 传进去。
-fn run_installer(
-    game_root: &Path,
-    jar_path: &str,
-    args: &[String],
-    output_dir: Option<&str>,
-) -> Result<(), String> {
-    let jar = safe_target(game_root, jar_path)?;
-    if !jar.is_file() {
-        return Err(format!("{} 不存在，安装器没有下载成功", jar.display()));
-    }
+/// 处理器的输出可能很多，所以读输出放在单独的线程里（不然管道写满会把它卡死），
+/// 只留最后一小段，出错时拿来当线索。主线程每 100 毫秒看一次进程有没有结束，
+/// 有没有被取消；取消就杀掉进程。
+struct JavaProcessRunner {
+    java: PathBuf,
+}
 
-    let java = find_java()?;
-    let launcher_dir = match output_dir {
-        Some(dir) => safe_target(game_root, dir)?,
-        None => game_root.to_path_buf(),
-    };
-    fs::create_dir_all(&launcher_dir)
-        .map_err(|error| format!("cannot create {}: {error}", launcher_dir.display()))?;
+impl ProcessorRunner for JavaProcessRunner {
+    fn run(
+        &self,
+        classpath: &[PathBuf],
+        main_class: &str,
+        args: &[String],
+        cwd: &Path,
+        cancel: &CancellationToken,
+    ) -> Result<(), String> {
+        use std::io::Read;
+        use std::process::Stdio;
+        use std::thread;
+        use std::time::Duration;
 
-    // 计划的 args 已经带了 `--installClient`；只在没有时才补 `--launcherDir`。
-    let mut command = aether_runtime::hidden_command(&java);
-    command.arg("-jar").arg(&jar).args(args);
-    if !args.iter().any(|arg| arg == LAUNCHER_DIR_FLAG) {
-        command.arg(LAUNCHER_DIR_FLAG).arg(&launcher_dir);
-    }
-    command.current_dir(game_root);
+        let joined = std::env::join_paths(classpath)
+            .map_err(|error| format!("cannot build the classpath: {error}"))?;
+        let mut command = aether_runtime::hidden_command(&self.java);
+        command
+            .arg("-cp")
+            .arg(joined)
+            .arg(main_class)
+            .args(args)
+            .current_dir(cwd)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = command
+            .spawn()
+            .map_err(|error| format!("cannot run {}: {error}", self.java.display()))?;
 
-    let output = command
-        .output()
-        .map_err(|error| format!("cannot run {}: {error}", java.display()))?;
-    if !output.status.success() {
-        // installer 的 stderr 是唯一线索，只留最后一段，别把整份日志塞进对话框。
-        let mut text = String::from_utf8_lossy(&output.stderr).into_owned();
-        if text.trim().is_empty() {
-            text = String::from_utf8_lossy(&output.stdout).into_owned();
+        fn drain(mut pipe: impl Read + Send + 'static) -> thread::JoinHandle<String> {
+            thread::spawn(move || {
+                let mut kept: Vec<u8> = Vec::new();
+                let mut buffer = [0u8; 8192];
+                while let Ok(read) = pipe.read(&mut buffer) {
+                    if read == 0 {
+                        break;
+                    }
+                    kept.extend_from_slice(&buffer[..read]);
+                    if kept.len() > 64 * 1024 {
+                        kept.drain(..kept.len() - 16 * 1024);
+                    }
+                }
+                String::from_utf8_lossy(&kept).into_owned()
+            })
         }
-        return Err(format!(
-            "安装器退出码 {:?}：{}",
-            output.status.code(),
+        let stdout = child.stdout.take().map(drain);
+        let stderr = child.stderr.take().map(drain);
+
+        let status = loop {
+            if cancel.is_cancelled() {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("installation cancelled".to_owned());
+            }
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => thread::sleep(Duration::from_millis(100)),
+                Err(error) => return Err(format!("cannot wait for the process: {error}")),
+            }
+        };
+        let stdout = stdout
+            .and_then(|handle| handle.join().ok())
+            .unwrap_or_default();
+        let stderr = stderr
+            .and_then(|handle| handle.join().ok())
+            .unwrap_or_default();
+        if status.success() {
+            return Ok(());
+        }
+        let text = if stderr.trim().is_empty() {
+            stdout
+        } else {
+            stderr
+        };
+        Err(format!(
+            "exit code {:?}: {}",
+            status.code(),
             tail(&text, 600)
-        ));
+        ))
     }
-    Ok(())
 }
 
 fn tail(text: &str, limit: usize) -> String {

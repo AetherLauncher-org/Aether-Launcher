@@ -13,7 +13,9 @@ use std::path::{Path, PathBuf};
 
 use aether_download::hash::HashingWriter;
 use aether_download::transport::http::UreqKernel;
-use aether_download::transport::{HttpTransport, KernelHttpTransport, TransportRequest};
+use aether_download::transport::{
+    HttpTransport, KernelHttpTransport, TransportError, TransportRequest, TransportResponse,
+};
 use aether_modloader::transport::{MetaError, MetaFetcher};
 
 use super::execute::safe_target;
@@ -90,6 +92,36 @@ impl MetaFetcher for HttpMetaFetcher {
 /// 对端被劫持、或者 URL 指错了地方。上限存在的意义是不让响应体撑爆内存。
 const MAX_DOWNLOAD_BYTES: u64 = 512 * 1024 * 1024;
 
+/// 一次请求最多试几次。一个加载器安装要下几十到上百个文件，网络偶尔抖一下很常见，
+/// 不该因为一次连接失败就把整个安装作废。
+const REQUEST_ATTEMPTS: u32 = 3;
+
+/// 这个错误值得重试：连不上、超时、服务器 5xx。404、哈希不对这类不会因为再试一次变好。
+fn is_transient(error: &TransportError) -> bool {
+    match error {
+        TransportError::Connect { .. } | TransportError::Timeout { .. } => true,
+        TransportError::HttpStatus { status, .. } => *status >= 500,
+        _ => false,
+    }
+}
+
+/// `transport.get`，对瞬时错误最多重试 [`REQUEST_ATTEMPTS`] 次，每次多等一会儿。
+fn get_with_retries(
+    transport: &dyn HttpTransport,
+    request: &TransportRequest,
+) -> Result<TransportResponse, TransportError> {
+    let mut attempt = 1;
+    loop {
+        match transport.get(request) {
+            Err(error) if attempt < REQUEST_ATTEMPTS && is_transient(&error) => {
+                std::thread::sleep(std::time::Duration::from_millis(400 * u64::from(attempt)));
+                attempt += 1;
+            }
+            other => return other,
+        }
+    }
+}
+
 /// `.sha1` 旁注文件的大小上限。里面只有 40 个十六进制字符，可能带文件名。
 const MAX_SIDECAR_BYTES: u64 = 1024;
 
@@ -108,13 +140,15 @@ fn is_sha1(text: &str) -> bool {
 /// 读不到、格式不对一律失败：宁可装不上，也不装一个没有校验值的文件。
 fn fetch_sidecar_sha1(transport: &dyn HttpTransport, url: &str) -> Result<String, String> {
     let sidecar = format!("{url}.sha1");
-    let response = transport
-        .get(&TransportRequest {
+    let response = get_with_retries(
+        transport,
+        &TransportRequest {
             url: sidecar.clone(),
             range: None,
             timeout_secs: META_TIMEOUT_SECS,
-        })
-        .map_err(|error| format!("cannot read the checksum {sidecar}: {error}"))?;
+        },
+    )
+    .map_err(|error| format!("cannot read the checksum {sidecar}: {error}"))?;
     let mut body = Vec::new();
     response
         .body
@@ -182,8 +216,7 @@ pub fn download_into(
         range: None,
         timeout_secs: 60,
     };
-    let response = transport
-        .get(&request)
+    let response = get_with_retries(transport, &request)
         .map_err(|error| format!("cannot download {url}: {error}"))?;
 
     // 流式落盘：边读边写边算摘要，内存里只留一个缓冲区。
