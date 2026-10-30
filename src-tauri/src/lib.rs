@@ -77,7 +77,6 @@ pub fn run() {
             system_memory,
             commands::catalog::list_minecraft_versions,
             commands::modloader::commands::list_modloader_versions,
-            commands::modloader::commands::download_modloader_installer,
             commands::modloader::commands::install_modloader_version,
             commands::install::install_vanilla_version,
             commands::install::cancel_vanilla_install,

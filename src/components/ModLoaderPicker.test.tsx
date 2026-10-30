@@ -24,7 +24,6 @@ function choices(): ModLoaderChoice[] {
       available: true,
       reason: null,
       versions: ["0.16.9", "0.15.11"],
-      companions: [{ label: "Fabric API", versions: ["0.116.6+1.21.1"], reason: null }],
     },
     {
       kind: "quilt",
@@ -32,7 +31,6 @@ function choices(): ModLoaderChoice[] {
       available: true,
       reason: null,
       versions: ["0.27.0"],
-      companions: [],
     },
     {
       kind: "forge",
@@ -40,7 +38,6 @@ function choices(): ModLoaderChoice[] {
       available: true,
       reason: null,
       versions: ["66.1.2", "66.0.0"],
-      companions: [],
     },
     {
       kind: "neoforge",
@@ -48,7 +45,6 @@ function choices(): ModLoaderChoice[] {
       available: true,
       reason: null,
       versions: ["21.1.72", "21.1.68"],
-      companions: [],
     },
   ];
 }
@@ -155,7 +151,6 @@ describe("ModLoaderPicker", () => {
       kind: "fabric",
       label: "Fabric",
       version: "0.15.11",
-      companion: expect.objectContaining({ label: "Fabric API" }),
     });
   });
 
@@ -208,33 +203,30 @@ describe("ModLoaderPicker", () => {
     expect(changes[changes.length - 1]).toBeNull();
   });
 
-  it("reveals Fabric API once Fabric is picked and preselects it", async () => {
+  it("says Fabric API is not installed automatically, instead of promising it", async () => {
     const { changes } = renderPicker();
     await screen.findByRole("list", { name: "模组加载器" });
 
-    expect(screen.queryByText("Fabric API")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Fabric API/)).not.toBeInTheDocument();
 
     await chooseVersion("Fabric", "0.16.9");
 
-    expect(await screen.findByText("Fabric API")).toBeInTheDocument();
-    expect(screen.getByText("0.116.6+1.21.1")).toBeInTheDocument();
-    expect(changes[changes.length - 1]?.companion).toEqual({ label: "Fabric API", version: "0.116.6+1.21.1" });
-
-    // 可以单独取消，Fabric 本身保留。
-    fireEvent.click(screen.getByRole("button", { name: "取消选择 Fabric API" }));
-    expect(changes[changes.length - 1]?.kind).toBe("fabric");
-    expect(changes[changes.length - 1]?.companion).toBeNull();
+    const note = await screen.findByRole("note");
+    expect(note).toHaveTextContent("Fabric API");
+    expect(note).toHaveTextContent("不会自动安装");
+    // 选择里没有任何「附属组件」：后端不会装它，界面就不能暗示它会装。
+    expect(changes[changes.length - 1]).toEqual({ kind: "fabric", label: "Fabric", version: "0.16.9" });
   });
 
-  it("hides Fabric API again when Fabric is cleared", async () => {
+  it("drops the Fabric API note again when Fabric is cleared", async () => {
     renderPicker();
     await screen.findByRole("list", { name: "模组加载器" });
 
     await chooseVersion("Fabric", "0.16.9");
-    expect(await screen.findByText("Fabric API")).toBeInTheDocument();
+    expect(await screen.findByRole("note")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "取消选择 Fabric" }));
-    await waitFor(() => expect(screen.queryByText("Fabric API")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("note")).not.toBeInTheDocument());
   });
 
   it("tags only the newest version", async () => {

@@ -131,15 +131,13 @@ export {
   watchMaximized,
 } from "./window";
 
-// 模组加载器：可用版本列表与安装器下载
+// 模组加载器：可用版本列表与安装
 export {
-  downloadModLoaderInstaller,
   installModLoaderVersion,
   listModLoaderVersions,
 } from "./modloader";
 export type {
   ModLoaderChoice,
-  ModLoaderCompanion,
   ModLoaderInstallResult,
   ModLoaderKind,
 } from "./modloader";

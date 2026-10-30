@@ -438,7 +438,7 @@ fn describe_failure(error: &DownloadError) -> String {
 }
 
 /// Fail fast on an unusable instance name, before a long download.
-fn check_instance_name(base: &Path, name: &str) -> Result<(), String> {
+pub(super) fn check_instance_name(base: &Path, name: &str) -> Result<(), String> {
     validate_instance_name(name).map_err(|error| format!("invalid instance name: {error}"))?;
     fs::create_dir_all(base.join("instances"))
         .map_err(|_| "cannot prepare the instance store".to_owned())?;
@@ -496,6 +496,22 @@ pub(super) fn install_and_create_with(
     reporter: &dyn Reporter,
 ) -> Result<InstanceSummary, String> {
     check_instance_name(base, name)?;
+    install_game_files(transport, base, version, options, cancel, reporter)?;
+    create_ready_instance(base, name, version, reporter)
+}
+
+/// Fetches and verifies the version JSON, then the client JAR, libraries, natives
+/// and assets of `version` into `base/game`. It creates no instance: a caller that
+/// still has more to install (a mod loader) creates the instance only once all of it
+/// succeeded, so a failure never leaves a half-installed instance behind.
+pub(super) fn install_game_files(
+    transport: &dyn HttpTransport,
+    base: &Path,
+    version: &str,
+    options: InstallOptions<'_>,
+    cancel: &CancellationToken,
+    reporter: &dyn Reporter,
+) -> Result<(), String> {
     let game_root = base.join("game");
 
     reporter.report(&InstallProgress {
@@ -522,7 +538,19 @@ pub(super) fn install_and_create_with(
         cancel,
         reporter,
     )?;
+    Ok(())
+}
 
+/// Creates the instance for an installed `version` (already verified on disk) and
+/// marks it ready. `version` may be a mod loader's version ID that inherits from a
+/// vanilla one.
+pub(super) fn create_ready_instance(
+    base: &Path,
+    name: &str,
+    version: &str,
+    reporter: &dyn Reporter,
+) -> Result<InstanceSummary, String> {
+    let game_root = base.join("game");
     reporter.report(&InstallProgress {
         version: version.to_owned(),
         stage: Stage::Finalize,

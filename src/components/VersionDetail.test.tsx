@@ -40,11 +40,10 @@ function choices(): ModLoaderChoice[] {
       available: true,
       reason: null,
       versions: ["0.16.9"],
-      companions: [{ label: "Fabric API", versions: ["0.116.6+1.21.1"], reason: null }],
     },
-    { kind: "forge", label: "Forge", available: true, reason: null, versions: ["66.1.2"], companions: [] },
-    { kind: "neoforge", label: "NeoForge", available: false, reason: "无", versions: [], companions: [] },
-    { kind: "quilt", label: "Quilt", available: false, reason: "无", versions: [], companions: [] },
+    { kind: "forge", label: "Forge", available: true, reason: null, versions: ["66.1.2"] },
+    { kind: "neoforge", label: "NeoForge", available: false, reason: "无", versions: [] },
+    { kind: "quilt", label: "Quilt", available: false, reason: "无", versions: [] },
   ];
 }
 
@@ -129,6 +128,28 @@ describe("VersionDetail", () => {
       expect(installLoader).toHaveBeenCalledWith("fabric", "1.21.1", "0.16.9", "1.21.1-Fabric 0.16.9"),
     );
     // 选了加载器就不该再单独走原版安装。
+    expect(startVanilla).not.toHaveBeenCalled();
+  });
+
+  it("retries a failed loader install as the same loader, not as plain Vanilla", async () => {
+    installLoader.mockRejectedValueOnce("network error").mockResolvedValueOnce({
+      instance: { id: "abc", name: "1.21.1-Fabric 0.16.9", version: "fabric-loader-0.16.9-1.21.1", state: "ready" },
+      versionId: "fabric-loader-0.16.9-1.21.1",
+    } as never);
+    renderDetail();
+    await screen.findByRole("list", { name: "模组加载器" });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Fabric" }));
+    const list = await screen.findByRole("listbox", { name: "Fabric 版本" });
+    fireEvent.click(within(list).getByRole("option", { name: /0\.16\.9/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^安装/ }));
+    await waitFor(() => expect(installLoader).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(await screen.findByRole("button", { name: /重试/ }));
+
+    await waitFor(() => expect(installLoader).toHaveBeenCalledTimes(2));
+    expect(installLoader).toHaveBeenLastCalledWith("fabric", "1.21.1", "0.16.9", "1.21.1-Fabric 0.16.9");
+    // 以前重试会丢掉加载器，悄悄变成装原版。
     expect(startVanilla).not.toHaveBeenCalled();
   });
 

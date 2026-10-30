@@ -24,8 +24,6 @@ export type ModLoaderSelection = {
   kind: ModLoaderKind;
   label: string;
   version: string;
-  /** 会连带装上的附属组件，目前只有 Fabric API。 */
-  companion: { label: string; version: string } | null;
 };
 
 type ModLoaderPickerProps = {
@@ -85,8 +83,6 @@ export function ModLoaderPicker({ gameVersion, value, onChange }: ModLoaderPicke
 
   /** 当前展开的加载器；同一时间只展开一行，和 PCL 一样。 */
   const [openKind, setOpenKind] = useState<ModLoaderKind | null>(null);
-  /** Fabric API 是否被取消过；取消之后就别再自动选回来。 */
-  const [companionDismissed, setCompanionDismissed] = useState(false);
 
   // 读取列表是外部请求，结果回来才写 state；effect 体里只发起请求。
   useEffect(() => {
@@ -142,11 +138,6 @@ export function ModLoaderPicker({ gameVersion, value, onChange }: ModLoaderPicke
     setOpenKind((current) => (current === choice.kind ? null : choice.kind));
   };
 
-  /** Fabric API 在那张卡上的版本（只对 Fabric 有意义）。 */
-  const fabricApi = choices
-    .find((choice) => choice.kind === "fabric")
-    ?.companions.find((companion) => companion.label === "Fabric API");
-
   /**
    * 选中一个版本，然后把列表收回去。
    *
@@ -156,30 +147,13 @@ export function ModLoaderPicker({ gameVersion, value, onChange }: ModLoaderPicke
   const pick = (choice: ModLoaderChoice, version: string) => {
     setOpenKind(null);
 
-    // 选了 Fabric 就把 Fabric API 一起带上（PCL 的 `AutoSelectedFabricApi`），
-    // 用户取消过就不再自动选回来。
-    const companion =
-      choice.kind === "fabric" &&
-      !companionDismissed &&
-      fabricApi !== undefined &&
-      fabricApi.versions.length > 0
-        ? { label: fabricApi.label, version: fabricApi.versions[0] }
-        : null;
-
-    onChange({ kind: choice.kind, label: choice.label, version, companion });
+    onChange({ kind: choice.kind, label: choice.label, version });
   };
 
   /** 取消一个加载器的选择，回到「装原版」。 */
   const clear = () => {
     setOpenKind(null);
     onChange(null);
-  };
-
-  const clearCompanion = () => {
-    setCompanionDismissed(true);
-    if (value !== null) {
-      onChange({ ...value, companion: null });
-    }
   };
 
   const fabricChosen = value?.kind === "fabric";
@@ -352,32 +326,13 @@ export function ModLoaderPicker({ gameVersion, value, onChange }: ModLoaderPicke
       )}
 
       {/*
-        Fabric API 单独一张卡：只有选了 Fabric 才出现，默认带上最新版。
-        这是 PCL 的 `CardFabricApi`。它只是一个勾选项，安装动作交给页面上的按钮。
+        Fabric 模组大多依赖 Fabric API，但安装它还没有实现（要先决定 mods 放哪、
+        下载校验值从哪来）。这里只如实提示，不假装会装。
       */}
-      {fabricChosen && fabricApi !== undefined ? (
-        <div className="modloader-companion" data-available={value.companion !== null}>
-          <div className="modloader-companion-head">
-            <span className="modloader-companion-name">Fabric API</span>
-            {value.companion === null ? (
-              <span className="modloader-companion-note">
-                {fabricApi.reason ?? "已取消，不会自动装上"}
-              </span>
-            ) : (
-              <span className="modloader-companion-version">{value.companion.version}</span>
-            )}
-            {value.companion === null ? null : (
-              <button
-                type="button"
-                className="modloader-clear"
-                aria-label="取消选择 Fabric API"
-                onClick={clearCompanion}
-              >
-                <Dismiss16Regular aria-hidden="true" />
-              </button>
-            )}
-          </div>
-        </div>
+      {fabricChosen ? (
+        <Text className="muted modloader-note" size={200} role="note">
+          Fabric 模组大多还需要 Fabric API。启动器暂时不会自动安装它，需要的话请自己下载。
+        </Text>
       ) : null}
     </section>
   );

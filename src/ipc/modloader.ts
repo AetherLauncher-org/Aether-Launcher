@@ -15,11 +15,6 @@ export type ModLoaderKind = "fabric" | "forge" | "neoforge" | "quilt";
 declare module "./call" {
   interface CommandArgs {
     list_modloader_versions: { gameVersion: string };
-    download_modloader_installer: {
-      kind: ModLoaderKind;
-      gameVersion: string;
-      loaderVersion: string;
-    };
     install_modloader_version: {
       kind: ModLoaderKind;
       gameVersion: string;
@@ -30,20 +25,9 @@ declare module "./call" {
 
   interface CommandResults {
     list_modloader_versions: ModLoaderChoice[];
-    download_modloader_installer: string[];
     install_modloader_version: ModLoaderInstallResult;
   }
 }
-
-/** 跟着加载器一起装的附属组件，例如 Fabric API。 */
-export type ModLoaderCompanion = {
-  /** 给人看的名字，例如 `Fabric API`。 */
-  label: string;
-  /** 匹配当前游戏版本的版本号，最新的在前。 */
-  versions: string[];
-  /** 读不到版本时的原因；`null` 表示列表正常。 */
-  reason: string | null;
-};
 
 /** 一个加载器对某个游戏版本的可用情况。 */
 export type ModLoaderChoice = {
@@ -55,8 +39,6 @@ export type ModLoaderChoice = {
   reason: string | null;
   /** 可选的加载器版本，最新的在前。 */
   versions: string[];
-  /** 会连带装上的附属组件。目前只有 Fabric 的 Fabric API。 */
-  companions: ModLoaderCompanion[];
 };
 
 /**
@@ -76,24 +58,6 @@ export async function listModLoaderVersions(
   } catch {
     return [];
   }
-}
-
-/**
- * 下载某个加载器版本的安装器。
- *
- * 返回下载到本机的文件列表（绝对路径由后端给出，只用于展示）。
- * 抛错表示这个版本没有安装器或者下载失败。
- */
-export async function downloadModLoaderInstaller(
-  kind: ModLoaderKind,
-  gameVersion: string,
-  loaderVersion: string,
-): Promise<string[]> {
-  return callCommand("download_modloader_installer", {
-    kind,
-    gameVersion,
-    loaderVersion,
-  });
 }
 
 /** 装好一个加载器版本之后返回的结果。 */

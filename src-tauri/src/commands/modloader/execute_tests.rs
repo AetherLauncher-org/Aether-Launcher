@@ -20,32 +20,6 @@ fn rejects_destinations_that_escape_the_game_root() {
 }
 
 #[test]
-fn builds_maven_paths_for_plain_and_classified_artifacts() {
-    assert_eq!(
-        maven_relative_path("net.fabricmc:fabric-loader:0.16.0").as_deref(),
-        Some("net/fabricmc/fabric-loader/0.16.0/fabric-loader-0.16.0.jar")
-    );
-    assert_eq!(
-        maven_relative_path("net.minecraftforge:installer:1.20.1-47.4.0:shrunk").as_deref(),
-        Some("net/minecraftforge/installer/1.20.1-47.4.0/installer-1.20.1-47.4.0-shrunk.jar")
-    );
-}
-
-#[test]
-fn rejects_malformed_maven_coordinates() {
-    // 段数不对。
-    assert!(maven_relative_path("net.fabricmc").is_none());
-    assert!(maven_relative_path("net.fabricmc:fabric-loader").is_none());
-    assert!(maven_relative_path("a:b:c:d:e").is_none());
-    // 空段。
-    assert!(maven_relative_path(":artifact:1.0").is_none());
-    assert!(maven_relative_path("group::1.0").is_none());
-    // 路径穿越。
-    assert!(maven_relative_path("group:../evil:1.0").is_none());
-    assert!(maven_relative_path("group:artifact:../../../etc/passwd").is_none());
-}
-
-#[test]
 fn tail_keeps_the_end_of_a_long_message() {
     let text = "a".repeat(1000);
     let kept = tail(&text, 10);
@@ -70,20 +44,37 @@ fn quilt_is_reported_as_unsupported_before_any_io() {
 }
 
 #[test]
-fn every_downloaded_library_is_a_safe_destination() {
-    // 计划的每个写入目标都要能通过 `safe_target`，否则执行时会中途失败。
-    let game_root = std::path::Path::new("C:/game");
-    for coordinate in [
-        "net.fabricmc:intermediary:1.21.1",
-        "net.fabricmc:fabric-loader:0.20.1",
-        "org.ow2.asm:asm:9.10.1",
+fn the_path_rule_is_the_one_the_vanilla_installer_uses() {
+    let root = std::path::Path::new("C:/game");
+
+    // 原版安装拒绝、加载器以前会放过的写法：空段、`.`、结尾的点、数据流、保留名。
+    for bad in [
+        "libraries//x.jar",
+        "libraries/./x.jar",
+        "libraries/x.jar.",
+        "libraries/x.jar:stream",
+        "libraries/CON/x.jar",
+        "libraries/a<b>.jar",
     ] {
-        let relative = maven_relative_path(coordinate).expect("valid coordinate");
-        assert!(
-            safe_target(game_root, &format!("libraries/{relative}")).is_ok(),
-            "rejected: {relative}"
-        );
+        assert!(safe_target(root, bad).is_err(), "should be refused: {bad}");
     }
+    assert!(
+        safe_target(
+            root,
+            "libraries/net/fabricmc/fabric-loader/0.20.1/fabric-loader-0.20.1.jar"
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn copying_libraries_from_a_local_cache_is_refused() {
+    let error = copy_libraries(
+        "https://maven.example.invalid/",
+        &["net.fabricmc:fabric-loader:0.20.1".to_owned()],
+    )
+    .unwrap_err();
+    assert!(error.contains("官方源"), "{error}");
 }
 
 /// 不关心进度的 reporter。

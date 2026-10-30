@@ -1536,40 +1536,6 @@
   color: var(--colorBrandForeground1);
 }
 
-/* Fabric API 单独一张卡：选了 Fabric 才出现，和 PCL 的 CardFabricApi 一样。 */
-.modloader-companion {
-  margin-block-start: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--card-stroke);
-  border-radius: var(--borderRadiusMedium);
-  background: var(--colorNeutralBackground3);
-  animation: fade-in var(--durationNormal) var(--curveDecelerateMid) both;
-}
-
-.modloader-companion-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.modloader-companion-name {
-  font-weight: 600;
-}
-
-.modloader-companion-version {
-  font-variant-numeric: tabular-nums;
-}
-
-.modloader-companion-note {
-  font-size: 12px;
-  color: var(--colorNeutralForeground3);
-}
-
-.modloader-companion-head > .modloader-clear {
-  margin-inline-start: auto;
-}
-
 .modloader-actions {
   display: flex;
   flex-wrap: wrap;

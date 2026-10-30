@@ -2,10 +2,13 @@
 //!
 //! `aether-modloader` 只算「要做什么」，这里负责真正联网、写盘、起进程：
 //!
-//! 1. 先按原版流程装好游戏本体并建实例 —— 加载器的版本 json 都 `inheritsFrom`
-//!    原版，没有原版那一层就启动不了；
+//! 1. 先检查实例名，再按原版流程装好游戏本体（不建实例）—— 加载器的版本 json 都
+//!    `inheritsFrom` 原版，没有原版那一层就启动不了；
 //! 2. 再逐条执行加载器计划的步骤（下载库 / 跑 installer / 写版本 json）；
-//! 3. 把实例的版本改成加载器的版本 id，再激活。
+//! 3. **全部成功之后**才建实例，版本直接指向加载器的版本 id，再激活。
+//!
+//! 实例放在最后建：中途失败（网络、installer 报错、取消）不会留下一个指向原版、
+//! 名字却写着加载器的实例。
 //!
 //! 所有写入都限制在 `base/game` 里：`plan.validate` 已经把目标路径约束成安全的
 //! 相对路径，这里拼完再检查一次没有跳出根目录。
@@ -13,21 +16,20 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use aether_download::CancellationToken;
 use aether_download::transport::KernelHttpTransport;
 use aether_download::transport::http::UreqKernel;
+use aether_download::{CancellationToken, is_safe_relative_path};
 use aether_modloader::transport::{MetaError, MetaSource};
 use aether_modloader::{InstallStep, ModLoaderInstallPlan, ModLoaderKind, fabric, forge, neoforge};
-use aether_storage::{InstanceStore, set_instance_version};
 use serde::Serialize;
 
 use super::HttpMetaFetcher;
 use super::fetch::download_into;
 use crate::commands::install::{
-    InstallOptions, InstallProgress, Reporter, Stage, install_and_create_with,
+    InstallOptions, InstallProgress, Reporter, Stage, check_instance_name, create_ready_instance,
+    install_game_files,
 };
 use crate::commands::instances::InstanceSummary;
-use crate::commands::launch::activate_instance;
 
 /// 跑 installer 时传给它的 `--launcherDir` 参数名。
 const LAUNCHER_DIR_FLAG: &str = "--launcherDir";
@@ -91,29 +93,19 @@ pub(super) fn install_with(
 
     let game_root = base.join("game");
 
+    // 先查名字：重名或不合法在下载之前就该失败，而不是装完才发现。
+    check_instance_name(base, &instance_name)?;
+
     // 原版那一层。已经装过时，`prepare_version` 会命中校验通过的缓存直接复用，
-    // 所以这里不需要额外判断目录是否存在。
-    let created = install_and_create_with(
+    // 所以这里不需要额外判断目录是否存在。这一步不建实例。
+    install_game_files(
         transport,
         base,
         game_version,
-        &instance_name,
-        InstallOptions {
-            seed: None,
-            catalog: None,
-        },
+        InstallOptions::default(),
         cancel,
         reporter,
     )?;
-
-    // 直接用建实例时返回的 id，不按名字回查：仓库里已有同名实例时，
-    // 名字匹配会拿到别人那个实例，然后把它的版本改掉。
-    let instance_id = aether_core::InstanceId::parse(created.id()).map_err(|error| {
-        format!(
-            "cannot read back the instance id {id}: {error}",
-            id = created.id()
-        )
-    })?;
 
     // 加载器自己的步骤。
     let total = plan.steps.len();
@@ -131,25 +123,10 @@ pub(super) fn install_with(
         ));
     }
 
-    reporter.report(&InstallProgress::mod_loader(
-        &plan.loader_version,
-        Stage::Finalize,
-        1,
-        1,
-    ));
-
-    // 让实例从原版切到加载器版本，再按新版本重建启动信息。
-    let store = InstanceStore::open(base).map_err(|error| error.to_string())?;
-    let instance = store.load(instance_id).map_err(|error| error.to_string())?;
-    let record_dir = base.join("instances").join(instance_id.to_string());
-    let updated = set_instance_version(&record_dir, &instance, &version_id)
-        .map_err(|error| format!("cannot point instance at {version_id}: {error}"))?;
-    activate_instance(base, &game_root, updated.id)
-        .map_err(|error| format!("cannot activate instance: {error}"))?;
-
-    let ready = store.load(instance_id).map_err(|error| error.to_string())?;
+    // 全部装好了才建实例，版本直接是加载器的版本 id。
+    let instance = create_ready_instance(base, &instance_name, &version_id, reporter)?;
     Ok(ModLoaderInstallResult {
-        instance: InstanceSummary::from_instance(&ready),
+        instance,
         version_id,
     })
 }
@@ -245,7 +222,7 @@ fn step_execute(
         InstallStep::CopyLibraries {
             repository,
             coordinates,
-        } => copy_libraries(game_root, repository, coordinates),
+        } => copy_libraries(repository, coordinates),
         InstallStep::RunInstaller {
             jar_path,
             args,
@@ -264,125 +241,29 @@ fn write_file(game_root: &Path, relative: &str, bytes: &[u8]) -> Result<(), Stri
 }
 
 /// 拼路径并确认没有跳出 `game_root`。
+///
+/// 规则和原版安装共用 [`is_safe_relative_path`]：拒绝绝对路径、`..`、盘符和数据流
+/// （`:`）、Windows 保留名、结尾的点和空格，以及控制字符。只有一份规则，原版和加载器
+/// 的写入才不会对「什么算安全」有两种说法。
 pub(super) fn safe_target(game_root: &Path, relative: &str) -> Result<PathBuf, String> {
-    // 只按 `starts_with` 判断不够：`"C:/game/../../evil.json"` 的组件以 `game` 开头，
-    // `..` 只是普通组件，比较会通过，但落盘时已经跳出根目录。
-    // 所以先把 `..` 与 `.` 解析掉，再要求结果仍在根目录之下。
-    let mut depth = 0usize;
-    let mut push = |segment: &str| -> bool {
-        match segment {
-            "" | "." => true,
-            ".." => {
-                if depth == 0 {
-                    return false;
-                }
-                depth -= 1;
-                true
-            }
-            _ => {
-                depth += 1;
-                true
-            }
-        }
-    };
-
-    // 绝对路径直接拒绝：计划里的目标永远是相对路径。
-    if relative.starts_with('/') || relative.starts_with('\\') {
+    if !is_safe_relative_path(Path::new(relative)) {
         return Err(format!(
             "refusing to write outside the game directory: {relative}"
         ));
     }
-    // Windows 盘符（`C:`）同样算绝对路径。
-    let bytes = relative.as_bytes();
-    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
-        return Err(format!(
-            "refusing to write outside the game directory: {relative}"
-        ));
-    }
-
-    for segment in relative.split(['/', '\\']) {
-        if !push(segment) {
-            return Err(format!(
-                "refusing to write outside the game directory: {relative}"
-            ));
-        }
-    }
-
     Ok(game_root.join(relative.replace('\\', "/")))
 }
 
-/// 把 maven 缓存里已有的构件复制进 `libraries/`。
+/// `CopyLibraries`：不支持，直接拒绝。
 ///
-/// `CopyLibraries` 的语义是搬运**已经在本地 maven 仓库里**的构件；需要联网的
-/// 构件由 `Download` 步骤负责，这里不静默联网。
-///
-/// 缓存位置按 `AETHER_MAVEN_CACHE` → `~/.m2/repository` 的顺序找。
-fn copy_libraries(
-    game_root: &Path,
-    repository: &str,
-    coordinates: &[String],
-) -> Result<(), String> {
-    let cache = maven_cache_root();
-    for coordinate in coordinates {
-        let Some(relative) = maven_relative_path(coordinate) else {
-            return Err(format!("cannot parse maven coordinate: {coordinate}"));
-        };
-        let target = safe_target(game_root, &format!("libraries/{relative}"))?;
-        if target.is_file() {
-            continue;
-        }
-        let Some(source) = cache.as_ref().map(|root| root.join(&relative)) else {
-            return Err(format!(
-                "{coordinate} 需要从 {repository} 下载，但本机没有 maven 缓存"
-            ));
-        };
-        if !source.is_file() {
-            return Err(format!(
-                "{coordinate} 不在本机 maven 缓存里（仓库 {repository}）"
-            ));
-        }
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
-        }
-        fs::copy(&source, &target)
-            .map_err(|error| format!("cannot copy {}: {error}", source.display()))?;
-    }
-    Ok(())
-}
-
-fn maven_cache_root() -> Option<PathBuf> {
-    if let Some(configured) = std::env::var_os("AETHER_MAVEN_CACHE") {
-        return Some(PathBuf::from(configured));
-    }
-    std::env::var_os("USERPROFILE")
-        .or_else(|| std::env::var_os("HOME"))
-        .map(|home| PathBuf::from(home).join(".m2").join("repository"))
-}
-
-/// `group:artifact:version[:classifier]` → `group/path/artifact/version/artifact-version[-classifier].jar`
-fn maven_relative_path(coordinate: &str) -> Option<String> {
-    let parts: Vec<&str> = coordinate.split(':').collect();
-    if parts.len() < 3 || parts.len() > 4 {
-        return None;
-    }
-    let (group, artifact, version) = (parts[0], parts[1], parts[2]);
-    if group.is_empty() || artifact.is_empty() || version.is_empty() {
-        return None;
-    }
-    if parts
-        .iter()
-        .any(|part| part.contains(['/', '\\']) || part.contains(".."))
-    {
-        return None;
-    }
-    let classifier = parts
-        .get(3)
-        .map(|value| format!("-{value}"))
-        .unwrap_or_default();
-    Some(format!(
-        "{}/{artifact}/{version}/{artifact}-{version}{classifier}.jar",
-        group.replace('.', "/")
+/// 这一步原本会从 `AETHER_MAVEN_CACHE` 或 `~/.m2` 把构件复制进 `libraries/`，既没有
+/// 哈希校验，来源又是环境变量或用户目录，任何能写那个目录的进程都能往游戏的
+/// classpath 里塞代码。现在没有任何安装计划会产出这一步；万一有，宁可失败也不静默
+/// 复制未经校验的文件。需要的构件应当走 `Download`，由官方源和校验值把关。
+fn copy_libraries(repository: &str, coordinates: &[String]) -> Result<(), String> {
+    Err(format!(
+        "不支持从本机缓存复制库（{} 个来自 {repository}）：库必须从官方源下载并校验",
+        coordinates.len()
     ))
 }
 

@@ -130,7 +130,17 @@ export function VersionDetail({ version, isLatest, onBack }: VersionDetailProps)
             <AutoReturn to="instances" onLeaving={dismiss} />
           ) : (
             <>
-              {thisJob !== null ? <InstallFailure job={thisJob} onRetry={() => void start(thisJob.version, thisJob.name)} /> : null}
+              {thisJob !== null ? <InstallFailure
+                  job={thisJob}
+                  // 重试要带上选中的加载器，否则装了一半的加载器安装会悄悄变成装原版
+                  onRetry={() =>
+                    void start(
+                      thisJob.version,
+                      thisJob.name,
+                      loader === null ? null : { kind: loader.kind, version: loader.version },
+                    )
+                  }
+                /> : null}
               <form className="status-panel install-form" onSubmit={handleSubmit}>
                 <Text as="h2" size={400} weight="semibold">
                   安装这个版本
@@ -172,9 +182,7 @@ export function VersionDetail({ version, isLatest, onBack }: VersionDetailProps)
                   <Text className="muted" size={200}>
                     {loader === null
                       ? "文件校验值全部来自 Mojang 官方清单，下载后会逐个核对。"
-                      : `先装原版 ${version.id}，再装上 ${loader.label}${
-                          loader.companion === null ? "" : ` 和 ${loader.companion.label}`
-                        }，最后新建实例。`}
+                      : `先装原版 ${version.id}，再装上 ${loader.label}，最后新建实例。`}
                   </Text>
                 </div>
               </form>

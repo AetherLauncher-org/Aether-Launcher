@@ -36,8 +36,9 @@ impl InstanceSummary {
 }
 
 impl InstanceSummary {
-    /// 新实例的 id。调用方（例如装完加载器后要改版本）不该再按名字回查：
-    /// 撞上同名实例会改错对象。
+    /// 新实例的 id。测试里用它找回刚建好的实例目录，不该按名字回查：
+    /// 撞上同名实例会找错对象。
+    #[cfg(test)]
     pub(super) fn id(&self) -> &str {
         &self.id
     }

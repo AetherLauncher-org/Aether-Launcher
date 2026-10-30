@@ -90,16 +90,57 @@ impl MetaFetcher for HttpMetaFetcher {
 /// 对端被劫持、或者 URL 指错了地方。上限存在的意义是不让响应体撑爆内存。
 const MAX_DOWNLOAD_BYTES: u64 = 512 * 1024 * 1024;
 
+/// `.sha1` 旁注文件的大小上限。里面只有 40 个十六进制字符，可能带文件名。
+const MAX_SIDECAR_BYTES: u64 = 1024;
+
+/// 一个合法的 SHA-1：40 个十六进制字符。
+fn is_sha1(text: &str) -> bool {
+    text.len() == 40 && text.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+/// 从官方 maven 的 `<文件>.sha1` 旁注文件读摘要。
+///
+/// Fabric、Forge、NeoForge 的 maven 都为每个构件发布 `.sha1`。这些加载器没有像
+/// Mojang 那样的「带哈希的官方清单」，旁注文件是官方仓库自己给出的唯一校验值：
+/// 它和构件在同一个 https 主机上，防的是传输损坏和落盘错误，防不了仓库本身被
+/// 攻破。是否接受这个信任模型是设计问题，见 `docs/modules/modloader.md`。
+///
+/// 读不到、格式不对一律失败：宁可装不上，也不装一个没有校验值的文件。
+fn fetch_sidecar_sha1(transport: &dyn HttpTransport, url: &str) -> Result<String, String> {
+    let sidecar = format!("{url}.sha1");
+    let response = transport
+        .get(&TransportRequest {
+            url: sidecar.clone(),
+            range: None,
+            timeout_secs: META_TIMEOUT_SECS,
+        })
+        .map_err(|error| format!("cannot read the checksum {sidecar}: {error}"))?;
+    let mut body = Vec::new();
+    response
+        .body
+        .take(MAX_SIDECAR_BYTES)
+        .read_to_end(&mut body)
+        .map_err(|error| format!("cannot read the checksum {sidecar}: {error}"))?;
+    let text = String::from_utf8_lossy(&body);
+    // 常见写法是 `<sha1>` 或 `<sha1>  <文件名>`，取第一个词。
+    let digest = text.split_whitespace().next().unwrap_or_default();
+    if !is_sha1(digest) {
+        return Err(format!(
+            "{sidecar} does not contain a SHA-1; refusing to install a file with no checksum"
+        ));
+    }
+    Ok(digest.to_ascii_lowercase())
+}
+
 /// 执行一条 `InstallStep::Download`：下载到目标相对路径。
 ///
-/// `destination` 由 `ModLoaderInstallPlan::validate` 保证是安全的相对路径，
-/// 但这里是落盘的最后一道关口，所以仍然走
-/// [`safe_target`](super::execute::safe_target) 重新解析一遍 —— 校验和写入之间
-/// 不该有假设。`starts_with(root)` 挡不住 `..`，必须按路径组件解析。
-///
-/// `sha1` 是**官方清单给出的摘要**，不是从同一个响应里现算的。给了就必须匹配，
-/// 不匹配直接删除落盘文件并报错。`size` 同理。两者都缺时只做大小上限检查，
-/// 调用方应当在清单里尽量把哈希填上。
+/// - `destination` 由 `ModLoaderInstallPlan::validate` 保证是安全的相对路径，但这里是
+///   落盘的最后一道关口，所以仍然走 [`safe_target`](super::execute::safe_target)。
+/// - **每个文件都必须有校验值。** `sha1` 是计划里官方清单给的摘要；计划没有给（Forge、
+///   NeoForge 的 installer，Fabric 的核心库）时，从官方 maven 的 `<文件>.sha1` 读，
+///   读不到就失败。大小 `size` 同理，给了就必须一致。
+/// - 先写到 `<目标>.part`，大小和哈希都通过后才改名到位：中断或校验失败不会在最终
+///   路径上留下一个残缺或被替换的文件。
 pub fn download_into(
     transport: &dyn HttpTransport,
     root: &Path,
@@ -114,10 +155,27 @@ pub fn download_into(
         ));
     }
     let target = safe_target(root, destination)?;
+
+    let expected_sha1 = match sha1.map(str::trim) {
+        Some(given) if is_sha1(given) => given.to_ascii_lowercase(),
+        Some(given) => {
+            return Err(format!(
+                "the manifest gives an invalid SHA-1 for {url}: {given:?}"
+            ));
+        }
+        None => fetch_sidecar_sha1(transport, url)?,
+    };
+
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
     }
+    let mut part_name = target
+        .file_name()
+        .map(|name| name.to_os_string())
+        .unwrap_or_default();
+    part_name.push(".part");
+    let part = target.with_file_name(part_name);
 
     let request = TransportRequest {
         url: url.to_owned(),
@@ -130,40 +188,42 @@ pub fn download_into(
 
     // 流式落盘：边读边写边算摘要，内存里只留一个缓冲区。
     let limit = size.unwrap_or(MAX_DOWNLOAD_BYTES).min(MAX_DOWNLOAD_BYTES);
-    let file = std::fs::File::create(&target)
-        .map_err(|error| format!("cannot create {}: {error}", target.display()))?;
+    let fail = |message: String| {
+        let _ = std::fs::remove_file(&part);
+        message
+    };
+    let file = std::fs::File::create(&part)
+        .map_err(|error| format!("cannot create {}: {error}", part.display()))?;
     let mut writer = HashingWriter::new(file);
     let copied = std::io::copy(
         &mut response.body.take(limit.saturating_add(1)),
         &mut writer,
     )
-    .map_err(|error| {
-        let _ = std::fs::remove_file(&target);
-        format!("cannot read {url}: {error}")
-    })?;
+    .map_err(|error| fail(format!("cannot read {url}: {error}")))?;
     let (file, actual_size, actual_sha1) = writer.finish();
     drop(file);
 
     if copied > limit {
-        let _ = std::fs::remove_file(&target);
-        return Err(format!(
+        return Err(fail(format!(
             "{url} is larger than the {limit} byte limit; refusing to keep it"
-        ));
+        )));
     }
-    if size.is_some_and(|expected| actual_size != expected) {
-        let expected = size.unwrap_or_default();
-        let _ = std::fs::remove_file(&target);
-        return Err(format!(
+    if let Some(expected) = size.filter(|expected| actual_size != *expected) {
+        return Err(fail(format!(
             "{url} is {actual_size} bytes but the manifest says {expected}"
-        ));
+        )));
     }
-    if sha1.is_some_and(|expected| !actual_sha1.eq_ignore_ascii_case(expected.trim())) {
-        let expected = sha1.unwrap_or_default();
-        let _ = std::fs::remove_file(&target);
-        return Err(format!(
-            "{url} has SHA-1 {actual_sha1} but the manifest says {expected}"
-        ));
+    if !actual_sha1.eq_ignore_ascii_case(&expected_sha1) {
+        return Err(fail(format!(
+            "{url} has SHA-1 {actual_sha1} but the checksum says {expected_sha1}"
+        )));
     }
+    std::fs::rename(&part, &target).map_err(|error| {
+        fail(format!(
+            "cannot move the verified file into place at {}: {error}",
+            target.display()
+        ))
+    })?;
     Ok(target)
 }
 
