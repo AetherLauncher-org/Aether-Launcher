@@ -1,37 +1,21 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  InstanceSummary,
-  ModLoaderChoice,
-  ModLoaderInstallResult,
-} from "../ipc";
+import type { ModLoaderChoice } from "../ipc";
 import { pretendBrowser, pretendDesktop, renderWithState } from "../test/support";
 import { ModLoaderPicker } from "./ModLoaderPicker";
+import type { ModLoaderSelection } from "./ModLoaderPicker";
 
-// renderWithState 里的 InstallProvider 会订阅安装进度事件；桌面模式下它会真的去调
-// Tauri 的 listen，这里换成空实现，和 DownloadPage.test.tsx 一样。
-vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
-
-// 直接 mock IPC 封装：这个组件只关心「读到了什么、装成功了没有」，
-// 命令名与参数已经由 src/ipc/modloader.ts 的类型保证。
+// 直接 mock IPC 封装：这个组件只关心「读到了什么」。
 vi.mock("../ipc", async (importOriginal) => {
   const original = await importOriginal<typeof import("../ipc")>();
-  return {
-    ...original,
-    listModLoaderVersions: vi.fn(),
-    installModLoaderVersion: vi.fn(),
-  };
+  return { ...original, listModLoaderVersions: vi.fn() };
 });
 
-const { listModLoaderVersions, installModLoaderVersion } = await import("../ipc");
+const { listModLoaderVersions } = await import("../ipc");
 const listVersions = vi.mocked(listModLoaderVersions);
-const installLoader = vi.mocked(installModLoaderVersion);
 
-/**
- * 四个加载器，故意不按固定顺序返回。
- *
- * 全部可装：这样才测得出「不兼容」是按**已选项**算出来的，而不是一开始就写死。
- */
+/** 四个加载器，故意不按固定顺序返回，全部可装。 */
 function choices(): ModLoaderChoice[] {
   return [
     {
@@ -69,13 +53,28 @@ function choices(): ModLoaderChoice[] {
   ];
 }
 
-function renderPicker(onInstalled?: (instance: InstanceSummary) => void) {
-  return renderWithState(
-    <ModLoaderPicker gameVersion="1.21.1" onInstalled={onInstalled} />,
-  );
+/** 受控组件：用一层 state 包起来，并记录每次变化给测试断言。 */
+function renderPicker(initial: ModLoaderSelection | null = null) {
+  const changes: (ModLoaderSelection | null)[] = [];
+
+  function Host() {
+    const [value, setValue] = useState<ModLoaderSelection | null>(initial);
+    return (
+      <ModLoaderPicker
+        gameVersion="1.21.1"
+        value={value}
+        onChange={(next) => {
+          changes.push(next);
+          setValue(next);
+        }}
+      />
+    );
+  }
+
+  renderWithState(<Host />);
+  return { changes };
 }
 
-/** 某个加载器那一行本身；行名就是加载器的 label（等列表读完再找）。 */
 function rowOf(label: string): Promise<HTMLElement> {
   return screen.findByRole("button", { name: label });
 }
@@ -84,16 +83,16 @@ async function openLoader(label: string) {
   fireEvent.click(await rowOf(label));
 }
 
-/** 展开某个加载器并选中一个版本 —— 选中会让列表收回去。 */
 async function chooseVersion(label: string, version: string) {
   await openLoader(label);
   const list = await screen.findByRole("listbox", { name: `${label} 版本` });
-  fireEvent.click(within(list).getByRole("option", { name: new RegExp(version.replace(/\./g, "\\.")) }));
+  fireEvent.click(
+    within(list).getByRole("option", { name: new RegExp(version.replace(/\./g, "\\.")) }),
+  );
 }
 
 beforeEach(() => {
   listVersions.mockReset();
-  installLoader.mockReset();
   listVersions.mockImplementation(async () => choices());
   pretendDesktop();
 });
@@ -103,7 +102,7 @@ afterEach(() => {
 });
 
 describe("ModLoaderPicker", () => {
-  it("lists the four loaders in a fixed order and offers them all as addable", async () => {
+  it("lists the four loaders in a fixed order with nothing preselected", async () => {
     renderPicker();
     const list = await screen.findByRole("list", { name: "模组加载器" });
 
@@ -112,25 +111,32 @@ describe("ModLoaderPicker", () => {
       .map((item) => item.getAttribute("aria-label"));
     expect(names).toEqual(["Forge", "NeoForge", "Fabric", "Quilt"]);
 
-    // 还没选任何加载器：四行都只是「可以添加」，没有不兼容的说法。
     expect(within(list).getAllByText("可以添加")).toHaveLength(4);
     expect(within(list).queryByText(/不兼容/)).not.toBeInTheDocument();
     expect(listVersions).toHaveBeenCalledWith("1.21.1");
   });
 
-  it("collapses the version list as soon as a version is picked", async () => {
-    renderPicker();
+  it("collapses the list and reports the pick", async () => {
+    const { changes } = renderPicker();
 
-    await openLoader("Fabric");
-    const versions = await screen.findByRole("listbox", { name: "Fabric 版本" });
-    expect(within(versions).getAllByRole("option")).toHaveLength(2);
+    await chooseVersion("Fabric", "0.15.11");
 
-    fireEvent.click(within(versions).getByRole("option", { name: /0\.15\.11/ }));
-
-    // 选完就收回去 —— PCL 的 CardXxx.IsSwapped = True。
     expect(screen.queryByRole("listbox", { name: "Fabric 版本" })).not.toBeInTheDocument();
-    // 行上显示选中的版本。
     expect(await rowOf("Fabric")).toHaveTextContent("0.15.11");
+    expect(changes[changes.length - 1]).toEqual({
+      kind: "fabric",
+      label: "Fabric",
+      version: "0.15.11",
+      companion: expect.objectContaining({ label: "Fabric API" }),
+    });
+  });
+
+  it("has no install button of its own", async () => {
+    renderPicker();
+    await screen.findByRole("list", { name: "模组加载器" });
+
+    // 安装按钮归 VersionDetail，这里不能有第二个。
+    expect(screen.queryByRole("button", { name: /安装/ })).not.toBeInTheDocument();
   });
 
   it("shows the incompatibility only against what is already selected", async () => {
@@ -139,12 +145,10 @@ describe("ModLoaderPicker", () => {
 
     await chooseVersion("Fabric", "0.16.9");
 
-    // 选了 Fabric 之后，Forge 与 NeoForge 才被标成不兼容。
     expect(await rowOf("Forge")).toHaveTextContent("与 Fabric 不兼容");
     expect(await rowOf("NeoForge")).toHaveTextContent("与 Fabric 不兼容");
-    // Quilt 与 Fabric 同族，可以共存，不标。
+    // Quilt 与 Fabric 同族，可以共存。
     expect(await rowOf("Quilt")).not.toHaveTextContent("不兼容");
-    // Fabric 自己当然也不标。
     expect(await rowOf("Fabric")).not.toHaveTextContent("不兼容");
   });
 
@@ -159,13 +163,11 @@ describe("ModLoaderPicker", () => {
     expect(fabric).toHaveAttribute("aria-disabled", "true");
 
     fireEvent.click(fabric);
-
-    // 点不开。
     expect(screen.queryByRole("listbox", { name: "Fabric 版本" })).not.toBeInTheDocument();
   });
 
-  it("clears a pick with X and brings back the other loaders", async () => {
-    renderPicker();
+  it("clears a pick with X and unblocks the others", async () => {
+    const { changes } = renderPicker();
     await screen.findByRole("list", { name: "模组加载器" });
 
     await chooseVersion("Fabric", "0.16.9");
@@ -173,27 +175,27 @@ describe("ModLoaderPicker", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "取消选择 Fabric" }));
 
-    // 清掉之后回到「可以添加」，其他行也不再被标不兼容。
     await waitFor(async () => expect(await rowOf("Fabric")).toHaveTextContent("可以添加"));
     expect(await rowOf("Forge")).not.toHaveTextContent("不兼容");
-    expect(screen.queryByRole("button", { name: "取消选择 Fabric" })).not.toBeInTheDocument();
+    expect(changes[changes.length - 1]).toBeNull();
   });
 
   it("reveals Fabric API once Fabric is picked and preselects it", async () => {
-    renderPicker();
+    const { changes } = renderPicker();
     await screen.findByRole("list", { name: "模组加载器" });
 
-    // 没选 Fabric 之前没有这张卡。
     expect(screen.queryByText("Fabric API")).not.toBeInTheDocument();
 
     await chooseVersion("Fabric", "0.16.9");
 
     expect(await screen.findByText("Fabric API")).toBeInTheDocument();
     expect(screen.getByText("0.116.6+1.21.1")).toBeInTheDocument();
+    expect(changes[changes.length - 1]?.companion).toEqual({ label: "Fabric API", version: "0.116.6+1.21.1" });
 
-    // 可以单独取消。
+    // 可以单独取消，Fabric 本身保留。
     fireEvent.click(screen.getByRole("button", { name: "取消选择 Fabric API" }));
-    expect(screen.queryByText("0.116.6+1.21.1")).not.toBeInTheDocument();
+    expect(changes[changes.length - 1]?.kind).toBe("fabric");
+    expect(changes[changes.length - 1]?.companion).toBeNull();
   });
 
   it("hides Fabric API again when Fabric is cleared", async () => {
@@ -204,7 +206,6 @@ describe("ModLoaderPicker", () => {
     expect(await screen.findByText("Fabric API")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "取消选择 Fabric" }));
-
     await waitFor(() => expect(screen.queryByText("Fabric API")).not.toBeInTheDocument());
   });
 
@@ -216,54 +217,6 @@ describe("ModLoaderPicker", () => {
 
     expect(within(versions).getByText("最新")).toBeInTheDocument();
     expect(within(versions).queryByText("可选")).not.toBeInTheDocument();
-  });
-
-  it("installs the chosen loader and reports the new instance", async () => {
-    let finish: (result: ModLoaderInstallResult) => void = () => undefined;
-    installLoader.mockImplementation(
-      () =>
-        new Promise<ModLoaderInstallResult>((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const onInstalled = vi.fn();
-    renderPicker(onInstalled);
-
-    await chooseVersion("NeoForge", "21.1.72");
-
-    // 「开始安装」在列表外面，列表收起后仍然可用。
-    expect(screen.queryByRole("listbox", { name: "NeoForge 版本" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "开始安装" }));
-
-    await waitFor(() => expect(installLoader).toHaveBeenCalledWith("neoforge", "1.21.1", "21.1.72"));
-    expect(screen.getByRole("button", { name: "正在安装…" })).toBeDisabled();
-
-    finish({
-      instance: {
-        id: "abc",
-        name: "1.21.1-neoforge-21.1.72",
-        version: "1.21.1-neoforge-21.1.72",
-        state: "ready",
-      },
-      versionId: "1.21.1-neoforge-21.1.72",
-    });
-
-    expect(await screen.findByText(/已装好，新实例已经建好了/)).toBeInTheDocument();
-    expect(onInstalled).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "abc", version: "1.21.1-neoforge-21.1.72" }),
-    );
-  });
-
-  it("shows the reason the backend gave when the install fails", async () => {
-    installLoader.mockRejectedValue("modloader installer is not available for 1.21.1");
-    renderPicker();
-
-    await chooseVersion("Fabric", "0.16.9");
-    fireEvent.click(screen.getByRole("button", { name: "开始安装" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "modloader installer is not available for 1.21.1",
-    );
   });
 
   it("says a loader cannot be used when the backend reports it unavailable", async () => {

@@ -3,11 +3,12 @@ import type { ReactNode } from "react";
 import {
   cancelVanillaInstall,
   describeCommandError,
+  installModLoaderVersion,
   isInstallCancelled,
   listenInstallProgress,
   startVanillaInstall,
 } from "../ipc";
-import type { InstallProgress } from "../ipc";
+import type { InstallProgress, ModLoaderKind } from "../ipc";
 import { emptySpeedSample, nextSpeed } from "../lib/install";
 import type { SpeedSample } from "../lib/install";
 import { InstallContext } from "./install";
@@ -53,7 +54,11 @@ export function InstallProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const start = useCallback(
-    async (version: string, name: string) => {
+    async (
+      version: string,
+      name: string,
+      loader: { kind: string; version: string } | null = null,
+    ) => {
       if (running.current) {
         return;
       }
@@ -69,7 +74,18 @@ export function InstallProvider({ children }: { children: ReactNode }) {
         error: null,
       });
       try {
-        const instance = await startVanillaInstall(version, name);
+        // 选了加载器就走加载器那条链（后端会先装原版），否则只装原版。
+        const instance =
+          loader === null
+            ? await startVanillaInstall(version, name)
+            : (
+                await installModLoaderVersion(
+                  loader.kind as ModLoaderKind,
+                  version,
+                  loader.version,
+                  name,
+                )
+              ).instance;
         setJob((current) =>
           current === null ? current : { ...current, status: "done", instance, error: null },
         );

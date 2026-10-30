@@ -19,6 +19,7 @@ import { GameControls } from "./GameControls";
 import { InstallFailure, InstallProgressCard } from "./InstallProgressCard";
 import { InstanceCover } from "./InstanceCover";
 import { ModLoaderPicker } from "./ModLoaderPicker";
+import type { ModLoaderSelection } from "./ModLoaderPicker";
 
 type VersionDetailProps = {
   version: MinecraftCatalogVersion;
@@ -35,9 +36,26 @@ export function VersionDetail({ version, isLatest, onBack }: VersionDetailProps)
   const { instances } = useInstances();
   const { navigate } = useNavigation();
 
-  const existingNames = instances.map((instance) => instance.name);
-  const [name, setName] = useState(() => suggestInstanceName(version.id, existingNames));
+  /** 选中的加载器；`null` 表示装原版。 */
+  const [loader, setLoader] = useState<ModLoaderSelection | null>(null);
+  /** 名字是否被用户手动改过；改过就不再跟着加载器变。 */
+  const [nameEdited, setNameEdited] = useState(false);
+  const [typedName, setTypedName] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+
+  const existingNames = instances.map((instance) => instance.name);
+
+  /**
+   * 默认实例名跟着选择走，和 PCL 一样：选原版就叫 `1.21.1`，选 Fabric 就叫
+   * `1.21.1-Fabric 0.20.1`。用户手动改过名字之后就不再覆盖他的输入。
+   */
+  const suggested = loader === null
+    ? version.id
+    : `${version.id}-${loader.label} ${loader.version}`;
+  const name =
+    nameEdited && typedName !== null
+      ? typedName
+      : suggestInstanceName(suggested, existingNames);
 
   const support = availability(version);
   const thisJob = job !== null && job.version === version.id ? job : null;
@@ -53,13 +71,18 @@ export function VersionDetail({ version, isLatest, onBack }: VersionDetailProps)
     event.preventDefault();
     setTouched(true);
     if (canInstall) {
-      void start(version.id, name.trim());
+      void start(
+        version.id,
+        name.trim(),
+        loader === null ? null : { kind: loader.kind, version: loader.version },
+      );
     }
   };
 
   const handleAnother = () => {
     if (thisJob !== null) {
-      setName(suggestInstanceName(version.id, [...existingNames, thisJob.name]));
+      setNameEdited(false);
+      setTypedName(null);
       setTouched(false);
     }
     dismiss();
@@ -133,33 +156,45 @@ export function VersionDetail({ version, isLatest, onBack }: VersionDetailProps)
                   label="实例名称"
                   validationMessage={showError ? (nameError ?? undefined) : undefined}
                   validationState={showError ? "error" : "none"}
-                  hint="安装完成后会用这个名字创建实例，之后可以随时区分。"
+                  hint="会跟着下面选的加载器变化；手动改过之后就不再自动改。"
                 >
                   <Input
                     value={name}
                     onChange={(_, data) => {
-                      setName(data.value);
+                      setTypedName(data.value);
+                      setNameEdited(true);
                       setTouched(true);
                     }}
                     disabled={!support.ok}
                   />
                 </Field>
+
+                {/* 加载器就在表单里：选了什么，上面那个「安装」就装什么。 */}
+                <ModLoaderPicker
+                  gameVersion={version.id}
+                  value={loader}
+                  onChange={setLoader}
+                />
+
                 <div className="install-form-actions">
                   <Button
                     type="submit"
                     appearance="primary"
                     size="large"
                     icon={<ArrowDownload20Regular />}
-                    disabled={!support.ok || otherRunning}
+                    disabled={!canInstall}
                   >
-                    安装
+                    {loader === null ? "安装" : `安装 ${loader.label} ${loader.version}`}
                   </Button>
                   <Text className="muted" size={200}>
-                    文件校验值全部来自 Mojang 官方清单，下载后会逐个核对。
+                    {loader === null
+                      ? "文件校验值全部来自 Mojang 官方清单，下载后会逐个核对。"
+                      : `先装原版 ${version.id}，再装上 ${loader.label}${
+                          loader.companion === null ? "" : ` 和 ${loader.companion.label}`
+                        }，最后新建实例。`}
                   </Text>
                 </div>
               </form>
-              <ModLoaderPicker gameVersion={version.id} />
             </>
           )}
         </div>
