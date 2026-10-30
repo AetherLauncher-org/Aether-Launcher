@@ -427,7 +427,7 @@ fn tail(text: &str, limit: usize) -> String {
 
 /// 找一个能跑 installer 的 Java：installer 是普通程序，挑主版本最高的那个。
 fn find_java() -> Result<PathBuf, String> {
-    let mut runtimes = aether_runtime::discover_java_runtimes(&[]);
+    let mut runtimes = aether_runtime::discover_java_runtimes();
     runtimes.sort_by_key(|runtime| std::cmp::Reverse(runtime.major_version));
     runtimes
         .into_iter()
