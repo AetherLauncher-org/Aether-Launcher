@@ -1,7 +1,7 @@
 import { Badge, Button, Text } from "@fluentui/react-components";
-import { ArrowSync24Regular } from "@fluentui/react-icons";
-import { useEffect, useMemo, useState } from "react";
-import { discoverJavaRuntimes, isTauri } from "../ipc";
+import { Add24Regular, ArrowSync24Regular } from "@fluentui/react-icons";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { discoverJavaRuntimes, isTauri, pickJavaRuntime } from "../ipc";
 import type { JavaRuntimeInfo } from "../ipc";
 import {
   dedupeRuntimes,
@@ -18,25 +18,32 @@ import { loadJavaRuntimeKey, saveJavaRuntimeKey } from "../lib/settings";
 /**
  * 「Java 运行时」设置区块。
  *
- * `list_java_runtimes` 命令可能还不存在（PR #12 尚未合并），所以读取失败
- * 一律降级成空列表 + 一句说明，不留白屏，也不抛错。
+ * 列表来自后端的缓存：平时只读 `java-runtimes.json`，点「重新扫描」才会真的
+ * 去扫。扫描要启动一串 `java -version`，每次切到主页/设置都重扫会让界面反复
+ * 卡顿，以前还会在任务栏闪出命令行窗口。
+ *
+ * 「导入 Java…」打开系统的文件选择框，让用户指一个扫描器找不到的安装
+ * （IDE 自带的 JBR、解压到任意目录的 JDK 之类）。后端会探测并记进缓存。
  */
 export function JavaRuntimeSection() {
   const desktop = isTauri();
   const [runtimes, setRuntimes] = useState<JavaRuntimeInfo[]>([]);
   const [loading, setLoading] = useState(desktop);
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(loadJavaRuntimeKey);
   // 递增这个令牌表示「再扫一次」，effect 只依赖它，不在 effect 里同步写 state
   const [scanToken, setScanToken] = useState(0);
 
-  // 扫描是外部读取，结果回来才写 state；effect 体里只发起请求
+  // 扫描是外部读取，结果回来才写 state；effect 体里只发起请求。
+  // 第一次（token 为 0）读缓存，之后每次点按钮都要求真的重扫。
   useEffect(() => {
     if (!desktop) {
       return;
     }
 
     let cancelled = false;
-    void discoverJavaRuntimes().then((found) => {
+    void discoverJavaRuntimes(scanToken > 0).then((found) => {
       if (cancelled) {
         return;
       }
@@ -49,10 +56,31 @@ export function JavaRuntimeSection() {
     };
   }, [desktop, scanToken]);
 
-  const rescan = () => {
+  const rescan = useCallback(() => {
+    setError(null);
     setLoading(true);
     setScanToken((value) => value + 1);
-  };
+  }, []);
+
+  const importJava = useCallback(async () => {
+    if (!desktop || importing) {
+      return;
+    }
+    setError(null);
+    setImporting(true);
+    try {
+      const picked = await pickJavaRuntime();
+      // null = 用户取消了文件框，什么都不用做。
+      if (picked === null) {
+        return;
+      }
+      setRuntimes((current) => sortRuntimes(dedupeRuntimes([...current, picked])));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setImporting(false);
+    }
+  }, [desktop, importing]);
 
   const selected = useMemo(
     () => pickSelectedRuntime(runtimes, savedKey),
@@ -71,22 +99,40 @@ export function JavaRuntimeSection() {
         <Text id="java-heading" as="h2" size={400} weight="semibold">
           Java 运行时
         </Text>
-        <Button
-          appearance="subtle"
-          icon={<ArrowSync24Regular />}
-          onClick={rescan}
-          disabled={!desktop || loading}
-        >
-          重新扫描
-        </Button>
+        <div className="runtime-actions">
+          <Button
+            appearance="subtle"
+            icon={<Add24Regular />}
+            onClick={() => void importJava()}
+            disabled={!desktop || importing}
+          >
+            导入 Java…
+          </Button>
+          <Button
+            appearance="subtle"
+            icon={<ArrowSync24Regular />}
+            onClick={rescan}
+            disabled={!desktop || loading}
+          >
+            重新扫描
+          </Button>
+        </div>
       </div>
       <Text className="muted">
-        本机检测到的 Java。启动时会按游戏版本的要求自动挑选合适的一个；
-        手动指定默认运行时的功能还在开发，这里的选择暂不影响启动。
+        本机检测到的 Java。列表保存在本机，只有点「重新扫描」才会重新检测。
+        在盘符根目录下的文件夹里翻到的 Java 只读取旁边的 release 文件来显示版本，
+        不会被运行，启动游戏也不会用它；想用的话请点「导入 Java…」亲自选一次。
+        启动时会按游戏版本的要求自动挑选合适的一个；这里选中的默认运行时暂不影响启动。
       </Text>
 
+      {error !== null ? (
+        <Text className="runtime-status runtime-error" role="alert">
+          {error}
+        </Text>
+      ) : null}
+
       {loading ? (
-        <Text className="muted runtime-status">正在扫描本机 Java…</Text>
+        <Text className="muted runtime-status">正在读取 Java 列表…</Text>
       ) : runtimes.length === 0 ? (
         <div className="runtime-empty">
           <Badge appearance="outline">暂未检测到 Java</Badge>

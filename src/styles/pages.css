@@ -91,6 +91,19 @@
   gap: 12px;
 }
 
+/* Java 区块右侧的两个按钮：导入 + 重新扫描，挨在一起不换行。 */
+.runtime-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* 导入失败时的提示：说清楚为什么这个 Java 用不了。 */
+.runtime-error {
+  color: var(--colorStatusDangerForeground1);
+}
+
 .error-panel {
   margin-top: 16px;
   justify-items: start;

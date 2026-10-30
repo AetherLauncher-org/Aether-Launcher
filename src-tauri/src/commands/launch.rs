@@ -197,7 +197,7 @@ pub async fn start_installed_instance(
             env!("CARGO_PKG_VERSION").to_owned(),
         );
 
-        let runtimes = aether_runtime::discover_java_runtimes();
+        let runtimes = aether_runtime::discover_java_runtimes(&[]);
         let state = app.state::<LaunchState>();
         let mut guard = state
             .coordinator

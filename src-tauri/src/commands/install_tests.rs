@@ -545,7 +545,7 @@ fn live_launch_of_an_installed_version_stays_running() {
         ("launcher_name".to_owned(), "Aether".to_owned()),
         ("launcher_version".to_owned(), "0".to_owned()),
     ]);
-    let runtimes = aether_runtime::discover_java_runtimes();
+    let runtimes = aether_runtime::discover_java_runtimes(&[]);
     let mut coordinator = InstanceLaunchCoordinator::open(store.root(), &game).unwrap();
     let started = coordinator
         .start(
