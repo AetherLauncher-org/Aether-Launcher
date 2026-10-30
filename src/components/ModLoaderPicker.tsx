@@ -122,7 +122,17 @@ export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerPro
     if (!choice.available) {
       return;
     }
-    setOpenKind((current) => (current === choice.kind ? null : choice.kind));
+    const opening = openKind !== choice.kind;
+    setOpenKind(opening ? choice.kind : null);
+    // 展开一个新加载器时默认选它最新的版本：绝大多数人就是装最新的，
+    // 让他们再去列表里点一次纯属多余。已经选过的不覆盖。
+    if (opening && choice.versions.length > 0) {
+      setPicked((current) =>
+        current[choice.kind] === undefined
+          ? { ...current, [choice.kind]: choice.versions[0] }
+          : current,
+      );
+    }
   };
 
   const pick = (kind: ModLoaderKind, version: string) => {

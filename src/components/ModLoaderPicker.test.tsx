@@ -149,22 +149,56 @@ describe("ModLoaderPicker", () => {
     expect(screen.queryByRole("listbox", { name: "NeoForge 版本" })).not.toBeInTheDocument();
   });
 
-  it("offers an install button once a version is picked", async () => {
+  it("preselects the newest version when a loader is expanded", async () => {
     renderPicker();
 
     await openLoader("Fabric");
     const versions = await screen.findByRole("listbox", { name: "Fabric 版本" });
-    // 还没选版本：有按钮但不可点
-    expect(screen.getByRole("button", { name: "安装" })).toBeDisabled();
 
+    // 展开即选最新：不用先点一次版本才有得装。
+    expect(within(versions).getByRole("option", { name: /0\.16\.9/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "安装" })).toBeEnabled();
+
+    // 手动改选仍然有效。
     fireEvent.click(within(versions).getByRole("option", { name: /0\.15\.11/ }));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "安装" })).toBeEnabled());
-    expect(within(versions).getByRole("option", { name: /0\.15\.11/ })).toHaveAttribute("aria-selected", "true");
-    expect(within(versions).getByRole("option", { name: /0\.16\.9/ })).toHaveAttribute("aria-selected", "false");
+    expect(within(versions).getByRole("option", { name: /0\.15\.11/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(within(versions).getByRole("option", { name: /0\.16\.9/ })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
     expect(
       screen.getByText("将安装 Fabric 0.15.11：先装游戏本体，再装上加载器并新建一个实例。"),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the pick after the row is collapsed and reopened", async () => {
+    renderPicker();
+
+    await openLoader("Fabric");
+    const versions = await screen.findByRole("listbox", { name: "Fabric 版本" });
+    fireEvent.click(within(versions).getByRole("option", { name: /0\.15\.11/ }));
+
+    // 收起
+    fireEvent.click(await rowOf("Fabric"));
+    expect(screen.queryByRole("listbox", { name: "Fabric 版本" })).not.toBeInTheDocument();
+
+    // 行上仍然显示选中的版本
+    expect(await rowOf("Fabric")).toHaveTextContent("0.15.11");
+
+    // 再展开，选择被保留、没有被重置回最新
+    fireEvent.click(await rowOf("Fabric"));
+    const reopened = await screen.findByRole("listbox", { name: "Fabric 版本" });
+    expect(within(reopened).getByRole("option", { name: /0\.15\.11/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("shows the picked version on the row and lists Fabric API", async () => {

@@ -143,8 +143,9 @@ pub fn list_modloader_choices(game_version: &str) -> Vec<ModLoaderChoice> {
     choices
 }
 
-/// 能在同一个版本上共存的加载器只有一组：Forge 和 NeoForge 二选一，Fabric 和
-/// Quilt 二选一（Quilt 自己就是 Fabric 的续作）。跨组之间互斥。
+/// 能在同一个版本上共存的加载器分组：Forge 和 NeoForge 同族（NeoForge 从 Forge
+/// fork 出来），Fabric 和 Quilt 同族（Quilt 是 Fabric 的分支）。族内二选一，
+/// 跨族互斥。
 ///
 /// 这里是**静态规则**，不依赖网络，所以每个加载器各自失败也不影响判断。
 fn loader_family(kind: &str) -> &'static str {
@@ -157,26 +158,58 @@ fn loader_family(kind: &str) -> &'static str {
 
 /// 给已经在列表里的加载器补上「与 X 不兼容」的说明。
 ///
-/// 只在对方**确实可装**时才说：如果 Forge 在这个版本根本装不了，写「与 Forge 不兼容」
-/// 就没有意义，用户也点不了。
+/// 只标**需要标的那几个**，否则四行全红等于什么都没说：
+///
+/// - 族内（Forge ↔ NeoForge、Fabric ↔ Quilt）二选一，不算不兼容，不标。
+/// - 跨族才冲突，但只标「不是首选族」的那一族，并且每族只标一个代表。
+///
+/// 首选族是 Fabric：社区里用得最多，也是这个启动器默认推荐的。所以 Forge 一行
+/// 会写「与 Fabric 不兼容」，Fabric 一行保持干净；NeoForge 是 Forge 的同族兄弟，
+/// 已经被 Forge 那行代表，不再重复；Quilt 同理跟在 Fabric 后面。
+///
+/// 对方**确实可装**才会标：对方读不到版本时写「与它不兼容」没有意义，用户也点不了。
 fn mark_incompatible(choices: &mut [ModLoaderChoice]) {
-    let installable: Vec<(String, String)> = choices
-        .iter()
-        .filter(|choice| choice.available)
-        .map(|choice| (choice.kind.clone(), choice.label.clone()))
-        .collect();
-
-    for choice in choices.iter_mut() {
-        if !choice.available {
+    // 每个族里第一个可装的加载器就是这个族的代表。
+    let mut representatives: Vec<(String, String)> = Vec::new();
+    for choice in choices.iter() {
+        if !choice.available || choice.versions.is_empty() {
             continue;
         }
         let family = loader_family(&choice.kind);
-        let clash = installable
+        if representatives
             .iter()
-            .find(|(kind, _)| *kind != choice.kind && loader_family(kind) != family);
-        if let Some((_, label)) = clash {
-            choice.reason = Some(format!("与 {label} 不兼容"));
+            .any(|(kind, _)| loader_family(kind) == family)
+        {
+            continue;
         }
+        representatives.push((choice.kind.clone(), choice.label.clone()));
+    }
+
+    // 首选族是 Fabric；它不可装时退回到第一个可装的族。
+    let preferred = representatives
+        .iter()
+        .find(|(kind, _)| loader_family(kind) == "fabric")
+        .or_else(|| representatives.first());
+    let Some((preferred_kind, preferred_label)) = preferred else {
+        return;
+    };
+    let preferred_family = loader_family(preferred_kind);
+
+    for choice in choices.iter_mut() {
+        if !choice.available || choice.versions.is_empty() {
+            continue;
+        }
+        let family = loader_family(&choice.kind);
+        // 首选族自己不用标；同族兄弟跟在首选族后面，也不标。
+        if family == preferred_family {
+            continue;
+        }
+        // 每个非首选族只标代表的那一个，别把 NeoForge / Quilt 也拉进来。
+        let is_representative = representatives.iter().any(|(kind, _)| kind == &choice.kind);
+        if !is_representative {
+            continue;
+        }
+        choice.reason = Some(format!("与 {preferred_label} 不兼容"));
     }
 }
 
@@ -293,28 +326,34 @@ mod tests {
     }
 
     #[test]
-    fn fabric_and_forge_are_each_other_s_incompatible() {
+    fn only_the_non_preferred_family_is_flagged() {
         let mut choices = vec![
             choice("forge", "Forge", true),
+            choice("neoforge", "NeoForge", true),
             choice("fabric", "Fabric", true),
+            choice("quilt", "Quilt", true),
         ];
         mark_incompatible(&mut choices);
 
+        // Fabric 是首选族：自己这一族两个都不标。
+        assert_eq!(choices[2].reason, None, "Fabric should stay clean");
+        assert_eq!(choices[3].reason, None, "Quilt is Fabric's sibling");
+        // Forge 一族：只有代表 Forge 被标，NeoForge 不重复。
         assert_eq!(choices[0].reason.as_deref(), Some("与 Fabric 不兼容"));
-        assert_eq!(choices[1].reason.as_deref(), Some("与 Forge 不兼容"));
+        assert_eq!(choices[1].reason, None, "NeoForge follows Forge");
     }
 
     #[test]
-    fn forge_and_neoforge_do_not_clash_with_each_other() {
-        // 同一族里二选一，不该互相标成不兼容。
+    fn a_lone_family_is_never_flagged() {
+        // 只有一个族能装时不存在冲突。
         let mut choices = vec![
             choice("forge", "Forge", true),
             choice("neoforge", "NeoForge", true),
             choice("fabric", "Fabric", false),
+            choice("quilt", "Quilt", false),
         ];
         mark_incompatible(&mut choices);
 
-        // 只有 Fabric 不可用时，Forge 一族的 reason 仍然是 None。
         assert_eq!(choices[0].reason, None);
         assert_eq!(choices[1].reason, None);
     }
