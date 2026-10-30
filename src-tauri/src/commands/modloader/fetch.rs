@@ -11,9 +11,12 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use aether_download::hash::HashingWriter;
 use aether_download::transport::http::UreqKernel;
 use aether_download::transport::{HttpTransport, KernelHttpTransport, TransportRequest};
 use aether_modloader::transport::{MetaError, MetaFetcher};
+
+use super::execute::safe_target;
 
 /// 元数据请求的超时（秒）。这些接口都返回小 JSON，慢就是网络问题。
 const META_TIMEOUT_SECS: u64 = 20;
@@ -83,27 +86,34 @@ impl MetaFetcher for HttpMetaFetcher {
     }
 }
 
+/// 单个下载文件的大小上限。jar 最大也就几十 MB，超过这个数一定是出了问题：
+/// 对端被劫持、或者 URL 指错了地方。上限存在的意义是不让响应体撑爆内存。
+const MAX_DOWNLOAD_BYTES: u64 = 512 * 1024 * 1024;
+
 /// 执行一条 `InstallStep::Download`：下载到目标相对路径。
 ///
 /// `destination` 由 `ModLoaderInstallPlan::validate` 保证是安全的相对路径，
-/// 这里仍然再拼一次 `root` 并检查没有跳出根目录 —— 校验和写入之间不该有假设。
+/// 但这里是落盘的最后一道关口，所以仍然走
+/// [`safe_target`](super::execute::safe_target) 重新解析一遍 —— 校验和写入之间
+/// 不该有假设。`starts_with(root)` 挡不住 `..`，必须按路径组件解析。
+///
+/// `sha1` 是**官方清单给出的摘要**，不是从同一个响应里现算的。给了就必须匹配，
+/// 不匹配直接删除落盘文件并报错。`size` 同理。两者都缺时只做大小上限检查，
+/// 调用方应当在清单里尽量把哈希填上。
 pub fn download_into(
-    transport: &KernelHttpTransport<UreqKernel>,
+    transport: &dyn HttpTransport,
     root: &Path,
     url: &str,
     destination: &str,
+    sha1: Option<&str>,
+    size: Option<u64>,
 ) -> Result<PathBuf, String> {
     if !url.starts_with("https://") {
         return Err(format!(
             "refusing to download over anything but https: {url}"
         ));
     }
-    let target = root.join(destination.replace('\\', "/"));
-    if !target.starts_with(root) {
-        return Err(format!(
-            "refusing to write outside the game directory: {destination}"
-        ));
-    }
+    let target = safe_target(root, destination)?;
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
@@ -114,16 +124,49 @@ pub fn download_into(
         range: None,
         timeout_secs: 60,
     };
-    let mut response = transport
+    let response = transport
         .get(&request)
         .map_err(|error| format!("cannot download {url}: {error}"))?;
 
-    let mut body = Vec::new();
-    response
-        .body
-        .read_to_end(&mut body)
-        .map_err(|error| format!("cannot read {url}: {error}"))?;
-    std::fs::write(&target, &body)
-        .map_err(|error| format!("cannot write {}: {error}", target.display()))?;
+    // 流式落盘：边读边写边算摘要，内存里只留一个缓冲区。
+    let limit = size.unwrap_or(MAX_DOWNLOAD_BYTES).min(MAX_DOWNLOAD_BYTES);
+    let file = std::fs::File::create(&target)
+        .map_err(|error| format!("cannot create {}: {error}", target.display()))?;
+    let mut writer = HashingWriter::new(file);
+    let copied = std::io::copy(
+        &mut response.body.take(limit.saturating_add(1)),
+        &mut writer,
+    )
+    .map_err(|error| {
+        let _ = std::fs::remove_file(&target);
+        format!("cannot read {url}: {error}")
+    })?;
+    let (file, actual_size, actual_sha1) = writer.finish();
+    drop(file);
+
+    if copied > limit {
+        let _ = std::fs::remove_file(&target);
+        return Err(format!(
+            "{url} is larger than the {limit} byte limit; refusing to keep it"
+        ));
+    }
+    if size.is_some_and(|expected| actual_size != expected) {
+        let expected = size.unwrap_or_default();
+        let _ = std::fs::remove_file(&target);
+        return Err(format!(
+            "{url} is {actual_size} bytes but the manifest says {expected}"
+        ));
+    }
+    if sha1.is_some_and(|expected| !actual_sha1.eq_ignore_ascii_case(expected.trim())) {
+        let expected = sha1.unwrap_or_default();
+        let _ = std::fs::remove_file(&target);
+        return Err(format!(
+            "{url} has SHA-1 {actual_sha1} but the manifest says {expected}"
+        ));
+    }
     Ok(target)
 }
+
+#[cfg(test)]
+#[path = "fetch_tests.rs"]
+mod tests;

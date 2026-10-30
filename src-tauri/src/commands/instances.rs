@@ -35,6 +35,14 @@ impl InstanceSummary {
     }
 }
 
+impl InstanceSummary {
+    /// 新实例的 id。调用方（例如装完加载器后要改版本）不该再按名字回查：
+    /// 撞上同名实例会改错对象。
+    pub(super) fn id(&self) -> &str {
+        &self.id
+    }
+}
+
 /// A record that the listing pass refused to load, with a stable category
 /// instead of a raw file system path.
 #[derive(Debug, Serialize)]

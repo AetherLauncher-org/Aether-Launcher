@@ -48,6 +48,9 @@ pub struct FabricLibrary {
     pub url: Option<String>,
     /// 文件大小（字节），缺失为 `None`
     pub size: Option<u64>,
+    /// 官方给的文件摘要。Fabric 的 `launcherMeta` 里带 `sha1`，
+    /// 有就必须校验 —— 这是唯一可信的哈希来源。
+    pub sha1: Option<String>,
 }
 
 /// `GET /v2/versions/loader/<game>` 里的一项。
@@ -199,7 +202,7 @@ impl FabricLoaderVersion {
             plan = plan.push(InstallStep::Download {
                 url: join_repository(&repository, &relative),
                 destination: format!("libraries/{relative}"),
-                sha1: None,
+                sha1: library.sha1.clone(),
                 size: library.size,
                 label: library.name.clone(),
             });
@@ -455,6 +458,7 @@ fn parse_libraries(launcher_meta: Option<&Value>) -> Vec<FabricLibrary> {
             libraries.push(FabricLibrary {
                 url: opt_string(entry, "url").filter(|url| !url.trim().is_empty()),
                 size: entry.get("size").and_then(Value::as_u64),
+                sha1: opt_string(entry, "sha1").filter(|sha1| !sha1.trim().is_empty()),
                 name,
             });
         }

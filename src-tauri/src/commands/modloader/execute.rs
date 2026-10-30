@@ -18,7 +18,7 @@ use aether_download::transport::KernelHttpTransport;
 use aether_download::transport::http::UreqKernel;
 use aether_modloader::transport::{MetaError, MetaSource};
 use aether_modloader::{InstallStep, ModLoaderInstallPlan, ModLoaderKind, fabric, forge, neoforge};
-use aether_storage::{InstanceStore, list_instances, set_instance_version};
+use aether_storage::{InstanceStore, set_instance_version};
 use serde::Serialize;
 
 use super::HttpMetaFetcher;
@@ -93,7 +93,7 @@ pub(super) fn install_with(
 
     // 原版那一层。已经装过时，`prepare_version` 会命中校验通过的缓存直接复用，
     // 所以这里不需要额外判断目录是否存在。
-    install_and_create_with(
+    let created = install_and_create_with(
         transport,
         base,
         game_version,
@@ -106,7 +106,14 @@ pub(super) fn install_with(
         reporter,
     )?;
 
-    let instance_id = find_instance_id(base, &instance_name)?;
+    // 直接用建实例时返回的 id，不按名字回查：仓库里已有同名实例时，
+    // 名字匹配会拿到别人那个实例，然后把它的版本改掉。
+    let instance_id = aether_core::InstanceId::parse(created.id()).map_err(|error| {
+        format!(
+            "cannot read back the instance id {id}: {error}",
+            id = created.id()
+        )
+    })?;
 
     // 加载器自己的步骤。
     let total = plan.steps.len();
@@ -200,8 +207,20 @@ fn step_execute(
 ) -> Result<(), String> {
     match step {
         InstallStep::Download {
-            url, destination, ..
-        } => download_into(transport, game_root, url, destination).map(|_| ()),
+            url,
+            destination,
+            sha1,
+            size,
+            ..
+        } => download_into(
+            transport,
+            game_root,
+            url,
+            destination,
+            sha1.as_deref(),
+            *size,
+        )
+        .map(|_| ()),
         InstallStep::WriteVersionJson { path, content } => {
             let text = serde_json::to_string_pretty(content)
                 .map_err(|error| format!("cannot serialise version json: {error}"))?;
@@ -436,16 +455,6 @@ fn find_java() -> Result<PathBuf, String> {
         .ok_or_else(|| "找不到可用的 Java，无法运行加载器安装器".to_owned())
 }
 
-fn find_instance_id(base: &Path, name: &str) -> Result<aether_core::InstanceId, String> {
-    let listing =
-        list_instances(base).map_err(|error| format!("cannot list instances: {error}"))?;
-    listing
-        .instances
-        .iter()
-        .find(|instance| instance.name == name)
-        .map(|instance| instance.id)
-        .ok_or_else(|| format!("找不到刚创建的实例：{name}"))
-}
 #[cfg(test)]
 #[path = "execute_tests.rs"]
 mod tests;

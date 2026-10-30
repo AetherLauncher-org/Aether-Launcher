@@ -150,10 +150,15 @@ pub async fn download_modloader_installer(
         let mut downloaded = Vec::new();
         for step in &plan.steps {
             if let aether_modloader::InstallStep::Download {
-                url, destination, ..
+                url,
+                destination,
+                sha1,
+                size,
+                ..
             } = step
             {
-                let path = download_into(&transport, &base, url, destination)?;
+                let path =
+                    download_into(&transport, &base, url, destination, sha1.as_deref(), *size)?;
                 downloaded.push(path.display().to_string());
             }
         }

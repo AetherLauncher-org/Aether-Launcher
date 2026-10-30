@@ -5,6 +5,7 @@
 //! `fetch_*` 用 [`StaticFetcher`] 提供固定响应，未注册的 URL 一律报错。
 
 use serde_json::Value;
+use std::collections::HashMap;
 
 use super::{
     DEFAULT_MAVEN_BASE, DEFAULT_META_BASE, FabricLibrary, FabricLoaderVersion, MAIN_CLASS_CLIENT,
@@ -102,6 +103,22 @@ fn downloads(plan: &crate::installer::ModLoaderInstallPlan) -> Vec<(String, Stri
     found
 }
 
+/// 按落盘路径查下载步骤声明的 sha1，用来确认官方清单里的摘要确实被带上了。
+fn sha1_by_destination(
+    plan: &crate::installer::ModLoaderInstallPlan,
+) -> HashMap<String, Option<String>> {
+    let mut found = HashMap::new();
+    for step in &plan.steps {
+        if let InstallStep::Download {
+            destination, sha1, ..
+        } = step
+        {
+            found.insert(destination.clone(), sha1.clone());
+        }
+    }
+    found
+}
+
 // ---- 游戏版本 ----
 
 #[test]
@@ -166,16 +183,19 @@ fn parses_real_loader_versions() {
                 name: "org.ow2.asm:asm:9.6".to_owned(),
                 url: Some(DEFAULT_MAVEN_BASE.to_owned()),
                 size: Some(123_598),
+                sha1: Some("ada2141c0cc52ee8f5c48cd5fa4ce0e794f22236".to_owned()),
             },
             FabricLibrary {
                 name: "org.ow2.asm:asm-analysis:9.6".to_owned(),
                 url: Some(DEFAULT_MAVEN_BASE.to_owned()),
                 size: Some(33_636),
+                sha1: None,
             },
             FabricLibrary {
                 name: "net.fabricmc:sponge-mixin:0.15.4+mixin.0.8.7".to_owned(),
                 url: Some(DEFAULT_MAVEN_BASE.to_owned()),
                 size: Some(1_551_593),
+                sha1: None,
             },
         ]
     );
@@ -459,16 +479,19 @@ fn version_json_never_repeats_a_library_name() {
                 name: "net.fabricmc:intermediary:1.21.1".to_owned(),
                 url: Some(DEFAULT_MAVEN_BASE.to_owned()),
                 size: None,
+                sha1: None,
             },
             FabricLibrary {
                 name: "net.fabricmc:fabric-loader:0.16.0".to_owned(),
                 url: Some(DEFAULT_MAVEN_BASE.to_owned()),
                 size: None,
+                sha1: None,
             },
             FabricLibrary {
                 name: "org.ow2.asm:asm:9.6".to_owned(),
                 url: Some(DEFAULT_MAVEN_BASE.to_owned()),
                 size: Some(123_598),
+                sha1: Some("ada2141c0cc52ee8f5c48cd5fa4ce0e794f22236".to_owned()),
             },
         ],
         main_class: MAIN_CLASS_CLIENT.to_owned(),
@@ -736,4 +759,24 @@ fn fetch_surfaces_malformed_json_from_the_source() {
         fetch_game_versions(&source),
         Err(MetaError::InvalidJson { .. })
     ));
+}
+
+// ---- 哈希来源 ----
+
+#[test]
+fn install_plan_carries_the_official_sha1_into_the_download_step() {
+    let plan = first_loader().install_plan("1.21.1", DEFAULT_MAVEN_BASE);
+    let by_destination = sha1_by_destination(&plan);
+
+    // launcherMeta 里带 sha1 的库，下载步骤必须带上同样的摘要。
+    let asm = "libraries/org/ow2/asm/asm/9.6/asm-9.6.jar";
+    assert_eq!(
+        by_destination.get(asm).cloned().flatten(),
+        Some("ada2141c0cc52ee8f5c48cd5fa4ce0e794f22236".to_owned()),
+        "官方清单里的 sha1 必须进入下载步骤，否则等于没校验"
+    );
+
+    // 官方没给 sha1 的库只能是 None；这不算漏洞，但也不能凭空编一个。
+    let mixin = "libraries/net/fabricmc/sponge-mixin/0.15.4+mixin.0.8.7/sponge-mixin-0.15.4+mixin.0.8.7.jar";
+    assert_eq!(by_destination.get(mixin).cloned().flatten(), None);
 }
