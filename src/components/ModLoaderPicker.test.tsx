@@ -27,7 +27,11 @@ const { listModLoaderVersions, installModLoaderVersion } = await import("../ipc"
 const listVersions = vi.mocked(listModLoaderVersions);
 const installLoader = vi.mocked(installModLoaderVersion);
 
-/** 四个加载器，故意不按固定顺序返回；Forge 和 Quilt 不可用。 */
+/**
+ * 四个加载器，故意不按固定顺序返回。
+ *
+ * 全部可装：这样才测得出「不兼容」是按**已选项**算出来的，而不是一开始就写死。
+ */
 function choices(): ModLoaderChoice[] {
   return [
     {
@@ -36,24 +40,22 @@ function choices(): ModLoaderChoice[] {
       available: true,
       reason: null,
       versions: ["0.16.9", "0.15.11"],
-      companions: [
-        { label: "Fabric API", versions: ["0.116.6+1.21.1"], reason: null },
-      ],
+      companions: [{ label: "Fabric API", versions: ["0.116.6+1.21.1"], reason: null }],
     },
     {
       kind: "quilt",
       label: "Quilt",
-      available: false,
-      reason: "与 Fabric 不兼容",
-      versions: [],
+      available: true,
+      reason: null,
+      versions: ["0.27.0"],
       companions: [],
     },
     {
       kind: "forge",
       label: "Forge",
-      available: false,
-      reason: "这个版本只能用 NeoForge",
-      versions: [],
+      available: true,
+      reason: null,
+      versions: ["66.1.2", "66.0.0"],
       companions: [],
     },
     {
@@ -61,7 +63,7 @@ function choices(): ModLoaderChoice[] {
       label: "NeoForge",
       available: true,
       reason: null,
-      versions: ["21.1.72", "21.1.68", "21.1.60"],
+      versions: ["21.1.72", "21.1.68"],
       companions: [],
     },
   ];
@@ -82,6 +84,13 @@ async function openLoader(label: string) {
   fireEvent.click(await rowOf(label));
 }
 
+/** 展开某个加载器并选中一个版本 —— 选中会让列表收回去。 */
+async function chooseVersion(label: string, version: string) {
+  await openLoader(label);
+  const list = await screen.findByRole("listbox", { name: `${label} 版本` });
+  fireEvent.click(within(list).getByRole("option", { name: new RegExp(version.replace(/\./g, "\\.")) }));
+}
+
 beforeEach(() => {
   listVersions.mockReset();
   installLoader.mockReset();
@@ -94,130 +103,117 @@ afterEach(() => {
 });
 
 describe("ModLoaderPicker", () => {
-  it("lists the four loaders with Forge first and says which can be added", async () => {
+  it("lists the four loaders in a fixed order and offers them all as addable", async () => {
     renderPicker();
-
     const list = await screen.findByRole("list", { name: "模组加载器" });
-    const rows = within(list).getAllByRole("button");
-    expect(rows).toHaveLength(4);
-    // forge / neoforge / fabric / quilt：固定顺序，不随后端返回顺序变
-    expect(list).toHaveTextContent(/^Forge/);
-    expect(within(list).getByText("NeoForge")).toBeInTheDocument();
-    expect(within(list).getByText("Fabric")).toBeInTheDocument();
-    expect(within(list).getByText("Quilt")).toBeInTheDocument();
 
-    // 两个可用、两个写明原因
-    // 还没选版本时，可用的行写「未选择版本」；选了版本这里就变成版本号。
-    expect(within(list).getAllByText("未选择版本")).toHaveLength(2);
-    expect(await rowOf("Forge")).toHaveTextContent("这个版本只能用 NeoForge");
-    // 不兼容的原因由后端给，前端原样显示。
-    expect(await rowOf("Quilt")).toHaveTextContent("与 Fabric 不兼容");
+    const names = within(list)
+      .getAllByRole("button", { name: /^(Forge|NeoForge|Fabric|Quilt)$/ })
+      .map((item) => item.getAttribute("aria-label"));
+    expect(names).toEqual(["Forge", "NeoForge", "Fabric", "Quilt"]);
+
+    // 还没选任何加载器：四行都只是「可以添加」，没有不兼容的说法。
+    expect(within(list).getAllByText("可以添加")).toHaveLength(4);
+    expect(within(list).queryByText(/不兼容/)).not.toBeInTheDocument();
     expect(listVersions).toHaveBeenCalledWith("1.21.1");
   });
 
-  it("marks a loader the version cannot use as disabled and shows the reason", async () => {
+  it("collapses the version list as soon as a version is picked", async () => {
+    renderPicker();
+
+    await openLoader("Fabric");
+    const versions = await screen.findByRole("listbox", { name: "Fabric 版本" });
+    expect(within(versions).getAllByRole("option")).toHaveLength(2);
+
+    fireEvent.click(within(versions).getByRole("option", { name: /0\.15\.11/ }));
+
+    // 选完就收回去 —— PCL 的 CardXxx.IsSwapped = True。
+    expect(screen.queryByRole("listbox", { name: "Fabric 版本" })).not.toBeInTheDocument();
+    // 行上显示选中的版本。
+    expect(await rowOf("Fabric")).toHaveTextContent("0.15.11");
+  });
+
+  it("shows the incompatibility only against what is already selected", async () => {
     renderPicker();
     await screen.findByRole("list", { name: "模组加载器" });
 
-    const quilt = await rowOf("Quilt");
-    expect(quilt).toHaveAttribute("aria-disabled", "true");
-    expect(quilt).toHaveAttribute("data-available", "false");
-    // 不可用的行没有展开状态，点了也不展开
-    expect(quilt).not.toHaveAttribute("aria-expanded");
-    expect(quilt).toHaveTextContent("与 Fabric 不兼容");
+    await chooseVersion("Fabric", "0.16.9");
 
-    fireEvent.click(quilt);
-
-    expect(screen.queryByRole("listbox", { name: "Quilt 版本" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "安装" })).not.toBeInTheDocument();
+    // 选了 Fabric 之后，Forge 与 NeoForge 才被标成不兼容。
+    expect(await rowOf("Forge")).toHaveTextContent("与 Fabric 不兼容");
+    expect(await rowOf("NeoForge")).toHaveTextContent("与 Fabric 不兼容");
+    // Quilt 与 Fabric 同族，可以共存，不标。
+    expect(await rowOf("Quilt")).not.toHaveTextContent("不兼容");
+    // Fabric 自己当然也不标。
+    expect(await rowOf("Fabric")).not.toHaveTextContent("不兼容");
   });
 
-  it("expands one loader's versions when its row is clicked, and collapses it again", async () => {
+  it("does not let a conflicting loader be expanded", async () => {
     renderPicker();
+    await screen.findByRole("list", { name: "模组加载器" });
 
-    await openLoader("NeoForge");
+    await chooseVersion("Forge", "66.1.2");
 
-    const versions = await screen.findByRole("listbox", { name: "NeoForge 版本" });
-    expect(within(versions).getAllByRole("option")).toHaveLength(3);
-    expect(within(versions).getByText("21.1.72")).toBeInTheDocument();
-    // 同一时间只展开一行
+    const fabric = await rowOf("Fabric");
+    expect(fabric).toHaveTextContent("与 Forge 不兼容");
+    expect(fabric).toHaveAttribute("aria-disabled", "true");
+
+    fireEvent.click(fabric);
+
+    // 点不开。
     expect(screen.queryByRole("listbox", { name: "Fabric 版本" })).not.toBeInTheDocument();
-    expect(await rowOf("NeoForge")).toHaveAttribute("aria-expanded", "true");
-
-    fireEvent.click(await rowOf("NeoForge"));
-
-    expect(screen.queryByRole("listbox", { name: "NeoForge 版本" })).not.toBeInTheDocument();
   });
 
-  it("preselects the newest version when a loader is expanded", async () => {
+  it("clears a pick with X and brings back the other loaders", async () => {
     renderPicker();
+    await screen.findByRole("list", { name: "模组加载器" });
 
-    await openLoader("Fabric");
-    const versions = await screen.findByRole("listbox", { name: "Fabric 版本" });
+    await chooseVersion("Fabric", "0.16.9");
+    expect(await rowOf("Forge")).toHaveTextContent("与 Fabric 不兼容");
 
-    // 展开即选最新：不用先点一次版本才有得装。
-    expect(within(versions).getByRole("option", { name: /0\.16\.9/ })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.getByRole("button", { name: "安装" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "取消选择 Fabric" }));
 
-    // 手动改选仍然有效。
-    fireEvent.click(within(versions).getByRole("option", { name: /0\.15\.11/ }));
-
-    expect(within(versions).getByRole("option", { name: /0\.15\.11/ })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(within(versions).getByRole("option", { name: /0\.16\.9/ })).toHaveAttribute(
-      "aria-selected",
-      "false",
-    );
-    expect(
-      screen.getByText("将安装 Fabric 0.15.11：先装游戏本体，再装上加载器并新建一个实例。"),
-    ).toBeInTheDocument();
+    // 清掉之后回到「可以添加」，其他行也不再被标不兼容。
+    await waitFor(async () => expect(await rowOf("Fabric")).toHaveTextContent("可以添加"));
+    expect(await rowOf("Forge")).not.toHaveTextContent("不兼容");
+    expect(screen.queryByRole("button", { name: "取消选择 Fabric" })).not.toBeInTheDocument();
   });
 
-  it("keeps the pick after the row is collapsed and reopened", async () => {
+  it("reveals Fabric API once Fabric is picked and preselects it", async () => {
     renderPicker();
+    await screen.findByRole("list", { name: "模组加载器" });
 
-    await openLoader("Fabric");
-    const versions = await screen.findByRole("listbox", { name: "Fabric 版本" });
-    fireEvent.click(within(versions).getByRole("option", { name: /0\.15\.11/ }));
+    // 没选 Fabric 之前没有这张卡。
+    expect(screen.queryByText("Fabric API")).not.toBeInTheDocument();
 
-    // 收起
-    fireEvent.click(await rowOf("Fabric"));
-    expect(screen.queryByRole("listbox", { name: "Fabric 版本" })).not.toBeInTheDocument();
+    await chooseVersion("Fabric", "0.16.9");
 
-    // 行上仍然显示选中的版本
-    expect(await rowOf("Fabric")).toHaveTextContent("0.15.11");
-
-    // 再展开，选择被保留、没有被重置回最新
-    fireEvent.click(await rowOf("Fabric"));
-    const reopened = await screen.findByRole("listbox", { name: "Fabric 版本" });
-    expect(within(reopened).getByRole("option", { name: /0\.15\.11/ })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-  });
-
-  it("shows the picked version on the row and lists Fabric API", async () => {
-    renderPicker();
-
-    await openLoader("Fabric");
-    const versions = await screen.findByRole("listbox", { name: "Fabric 版本" });
-    fireEvent.click(within(versions).getByRole("option", { name: /0\.15\.11/ }));
-
-    // 选中的版本要显示在行上（收起列表后也还在）。
-    // 选中的版本要显示在行上（列表里也有一份，所以查行本身）。
-    await waitFor(() => expect(screen.getByRole("button", { name: "Fabric" })).toHaveTextContent("0.15.11"));
-
-    // Fabric API 是随 Fabric 一起装的附属组件。
-    expect(screen.getByText("Fabric API")).toBeInTheDocument();
+    expect(await screen.findByText("Fabric API")).toBeInTheDocument();
     expect(screen.getByText("0.116.6+1.21.1")).toBeInTheDocument();
-    expect(screen.getByText("会一起装上")).toBeInTheDocument();
 
-    // 只有「最新」那个版本带标签，其它行不带。
+    // 可以单独取消。
+    fireEvent.click(screen.getByRole("button", { name: "取消选择 Fabric API" }));
+    expect(screen.queryByText("0.116.6+1.21.1")).not.toBeInTheDocument();
+  });
+
+  it("hides Fabric API again when Fabric is cleared", async () => {
+    renderPicker();
+    await screen.findByRole("list", { name: "模组加载器" });
+
+    await chooseVersion("Fabric", "0.16.9");
+    expect(await screen.findByText("Fabric API")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "取消选择 Fabric" }));
+
+    await waitFor(() => expect(screen.queryByText("Fabric API")).not.toBeInTheDocument());
+  });
+
+  it("tags only the newest version", async () => {
+    renderPicker();
+
+    await openLoader("Forge");
+    const versions = await screen.findByRole("listbox", { name: "Forge 版本" });
+
     expect(within(versions).getByText("最新")).toBeInTheDocument();
     expect(within(versions).queryByText("可选")).not.toBeInTheDocument();
   });
@@ -233,16 +229,22 @@ describe("ModLoaderPicker", () => {
     const onInstalled = vi.fn();
     renderPicker(onInstalled);
 
-    await openLoader("NeoForge");
-    fireEvent.click(await screen.findByRole("option", { name: /21\.1\.72/ }));
-    fireEvent.click(screen.getByRole("button", { name: "安装" }));
+    await chooseVersion("NeoForge", "21.1.72");
+
+    // 「开始安装」在列表外面，列表收起后仍然可用。
+    expect(screen.queryByRole("listbox", { name: "NeoForge 版本" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "开始安装" }));
 
     await waitFor(() => expect(installLoader).toHaveBeenCalledWith("neoforge", "1.21.1", "21.1.72"));
-    // 安装中：按钮禁用并换成进度文字
     expect(screen.getByRole("button", { name: "正在安装…" })).toBeDisabled();
 
     finish({
-      instance: { id: "abc", name: "1.21.1-neoforge-21.1.72", version: "1.21.1-neoforge-21.1.72", state: "ready" },
+      instance: {
+        id: "abc",
+        name: "1.21.1-neoforge-21.1.72",
+        version: "1.21.1-neoforge-21.1.72",
+        state: "ready",
+      },
       versionId: "1.21.1-neoforge-21.1.72",
     });
 
@@ -250,22 +252,37 @@ describe("ModLoaderPicker", () => {
     expect(onInstalled).toHaveBeenCalledWith(
       expect.objectContaining({ id: "abc", version: "1.21.1-neoforge-21.1.72" }),
     );
-    expect(screen.getByRole("button", { name: "安装" })).toBeEnabled();
   });
 
   it("shows the reason the backend gave when the install fails", async () => {
     installLoader.mockRejectedValue("modloader installer is not available for 1.21.1");
     renderPicker();
 
-    await openLoader("Fabric");
-    fireEvent.click(await screen.findByRole("option", { name: /0\.16\.9/ }));
-    fireEvent.click(screen.getByRole("button", { name: "安装" }));
+    await chooseVersion("Fabric", "0.16.9");
+    fireEvent.click(screen.getByRole("button", { name: "开始安装" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "modloader installer is not available for 1.21.1",
     );
-    // 失败后能再试一次
-    expect(screen.getByRole("button", { name: "安装" })).toBeEnabled();
+  });
+
+  it("says a loader cannot be used when the backend reports it unavailable", async () => {
+    listVersions.mockImplementation(async () =>
+      choices().map((choice) =>
+        choice.kind === "quilt"
+          ? { ...choice, available: false, reason: "Quilt 没有支持 1.21.1 的版本", versions: [] }
+          : choice,
+      ),
+    );
+    renderPicker();
+    await screen.findByRole("list", { name: "模组加载器" });
+
+    const quilt = await rowOf("Quilt");
+    expect(quilt).toHaveAttribute("aria-disabled", "true");
+    expect(quilt).toHaveTextContent("Quilt 没有支持 1.21.1 的版本");
+
+    fireEvent.click(quilt);
+    expect(screen.queryByRole("listbox", { name: "Quilt 版本" })).not.toBeInTheDocument();
   });
 
   it("offers a retry when the list could not be read at all", async () => {
@@ -277,10 +294,10 @@ describe("ModLoaderPicker", () => {
     listVersions.mockImplementation(async () => choices());
     fireEvent.click(screen.getByRole("button", { name: "重新读取" }));
 
-    expect(await screen.findByRole("list", { name: "模组加载器" })).toBeInTheDocument();
+    expect(await rowOf("Fabric")).toBeInTheDocument();
   });
 
-  it("says it needs the desktop build when running in a browser", () => {
+  it("says it needs the desktop build when running in a browser", async () => {
     pretendBrowser();
     renderPicker();
 

@@ -1290,6 +1290,42 @@
   animation-delay: calc(var(--i, 0) * 28ms);
 }
 
+/* 行 + 右侧的 X。X 是同级按钮，不能嵌在行按钮里（按钮不能套按钮）。 */
+.modloader-row-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.modloader-row-wrap > .modloader-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.modloader-clear {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  border: 0;
+  border-radius: var(--borderRadiusMedium);
+  color: var(--colorNeutralForeground3);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background var(--durationFast) var(--curveEasyEase),
+    color var(--durationFast) var(--curveEasyEase);
+}
+
+.modloader-clear:hover {
+  color: var(--colorNeutralForeground1);
+  background: var(--card-bg-hover);
+}
+
+.modloader-clear:focus-visible {
+  outline: 2px solid var(--colorStrokeFocus2);
+  outline-offset: 2px;
+}
+
 .modloader-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) 16px;
@@ -1500,15 +1536,21 @@
   color: var(--colorBrandForeground1);
 }
 
-/* Fabric API 这类会跟着装上的附属组件。 */
+/* Fabric API 单独一张卡：选了 Fabric 才出现，和 PCL 的 CardFabricApi 一样。 */
 .modloader-companion {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
-  padding: 8px 12px;
+  margin-block-start: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--card-stroke);
   border-radius: var(--borderRadiusMedium);
   background: var(--colorNeutralBackground3);
+  animation: fade-in var(--durationNormal) var(--curveDecelerateMid) both;
+}
+
+.modloader-companion-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .modloader-companion-name {
@@ -1523,6 +1565,11 @@
   font-size: 12px;
   color: var(--colorNeutralForeground3);
 }
+
+.modloader-companion-head > .modloader-clear {
+  margin-inline-start: auto;
+}
+
 .modloader-actions {
   display: flex;
   flex-wrap: wrap;

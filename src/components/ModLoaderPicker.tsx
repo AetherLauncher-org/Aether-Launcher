@@ -2,6 +2,7 @@ import { Button, Text, Tooltip } from "@fluentui/react-components";
 import {
   ArrowDownload20Regular,
   CheckmarkCircle20Filled,
+  Dismiss16Regular,
   ChevronRight16Regular,
   Warning16Filled,
 } from "@fluentui/react-icons";
@@ -47,19 +48,25 @@ const idle: DownloadState = { status: "idle" };
 /**
  * 中间那段状态文字。
  *
- * 可用且已经选了版本时直接显示选中的版本号 —— 这也是「选了显示在上面」的意思：
- * 收起列表以后，行上写的仍然是你要装的那个版本，不用再展开去找。
+ * 优先级和 PCL 一样：**先说不兼容**（`LoadForgeGetError` 里第一件事就是查
+ * `SelectedXxx`），再说不可用的原因，最后才是「可以添加」/已选版本。
  */
-function describeChoice(choice: ModLoaderChoice, selected: string | undefined): string {
+function describeChoice(
+  choice: ModLoaderChoice,
+  selected: string | undefined,
+  conflict: string | null,
+): string {
+  if (conflict !== null) {
+    return conflict;
+  }
   if (!choice.available) {
     return choice.reason ?? "暂不可用";
   }
   if (choice.versions.length === 0) {
     return "没有可选的版本";
   }
-  return selected ?? "未选择版本";
+  return selected ?? "可以添加";
 }
-
 /**
  * 列表里每个版本右边的标签。
  *
@@ -85,8 +92,12 @@ export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerPro
 
   /** 当前展开的加载器；同一时间只展开一行，和 PCL 一样。 */
   const [openKind, setOpenKind] = useState<ModLoaderKind | null>(null);
-  /** 每个加载器各自选了哪个版本，收起再展开时保留。 */
+  /** 每个加载器各自选了哪个版本；收起之后仍然显示。 */
   const [picked, setPicked] = useState<Partial<Record<ModLoaderKind, string>>>({});
+  /** Fabric API 单独一张卡，跟着 Fabric 出现/消失。 */
+  const [pickedCompanion, setPickedCompanion] = useState<string | null>(null);
+  /** 让 Fabric API 只自动选一次，用户取消之后别再自动选回来。 */
+  const [companionAutoPicked, setCompanionAutoPicked] = useState(false);
   /** 下载状态跟着加载器走，切换行时不会把上一行的提示带过去。 */
   const [download, setDownload] = useState<Partial<Record<ModLoaderKind, DownloadState>>>({});
 
@@ -118,30 +129,101 @@ export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerPro
     setAttempt((value) => value + 1);
   }, []);
 
-  const toggle = (choice: ModLoaderChoice) => {
+  /**
+   * 某个加载器是不是被别的**已选**加载器挡着。
+   *
+   * 这是 PCL 的规则（`LoadForgeGetError` 里的
+   * `If SelectedFabric IsNot Nothing Then Return "与 Fabric 不兼容"`）：
+   * 不是一开始就把四个都标红，而是选了谁，才把与它互斥的项标出来。
+   */
+  const conflictWith = (choice: ModLoaderChoice): string | null => {
     if (!choice.available) {
+      return null;
+    }
+    const chosen = choices.find(
+      (other) => other.kind !== choice.kind && picked[other.kind] !== undefined,
+    );
+    if (chosen === undefined) {
+      return null;
+    }
+    // Forge 与 NeoForge 同族、Fabric 与 Quilt 同族：族内可以共存，由用户自己二选一。
+    const sameFamily =
+      ["forge", "neoforge"].includes(choice.kind) ===
+      ["forge", "neoforge"].includes(chosen.kind);
+    return sameFamily ? null : `与 ${chosen.label} 不兼容`;
+  };
+
+  const toggle = (choice: ModLoaderChoice) => {
+    // 被别的已选加载器挡住的项不给展开：和 PCL 的 `CardForge_PreviewSwap`
+    // （`If LoadForgeGetError() IsNot Nothing Then e.Handled = True`）一样。
+    if (!choice.available || conflictWith(choice) !== null) {
       return;
     }
-    const opening = openKind !== choice.kind;
-    setOpenKind(opening ? choice.kind : null);
-    // 展开一个新加载器时默认选它最新的版本：绝大多数人就是装最新的，
-    // 让他们再去列表里点一次纯属多余。已经选过的不覆盖。
-    if (opening && choice.versions.length > 0) {
-      setPicked((current) =>
-        current[choice.kind] === undefined
-          ? { ...current, [choice.kind]: choice.versions[0] }
-          : current,
-      );
+    setOpenKind((current) => (current === choice.kind ? null : choice.kind));
+  };
+
+  /**
+   * 选中一个版本，然后**把列表收回去**。
+   *
+   * 这是 PCL 的做法（`Forge_Selected` 里 `CardForge.IsSwapped = True`）：列表是
+   * 一次性的，选完就该看到行上的结果，而不是继续占着版面。
+   */
+  const pick = (choice: ModLoaderChoice, version: string) => {
+    setPicked((current) => ({ ...current, [choice.kind]: version }));
+    setDownload((current) => ({ ...current, [choice.kind]: idle }));
+    setOpenKind(null);
+
+    // 选上 Fabric 之后 Fabric API 那张卡才出现，并默认选最新的一个版本
+    // （PCL 的 `AutoSelectedFabricApi` 只自动选一次）。
+    if (choice.kind === "fabric" && !companionAutoPicked) {
+      const api = choice.companions.find((companion) => companion.label === "Fabric API");
+      if (api !== undefined && api.versions.length > 0) {
+        setPickedCompanion(api.versions[0]);
+        setCompanionAutoPicked(true);
+      }
     }
   };
 
-  const pick = (kind: ModLoaderKind, version: string) => {
-    setPicked((current) => ({ ...current, [kind]: version }));
-    // 换版本后，上一条「已下载 / 失败」的提示就过期了
+  /** 点 X 清掉一个加载器的选择；清 Fabric 时连带清掉 Fabric API 那张卡。 */
+  const clear = (kind: ModLoaderKind) => {
+    setPicked((current) => {
+      const next = { ...current };
+      delete next[kind];
+      return next;
+    });
     setDownload((current) => ({ ...current, [kind]: idle }));
+    setOpenKind((current) => (current === kind ? null : current));
+    if (kind === "fabric") {
+      setPickedCompanion(null);
+      setCompanionAutoPicked(false);
+    }
   };
 
-  const install = async (choice: ModLoaderChoice) => {
+  /** 取消选择 Fabric API，但保留 Fabric 本身。 */
+  const clearCompanion = () => {
+    setPickedCompanion(null);
+    // 用户明确取消了，就别再自动帮他选回来。
+    setCompanionAutoPicked(true);
+  };
+
+  const fabricApi = choices
+    .find((choice) => choice.kind === "fabric")
+    ?.companions.find((companion) => companion.label === "Fabric API");
+  const fabricChosen = picked.fabric !== undefined;
+
+  /** 当前选中的那个加载器（同一时间只会有一个）。 */
+  const chosen = choices.find((choice) => picked[choice.kind] !== undefined);
+  /** 有安装任务在跑时，整张卡片的按钮都停用。 */
+  const anyRunning = Object.values(download).some((entry) => entry?.status === "running");
+  const canInstallAny = chosen !== undefined && !anyRunning;
+  /** 失败提示也放在列表外面，列表收起后仍然看得到。 */
+  const failed = chosen === undefined ? undefined : download[chosen.kind];
+  const failedMessage = failed?.status === "failed" ? failed.message : null;
+
+  const install = async (choice: ModLoaderChoice | undefined) => {
+    if (choice === undefined) {
+      return;
+    }
     const version = picked[choice.kind];
     if (version === undefined || (download[choice.kind] ?? idle).status === "running") {
       return;
@@ -191,8 +273,11 @@ export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerPro
           {choices.map((choice, index) => {
             const expanded = openKind === choice.kind;
             const selected = picked[choice.kind];
-            const state = download[choice.kind] ?? idle;
-            const canInstall = selected !== undefined && state.status !== "running";
+            // 「不兼容」只在选了别的加载器之后才出现，和 PCL 的 SelectedXxx 一致。
+            const conflict = conflictWith(choice);
+            const status = describeChoice(choice, selected, conflict);
+            // 被挡住的项不允许展开，也不允许安装。
+            const usable = choice.available && conflict === null;
 
             return (
               <li
@@ -203,52 +288,61 @@ export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerPro
               >
                 <Tooltip
                   content={
-                    choice.available
-                      ? selected === undefined
-                        ? `为 ${gameVersion} 添加 ${choice.label}`
-                        : `${choice.label} ${selected}`
-                      : describeChoice(choice, selected)
+                    conflict ?? (selected === undefined
+                      ? `为 ${gameVersion} 添加 ${choice.label}`
+                      : `${choice.label} ${selected}`)
                   }
                   relationship="description"
                   withArrow
                   positioning="above-start"
                 >
-                  <button
-                    type="button"
-                    className="modloader-row"
-                    aria-label={choice.label}
-                    aria-expanded={choice.available ? expanded : undefined}
-                    aria-controls={choice.available ? `modloader-versions-${choice.kind}` : undefined}
-                    aria-disabled={!choice.available}
-                    data-available={choice.available}
-                    onClick={() => toggle(choice)}
-                  >
-                    <span className="modloader-name">
-                      <span className="modloader-band" aria-hidden="true" />
-                      <Text weight="semibold">{choice.label}</Text>
-                    </span>
-                    <span className="modloader-status">
-                      {choice.available && choice.versions.length > 0 ? (
-                        <CheckmarkCircle20Filled
-                          className="modloader-status-icon"
+                  <div className="modloader-row-wrap">
+                    <button
+                      type="button"
+                      className="modloader-row"
+                      aria-label={choice.label}
+                      aria-expanded={usable ? expanded : undefined}
+                      aria-controls={usable ? `modloader-versions-${choice.kind}` : undefined}
+                      aria-disabled={!usable}
+                      data-available={usable}
+                      onClick={() => toggle(choice)}
+                    >
+                      <span className="modloader-name">
+                        <span className="modloader-band" aria-hidden="true" />
+                        <Text weight="semibold">{choice.label}</Text>
+                      </span>
+                      <span className="modloader-status">
+                        {usable ? (
+                          <CheckmarkCircle20Filled
+                            className="modloader-status-icon"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <Warning16Filled className="modloader-status-icon" aria-hidden="true" />
+                        )}
+                        <span className="modloader-status-text">{status}</span>
+                      </span>
+                      {usable ? (
+                        <ChevronRight16Regular
                           aria-hidden="true"
+                          className={`row-chevron${expanded ? " expanded" : ""}`}
                         />
                       ) : (
-                        <Warning16Filled className="modloader-status-icon" aria-hidden="true" />
+                        <span className="modloader-chevron-placeholder" aria-hidden="true" />
                       )}
-                      <span className="modloader-status-text">
-                        {describeChoice(choice, selected)}
-                      </span>
-                    </span>
-                    {choice.available ? (
-                      <ChevronRight16Regular
-                        aria-hidden="true"
-                        className={`row-chevron${expanded ? " expanded" : ""}`}
-                      />
-                    ) : (
-                      <span className="modloader-chevron-placeholder" aria-hidden="true" />
+                    </button>
+                    {/* X：取消选择。PCL 里是 BtnForgeClear 这类按钮，只在选中后出现。 */}
+                    {selected === undefined ? null : (
+                      <button
+                        type="button"
+                        className="modloader-clear"
+                        aria-label={`取消选择 ${choice.label}`}
+                        onClick={() => clear(choice.kind)}
+                      >
+                        <Dismiss16Regular aria-hidden="true" />
+                      </button>
                     )}
-                  </button>
+                  </div>
                 </Tooltip>
 
                 {expanded ? (
@@ -273,7 +367,7 @@ export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerPro
                                   role="option"
                                   aria-selected={isSelected}
                                   className={`modloader-version${isSelected ? " selected" : ""}`}
-                                  onClick={() => pick(choice.kind, version)}
+                                  onClick={() => pick(choice, version)}
                                 >
                                   <span className="modloader-version-label">{version}</span>
                                   {describeVersion(choice, version) === null ? null : (
@@ -286,59 +380,6 @@ export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerPro
                             );
                           })}
                         </ul>
-
-                        {choice.companions.map((companion) => (
-                          <div className="modloader-companion" key={companion.label}>
-                            <span className="modloader-companion-name">{companion.label}</span>
-                            {companion.versions.length > 0 ? (
-                              <>
-                                <span className="modloader-companion-version">
-                                  {companion.versions[0]}
-                                </span>
-                                <span className="modloader-companion-note">会一起装上</span>
-                              </>
-                            ) : (
-                              <span className="modloader-companion-note">
-                                {companion.reason ?? "读不到版本"}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                        <div className="modloader-actions">
-                          <Button
-                            appearance="primary"
-                            icon={<ArrowDownload20Regular />}
-                            disabled={!canInstall}
-                            onClick={() => void install(choice)}
-                          >
-                            {state.status === "running" ? "正在安装…" : "安装"}
-                          </Button>
-                          {selected === undefined ? (
-                            <Text className="muted" size={200}>
-                              先选一个版本。
-                            </Text>
-                          ) : (
-                            <Text className="muted" size={200}>
-                              将安装 {choice.label} {selected}：先装游戏本体，再装上加载器并新建一个实例。
-                            </Text>
-                          )}
-                        </div>
-
-                        {state.status === "done" ? (
-                          <div className="modloader-feedback success" role="status">
-                            <CheckmarkCircle20Filled aria-hidden="true" />
-                            <span>
-                              {choice.label} {selected} 已装好，新实例已经建好了。
-                            </span>
-                          </div>
-                        ) : null}
-
-                        {state.status === "failed" ? (
-                          <div className="modloader-feedback failed" role="alert">
-                            <Warning16Filled aria-hidden="true" />
-                            <span>{state.message}</span>
-                          </div>
-                        ) : null}
                       </>
                     )}
                   </div>
@@ -347,6 +388,77 @@ export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerPro
             );
           })}
         </ul>
+      )}
+
+      {/*
+        Fabric API 是单独一张卡：只有选了 Fabric 才出现，出现时默认选中最新版。
+        这是 PCL 的 `CardFabricApi`（`If SelectedFabric Is Nothing Then
+        CardFabricApi.Visibility = Visibility.Collapsed`）。
+      */}
+      {fabricChosen && fabricApi !== undefined ? (
+        <div className="modloader-companion" data-available={pickedCompanion !== null}>
+          <div className="modloader-companion-head">
+            <span className="modloader-companion-name">Fabric API</span>
+            {pickedCompanion === null ? (
+              <span className="modloader-companion-note">
+                {fabricApi.reason ?? "没有单独选中，不会自动装上"}
+              </span>
+            ) : (
+              <span className="modloader-companion-version">{pickedCompanion}</span>
+            )}
+            {pickedCompanion === null ? null : (
+              <button
+                type="button"
+                className="modloader-clear"
+                aria-label="取消选择 Fabric API"
+                onClick={clearCompanion}
+              >
+                <Dismiss16Regular aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {/*
+        底部常驻的「开始安装」。PCL 的 `BtnStart`（Text="开始下载"）也在卡片列表外面，
+        不在展开区域里 —— 列表收起之后它必须还在，否则选完版本就再也点不到。
+      */}
+      {desktop && !loading && choices.length > 0 ? (
+        <div className="modloader-actions">
+          <Button
+            appearance="primary"
+            icon={<ArrowDownload20Regular />}
+            disabled={!canInstallAny}
+            onClick={() => void install(chosen)}
+          >
+            {anyRunning ? "正在安装…" : "开始安装"}
+          </Button>
+          <Text className="muted" size={200}>
+            {chosen === undefined
+              ? "先选一个加载器版本。"
+              : `将安装 ${chosen.label} ${picked[chosen.kind]}${
+                  pickedCompanion === null ? "" : "（含 Fabric API）"
+                }：先装游戏本体，再装上加载器并新建一个实例。`}
+          </Text>
+        </div>
+      ) : null}
+
+      {/* 安装结果也在列表外面：列表收起后这里是唯一的反馈位置。 */}
+      {chosen !== undefined && (download[chosen.kind]?.status ?? "idle") === "done" ? (
+        <div className="modloader-feedback success" role="status">
+          <CheckmarkCircle20Filled aria-hidden="true" />
+          <span>
+            {chosen.label} {picked[chosen.kind]} 已装好，新实例已经建好了。
+          </span>
+        </div>
+      ) : null}
+
+      {failedMessage === null ? null : (
+        <div className="modloader-feedback failed" role="alert">
+          <Warning16Filled aria-hidden="true" />
+          <span>{failedMessage}</span>
+        </div>
       )}
     </section>
   );
