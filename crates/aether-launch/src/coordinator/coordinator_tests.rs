@@ -114,7 +114,7 @@ fn prepares_fabric_instance_using_parent_client_jar() {
     let f = Fixture::new();
     let prepared = f.prepare().unwrap();
     assert_eq!(prepared.runtime.major_version, 21);
-    assert_eq!(prepared.working_directory, f.instance_dir);
+    assert_eq!(prepared.working_directory, f.instance_dir.join("minecraft"));
     assert_eq!(prepared.arguments[0], "-Xmx4096m");
     assert!(
         prepared
@@ -323,4 +323,44 @@ fn prepares_missing_natives_once_and_verifies_them_before_reuse() {
         ),
         Err(CoordinatorError::NativeInstall(_))
     ));
+}
+
+#[test]
+fn runs_the_game_in_the_instances_minecraft_directory_and_adopts_old_files() {
+    let f = Fixture::new();
+    // What a launch before this change left next to instance.json.
+    fs::create_dir_all(f.instance_dir.join("saves/World")).unwrap();
+    fs::write(f.instance_dir.join("saves/World/level.dat"), b"world").unwrap();
+    fs::write(f.instance_dir.join("options.txt"), b"old options").unwrap();
+    fs::create_dir_all(f.instance_dir.join("minecraft")).unwrap();
+    fs::write(f.instance_dir.join("minecraft/options.txt"), b"kept").unwrap();
+    // Not Minecraft's, and not to be touched.
+    fs::write(f.instance_dir.join("notes.txt"), b"mine").unwrap();
+
+    let plan = f.prepare().unwrap();
+
+    let game = f.instance_dir.join("minecraft");
+    assert_eq!(plan.working_directory, game);
+    assert_eq!(
+        fs::read(game.join("saves/World/level.dat")).unwrap(),
+        b"world"
+    );
+    assert!(!f.instance_dir.join("saves").exists());
+    // An existing file in minecraft/ wins; the old one stays where it was.
+    assert_eq!(fs::read(game.join("options.txt")).unwrap(), b"kept");
+    assert_eq!(
+        fs::read(f.instance_dir.join("options.txt")).unwrap(),
+        b"old options"
+    );
+    assert!(f.instance_dir.join("notes.txt").is_file());
+    assert!(f.instance_dir.join("instance.json").is_file());
+    // The scratch folder for JNA and friends is inside the game directory too.
+    assert!(game.join("runtime-tmp").is_dir());
+
+    // A second launch changes nothing.
+    f.prepare().unwrap();
+    assert_eq!(
+        fs::read(game.join("saves/World/level.dat")).unwrap(),
+        b"world"
+    );
 }

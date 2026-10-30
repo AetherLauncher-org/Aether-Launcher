@@ -21,6 +21,7 @@ use crate::plan::{LaunchBuildError, LaunchOptions, build_launch_plan, scratch_di
 use crate::process::LogRecord;
 use crate::registry::{InstanceProcessRegistry, InstanceProcessStatus, RegistryError};
 use crate::{JavaSelectionError, LaunchPlan, LaunchRequest, select_java_runtime};
+use aether_storage::create::MINECRAFT_DIR;
 
 #[derive(Debug, Error)]
 pub enum CoordinatorError {
@@ -193,11 +194,16 @@ impl InstanceLaunchCoordinator {
             }
             destination
         };
+        // The game runs in the instance's own `minecraft/` directory (mods, saves, config,
+        // logs), not in the instance root that also holds `instance.json`.
+        let working_directory = instance.root.join(MINECRAFT_DIR);
+        fs::create_dir_all(&working_directory)?;
+        adopt_legacy_game_files(&instance.root, &working_directory);
         // The game's scratch output goes here instead of the verified natives directory.
-        fs::create_dir_all(scratch_directory(&instance.root))?;
+        fs::create_dir_all(scratch_directory(&working_directory))?;
         let options = LaunchOptions {
             game_directory: self.game_directory.clone(),
-            working_directory: instance.root.clone(),
+            working_directory,
             client_jar,
             natives_directory,
             variables: account_variables.clone(),
@@ -292,6 +298,47 @@ impl InstanceLaunchCoordinator {
         id: InstanceId,
     ) -> Result<InstanceProcessStatus, CoordinatorError> {
         Ok(self.processes.forget_finished(id)?)
+    }
+}
+
+/// What older launches wrote into the instance root, before the game ran in minecraft/.
+const LEGACY_GAME_ENTRIES: [&str; 18] = [
+    "saves",
+    "mods",
+    "resourcepacks",
+    "shaderpacks",
+    "config",
+    "screenshots",
+    "schematics",
+    "logs",
+    "crash-reports",
+    "options.txt",
+    "optionsof.txt",
+    "optionsshaders.txt",
+    "servers.dat",
+    "servers.dat_old",
+    "usercache.json",
+    "realms_persistence.json",
+    "command_history.txt",
+    "hotbar.nbt",
+];
+
+/// Moves the game's files from the instance root into its minecraft/ directory.
+///
+/// Until the game ran in minecraft/, worlds, mods and settings were written next to
+/// instance.json. Only a fixed list of Minecraft's own names is moved, only plain files
+/// and folders (never links), and only when the destination does not exist, so nothing is
+/// overwritten and a second call changes nothing. A failure leaves the entry where it is:
+/// launching must not depend on it.
+fn adopt_legacy_game_files(root: &Path, game_directory: &Path) {
+    for name in LEGACY_GAME_ENTRIES {
+        let from = root.join(name);
+        let to = game_directory.join(name);
+        let movable = fs::symlink_metadata(&from)
+            .is_ok_and(|metadata| metadata.is_dir() || metadata.is_file());
+        if movable && fs::symlink_metadata(&to).is_err() {
+            let _ = fs::rename(&from, &to);
+        }
     }
 }
 

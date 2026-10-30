@@ -18,6 +18,8 @@ instances/
 
 托管实例里的游戏目录名是 `minecraft`，没有前导点（源码常量 `MINECRAFT_DIR`）。导入源里的 `.minecraft/` 是**导入源**自己的目录（见 `crates/aether-storage/src/import/`），导入后它的内容映射到托管实例的 `minecraft/`，两者不是一回事，不要按字面把带点的目录名搬过来。
 
+**游戏就在 `minecraft/` 里运行。** 启动时游戏的工作目录（`--gameDir`）是实例的 `minecraft/`，所以存档、mods、资源包、光影、配置和日志都在那里，`instance.json` 旁边不放游戏文件。早先的版本把实例根目录当作游戏目录，已经启动过的实例会在下一次启动时把 Minecraft 自己的那几项（`saves`、`mods`、`resourcepacks`、`shaderpacks`、`config`、`screenshots`、`schematics`、`logs`、`crash-reports`、`options.txt` 等固定名单）从根目录移进 `minecraft/`：只移普通文件和文件夹、不跟随链接、目标已存在就不动，所以不会覆盖任何东西，重复执行也不会再变。
+
 几条硬规则：
 
 - **目录名就是实例 UUID。** 不是显示名字，不是列表里的序号，也不是版本号和时间的拼接。UUID 在创建时生成，此后不再变化。
