@@ -1720,3 +1720,14 @@
   background: var(--colorPaletteRedForeground1);
   color: var(--colorNeutralForegroundOnBrand);
 }
+
+/* 刷新按钮的图标：读取时转，转速固定，和系统的「减少动态效果」设置一起被压平 */
+.spin-icon {
+  animation: spin-icon 0.7s linear infinite;
+}
+
+@keyframes spin-icon {
+  to {
+    transform: rotate(360deg);
+  }
+}

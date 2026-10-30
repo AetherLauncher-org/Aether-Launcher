@@ -1,5 +1,6 @@
-import { Badge, Button, SearchBox, Tab, TabList, Text } from "@fluentui/react-components";
-import { ArrowSync20Regular, ChevronRight16Regular, Cube24Regular, Search24Regular } from "@fluentui/react-icons";
+import { Badge, SearchBox, Tab, TabList, Text } from "@fluentui/react-components";
+import { ChevronRight16Regular, Cube24Regular, Search24Regular } from "@fluentui/react-icons";
+import { RefreshButton } from "./RefreshButton";
 import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import type { MinecraftCatalogVersion, MinecraftVersionCatalog } from "../ipc";
@@ -98,13 +99,7 @@ export function VersionBrowser({ catalog, installed, onSelect, onRefresh, refres
             value={query}
             onChange={(_, data) => setQuery(data.value)}
           />
-          <Button
-            appearance="subtle"
-            icon={<ArrowSync20Regular />}
-            aria-label="刷新版本目录"
-            disabled={refreshing}
-            onClick={onRefresh}
-          />
+          <RefreshButton label="刷新版本目录" loading={refreshing} onClick={onRefresh} />
         </div>
       </div>
 

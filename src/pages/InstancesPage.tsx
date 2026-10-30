@@ -9,7 +9,6 @@ import {
 import {
   ArrowDownload20Regular,
   ArrowImport20Regular,
-  ArrowSync20Regular,
   Box24Regular,
   Settings20Regular,
   Warning24Regular,
@@ -22,6 +21,7 @@ import { ImportInstancesDialog } from "../components/ImportInstancesDialog";
 import { InstanceDetail } from "../components/InstanceDetail";
 import { InstanceCover } from "../components/InstanceCover";
 import { PageHeader } from "../components/PageHeader";
+import { RefreshButton } from "../components/RefreshButton";
 import { DesktopOnlyNotice, ErrorState } from "../components/PageState";
 import {
   describeSkippedReason,
@@ -121,13 +121,7 @@ export function InstancesPage({ page }: InstancesPageProps) {
               value={query}
               onChange={(_, data) => setQuery(data.value)}
             />
-            <Button
-              appearance="subtle"
-              icon={<ArrowSync20Regular />}
-              aria-label="刷新实例列表"
-              disabled={status === "loading"}
-              onClick={reload}
-            />
+            <RefreshButton label="刷新实例列表" loading={status === "loading"} onClick={reload} />
           </div>
         </div>
       ) : null}

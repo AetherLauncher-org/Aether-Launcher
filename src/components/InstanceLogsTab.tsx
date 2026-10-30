@@ -1,5 +1,5 @@
 import { Button, MessageBar, MessageBarBody, Select, Spinner, Text } from "@fluentui/react-components";
-import { ArrowSync20Regular, Copy20Regular, FolderOpen20Regular } from "@fluentui/react-icons";
+import { Copy20Regular, FolderOpen20Regular } from "@fluentui/react-icons";
 import { useCallback, useState } from "react";
 import { describeCommandError, listInstanceLogs, openInstanceFolder, readInstanceLog } from "../ipc";
 import type { LogEntry } from "../ipc";
@@ -7,6 +7,7 @@ import { describeLog, formatBytes } from "../lib/instanceContent";
 import { useQuery } from "../lib/query";
 import { EmptyState } from "./EmptyState";
 import { ErrorState } from "./PageState";
+import { RefreshButton } from "./RefreshButton";
 
 type InstanceLogsTabProps = {
   instanceId: string;
@@ -110,7 +111,11 @@ export function InstanceLogsTab({ instanceId }: InstanceLogsTabProps) {
           <Button appearance="subtle" icon={<FolderOpen20Regular />} onClick={() => void openFolder()}>
             打开文件夹
           </Button>
-          <Button appearance="subtle" icon={<ArrowSync20Regular />} aria-label="刷新日志" onClick={refresh} />
+          <RefreshButton
+            label="刷新日志"
+            loading={list.status === "loading" || text.status === "loading"}
+            onClick={refresh}
+          />
         </div>
       </div>
 

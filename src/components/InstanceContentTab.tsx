@@ -7,7 +7,7 @@ import {
   Switch,
   Text,
 } from "@fluentui/react-components";
-import { ArrowSync20Regular, Delete20Regular, FolderOpen20Regular } from "@fluentui/react-icons";
+import { Delete20Regular, FolderOpen20Regular } from "@fluentui/react-icons";
 import { useCallback, useState } from "react";
 import { describeCommandError, listInstanceContent, openInstanceFolder, removeContent, setModEnabled } from "../ipc";
 import type { ContentItem, ContentKind } from "../ipc";
@@ -16,6 +16,7 @@ import { useQuery } from "../lib/query";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { EmptyState } from "./EmptyState";
 import { ErrorState } from "./PageState";
+import { RefreshButton } from "./RefreshButton";
 
 type InstanceContentTabProps = {
   instanceId: string;
@@ -90,13 +91,7 @@ export function InstanceContentTab({ instanceId, kind, locked, onChanged }: Inst
           <Button appearance="subtle" icon={<FolderOpen20Regular />} onClick={() => void openFolder()}>
             {copy.openLabel}
           </Button>
-          <Button
-            appearance="subtle"
-            icon={<ArrowSync20Regular />}
-            aria-label={`刷新${copy.tab}列表`}
-            disabled={status === "loading"}
-            onClick={reload}
-          />
+          <RefreshButton label={`刷新${copy.tab}列表`} loading={status === "loading"} onClick={reload} />
         </div>
       </div>
 
