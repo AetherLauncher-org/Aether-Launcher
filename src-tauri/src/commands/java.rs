@@ -62,17 +62,23 @@ pub async fn list_java_runtimes(
     refresh: bool,
 ) -> Result<Vec<aether_runtime::JavaRuntime>, String> {
     let cached = read_cache(&app);
-    if !refresh && !cached.runtimes.is_empty() {
-        return Ok(cached.runtimes);
+    // 缓存里的 Java 可能已经被卸载了：只返回文件还在的。全都没了就当没有缓存，重新扫。
+    let still_there: Vec<JavaRuntime> = cached
+        .runtimes
+        .iter()
+        .filter(|runtime| runtime.executable.is_file())
+        .cloned()
+        .collect();
+    if !refresh && !still_there.is_empty() {
+        return Ok(still_there);
     }
 
     let imported = cached.imported.clone();
     let app_for_scan = app.clone();
-    let runtimes = tauri::async_runtime::spawn_blocking(move || {
-        aether_runtime::discover_java_runtimes(&imported)
-    })
-    .await
-    .map_err(|error| format!("Java discovery task failed: {error}"))?;
+    let runtimes =
+        tauri::async_runtime::spawn_blocking(move || aether_runtime::scan_java_runtimes(&imported))
+            .await
+            .map_err(|error| format!("Java discovery task failed: {error}"))?;
 
     write_cache(
         &app_for_scan,
@@ -112,11 +118,10 @@ pub async fn pick_java_runtime(
     cache.imported.push(executable);
     let imported = cache.imported.clone();
     let app_for_scan = app.clone();
-    let runtimes = tauri::async_runtime::spawn_blocking(move || {
-        aether_runtime::discover_java_runtimes(&imported)
-    })
-    .await
-    .map_err(|error| format!("Java discovery task failed: {error}"))?;
+    let runtimes =
+        tauri::async_runtime::spawn_blocking(move || aether_runtime::scan_java_runtimes(&imported))
+            .await
+            .map_err(|error| format!("Java discovery task failed: {error}"))?;
     cache.runtimes = runtimes;
     write_cache(&app_for_scan, &cache);
 

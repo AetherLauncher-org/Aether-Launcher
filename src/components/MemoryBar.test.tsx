@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { barGeometry } from "../lib/memoryBar";
 import { MemoryBar } from "./MemoryBar";
 
-// 16 GiB，已用 12 GiB，还能分 4 GiB：红区从右端往左铺，左边缘在 25%
+// 16 GiB，已用 12 GiB，可用 4 GiB：分界线在轨道的 75% 处，「满」是 4096 MiB
 const machine = { totalMib: 16_384, availableMib: 4096 };
 
 function renderBar(props: Partial<Parameters<typeof MemoryBar>[0]> = {}) {
@@ -30,6 +30,11 @@ function renderBar(props: Partial<Parameters<typeof MemoryBar>[0]> = {}) {
   return { onChange, track, ...view };
 }
 
+/** 某个分配值在这台机器上超出可用内存多少。 */
+function barGeometryOver(valueMiB: number): number {
+  return barGeometry(valueMiB, machine).overMiB;
+}
+
 /** jsdom 的指针事件不带坐标，用带 clientX 的鼠标事件冒充同名事件。 */
 function pointer(target: Element, type: string, clientX: number, shiftKey = false): MouseEvent {
   const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX, shiftKey });
@@ -37,19 +42,6 @@ function pointer(target: Element, type: string, clientX: number, shiftKey = fals
     target.dispatchEvent(event);
   });
   return event;
-}
-
-/** 唯一的手柄。 */
-const thumb = (container: HTMLElement) => container.querySelector(".memory-thumb") as HTMLElement;
-
-function lastValue(mock: ReturnType<typeof vi.fn>): number {
-  return mock.mock.calls[mock.mock.calls.length - 1][0] as number;
-}
-
-/** 轨道上的 CSS 变量，用来确认两段色的位置。 */
-function cssVar(container: HTMLElement, name: string): number {
-  const bar = container.querySelector(".memory-bar") as HTMLElement;
-  return Number.parseFloat(bar.style.getPropertyValue(name));
 }
 
 afterEach(() => {
@@ -66,67 +58,47 @@ describe("MemoryBar layout", () => {
     expect(screen.getByRole("list", { name: "图例" })).toHaveTextContent("系统已用");
   });
 
-  it("draws one thumb, so there is only ever one direction to drag", () => {
+  it("always shows both thumbs, with the orange one on the divider while the allocation fits", () => {
     const { container } = renderBar({ valueMiB: 2048 });
 
-    expect(container.querySelectorAll(".memory-thumb")).toHaveLength(1);
+    expect(container.querySelectorAll(".memory-thumb")).toHaveLength(2);
+    expect(container.querySelector(".memory-thumb.left")).not.toBeNull();
     expect(container.querySelector(".memory-seg.used")).not.toBeNull();
-    expect(container.querySelector(".memory-seg.alloc")).not.toBeNull();
+    expect(container.querySelector(".memory-seg.over")).toBeNull();
+    expect(container.querySelector(".memory-over-label")).toBeNull();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByText(/都是多分配/)).toBeInTheDocument();
   });
 
-  it("grows the red zone in from the right end, not from the left", () => {
-    const { container } = renderBar({ valueMiB: 2048 });
-
-    // 蓝段从头（左）开始；红段从 25% 起一直铺到右端
-    expect(cssVar(container, "--pos")).toBeCloseTo(12.5);
-    expect(cssVar(container, "--used-start")).toBeCloseTo(25);
-  });
-
-  it("anchors the red zone to the right whatever the allocation is", () => {
-    for (const valueMiB of [512, 4096, 8192, 16_384]) {
-      const { container, unmount } = renderBar({ valueMiB });
-      expect(cssVar(container, "--used-start")).toBeCloseTo(25);
-      unmount();
-    }
-  });
-
-  it("has no warning while the allocation still fits", () => {
+  it("has no orange zone yet when the free memory is exactly allocated", () => {
     const { container } = renderBar({ valueMiB: 4096 });
 
-    expect(container.querySelector(".memory-bar")).toHaveAttribute("data-over", "false");
+    expect(container.querySelectorAll(".memory-thumb")).toHaveLength(2);
+    expect(container.querySelector(".memory-seg.over")).toBeNull();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("warns, in the bar and in the text, once the allocation passes the free memory", () => {
+  it("calls the orange zone not recommended, in the bar, the legend and the warning", () => {
     const { container } = renderBar({ valueMiB: 8192 });
 
-    expect(container.querySelector(".memory-bar")).toHaveAttribute("data-over", "true");
+    expect(container.querySelector(".memory-seg.over")).not.toBeNull();
+    expect(container.querySelector(".memory-over-label")).toHaveTextContent("不推荐");
+    expect(screen.getByRole("list", { name: "图例" })).toHaveTextContent("超出可用内存（不推荐）");
     expect(screen.getByRole("status")).toHaveTextContent("不推荐：分配的内存超过了当前可用内存");
     expect(screen.getByText("8 GiB（可用 4 GiB）")).toBeInTheDocument();
   });
 
-  it("keeps the thumb to the right of a smaller allocation, even past the free memory", () => {
-    // 旧版越界之后另一个手柄会往左走，这里钉住「手柄只往右」。
-    const small = renderBar({ valueMiB: 1024 });
-    const smallPos = cssVar(small.container, "--pos");
-    small.unmount();
-
-    const big = renderBar({ valueMiB: 12_288 });
-    const bigPos = cssVar(big.container, "--pos");
-
-    expect(bigPos).toBeGreaterThan(smallPos);
-  });
-
-  it("drops the red zone when the used memory is unknown", () => {
+  it("drops the red area, the divider and the second thumb when the used memory is unknown", () => {
     const { container } = renderBar({
       system: { totalMib: 8192, availableMib: null },
       valueMiB: 8192,
     });
 
-    expect(screen.getByText(/—\s*\/\s*8 GiB/)).toBeInTheDocument();
+    expect(screen.getByText("— / 8 GiB")).toBeInTheDocument();
     expect(container.querySelector(".memory-seg.used")).toBeNull();
-    expect(cssVar(container, "--used-start")).toBe(100);
+    expect(container.querySelector(".memory-divider")).toBeNull();
     expect(container.querySelectorAll(".memory-thumb")).toHaveLength(1);
+    expect(screen.queryByText(/都是多分配/)).not.toBeInTheDocument();
   });
 
   it("says so when the machine's memory could not be read", () => {
@@ -137,13 +109,16 @@ describe("MemoryBar layout", () => {
 });
 
 describe("MemoryBar dragging", () => {
-  it("jumps the thumb to a press on the track, snapped to 512 MiB", () => {
+  const blue = (container: HTMLElement) => container.querySelector(".memory-thumb.right") as HTMLElement;
+  const orange = (container: HTMLElement) => container.querySelector(".memory-thumb.left") as HTMLElement;
+
+  it("jumps the blue thumb to a press in the free area, snapped to 512 MiB", () => {
     const { onChange, track } = renderBar({ valueMiB: 1024 });
 
-    // 90% × 16 GiB = 14745.6 MiB → 吸附到 14848
+    // 90% 处 = 分界线右边 15% = 2457.6 MiB → 2560
     pointer(track, "pointerdown", 900);
 
-    expect(onChange).toHaveBeenLastCalledWith(14848);
+    expect(onChange).toHaveBeenLastCalledWith(2560);
   });
 
   it("does not snap a press made with Shift held, in steps fine enough to look continuous", () => {
@@ -151,86 +126,84 @@ describe("MemoryBar dragging", () => {
 
     pointer(track, "pointerdown", 900, true);
 
-    expect(onChange).toHaveBeenLastCalledWith(14752);
+    expect(onChange).toHaveBeenLastCalledWith(2464);
   });
 
   it("snaps every move to a multiple of 512 MiB, until Shift is held", () => {
     const { onChange, container } = renderBar({ valueMiB: 1024 });
 
-    pointer(thumb(container), "pointerdown", 62);
-    for (const x of [72, 85, 101, 120, 143]) {
-      pointer(thumb(container), "pointermove", x);
-      expect(lastValue(onChange) % 512).toBe(0);
+    pointer(blue(container), "pointerdown", 812);
+    for (const x of [822, 835, 851, 870, 893]) {
+      pointer(blue(container), "pointermove", x);
+      expect((onChange.mock.calls[onChange.mock.calls.length - 1][0] as number) % 512).toBe(0);
     }
 
-    pointer(thumb(container), "pointermove", 143, true);
-    expect(lastValue(onChange) % 512).not.toBe(0);
+    pointer(blue(container), "pointermove", 893, true);
+    expect((onChange.mock.calls[onChange.mock.calls.length - 1][0] as number) % 512).not.toBe(0);
   });
 
   it("lets Shift be pressed and released in the middle of one drag", () => {
     const { onChange, container } = renderBar({ valueMiB: 1024 });
 
-    pointer(thumb(container), "pointerdown", 62);
-    pointer(thumb(container), "pointermove", 112, true); // +5% = 819 → 1843.2 → 1856（细粒度）
+    pointer(blue(container), "pointerdown", 812);
+    pointer(blue(container), "pointermove", 862, true); // +5% = 819 → 1843.2 → 1856（细）
     expect(onChange).toHaveBeenLastCalledWith(1856);
-    pointer(thumb(container), "pointermove", 112); // 松开 Shift：回到网格
+    pointer(blue(container), "pointermove", 862); // 松开 Shift：回到网格
     expect(onChange).toHaveBeenLastCalledWith(2048);
   });
 
-  it("changes nothing when the thumb is grabbed without moving", () => {
+  it("grabbing either thumb changes nothing until it moves", () => {
     const { onChange, container } = renderBar({ valueMiB: 1024 });
 
-    pointer(thumb(container), "pointerdown", 62);
+    pointer(blue(container), "pointerdown", 812);
+    pointer(orange(container), "pointerdown", 750);
 
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("moves the thumb by how far the pointer moved, not to where the pointer is", () => {
+  it("keeps the thumb under the pointer: the blue thumb moves by how far the pointer moved, not to where it is", () => {
     const { onChange, container } = renderBar({ valueMiB: 1024 });
 
-    // 手柄在 6.25%（x=62），抓在它偏右一点的 80 处；向右拖 50px = 5% = 819 MiB
-    pointer(thumb(container), "pointerdown", 80);
-    pointer(thumb(container), "pointermove", 130, true);
+    // 手柄在 81.25%，抓在它偏右一点的 830 处；向右拖 50px = 5% = 819 MiB
+    pointer(blue(container), "pointerdown", 830);
+    pointer(blue(container), "pointermove", 880, true);
 
     expect(onChange).toHaveBeenLastCalledWith(1856);
   });
 
-  it("allocates less when dragged left, down to the minimum", () => {
+  it("dragging the blue thumb back left allocates less, down to the minimum", () => {
     const { onChange, container } = renderBar({ valueMiB: 1024 });
 
-    pointer(thumb(container), "pointerdown", 62);
-    pointer(thumb(container), "pointermove", 42, true); // 左移 2% = 328 MiB
+    pointer(blue(container), "pointerdown", 812);
+    pointer(blue(container), "pointermove", 792, true); // 左移 2% = 328 MiB
     expect(onChange).toHaveBeenLastCalledWith(704);
 
-    pointer(thumb(container), "pointermove", -200);
+    pointer(blue(container), "pointermove", 700);
     expect(onChange).toHaveBeenLastCalledWith(512);
   });
 
-  it("carries on past the free memory in the same direction", () => {
+  it("pushing the blue thumb past the end carries on into the red, just like dragging the orange thumb", () => {
     const { onChange, container } = renderBar({ valueMiB: 4096 });
 
-    // 已经用满可用内存（25%）。继续往右 25% = 再多分配 4096 MiB
-    pointer(thumb(container), "pointerdown", 250);
-    pointer(thumb(container), "pointermove", 500);
+    // 蓝色已经在最右边（满）。指针拖到轨道外面也要继续算：再往右 25% = 再多分配 4096 MiB
+    pointer(blue(container), "pointerdown", 1000);
+    pointer(blue(container), "pointermove", 1250);
 
     expect(onChange).toHaveBeenLastCalledWith(8192);
-    expect(barGeometry(8192, machine).over).toBe(true);
-    // 再往右仍然是加，而不是像以前那样倒回去
-    pointer(thumb(container), "pointermove", 750);
-    expect(lastValue(onChange)).toBe(12_288);
-    expect(lastValue(onChange)).toBeGreaterThan(8192);
+    expect(barGeometryOver(8192)).toBe(4096);
   });
 
-  it("comes back out of the warning zone by dragging left, the way it went in", () => {
+  it("dragging the blue thumb back left first pulls the orange thumb to the divider, then shrinks blue", () => {
     const { onChange, container } = renderBar({ valueMiB: 8192 });
 
-    pointer(thumb(container), "pointerdown", 500);
-    pointer(thumb(container), "pointermove", 250);
+    pointer(blue(container), "pointerdown", 1000);
+    pointer(blue(container), "pointermove", 750);
     expect(onChange).toHaveBeenLastCalledWith(4096);
-    expect(barGeometry(4096, machine).over).toBe(false);
+    expect(barGeometryOver(4096)).toBe(0);
 
-    pointer(thumb(container), "pointermove", 200);
-    expect(lastValue(onChange)).toBeLessThan(4096);
+    pointer(blue(container), "pointermove", 700);
+    const shrunk = onChange.mock.calls[onChange.mock.calls.length - 1][0] as number;
+    expect(shrunk).toBeLessThan(4096);
   });
 
   it("follows the pointer while it is held and stops when it is released", () => {
@@ -246,12 +219,71 @@ describe("MemoryBar dragging", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("puts the orange thumb where a press lands in the red area, and carries on from there", () => {
+    const { onChange, track } = renderBar({ valueMiB: 1024 });
+
+    pointer(track, "pointerdown", 500);
+    expect(onChange).toHaveBeenLastCalledWith(8192);
+
+    // 从按下的地方继续：再往左 10% = 再多分配 1638 MiB
+    pointer(track, "pointermove", 400, true);
+    expect(onChange).toHaveBeenLastCalledWith(8192 + 1632);
+  });
+
+  it("dragging the orange thumb left grows the blue share while it has room, instead of moving orange", () => {
+    const { onChange, container } = renderBar({ valueMiB: 1024 });
+
+    pointer(orange(container), "pointerdown", 750);
+    // 向左 50px = 5% = 819 MiB，按住 Shift 时指针粒度 32 MiB
+    pointer(orange(container), "pointermove", 700, true);
+
+    expect(onChange).toHaveBeenLastCalledWith(1856);
+    expect(barGeometryOver(1856)).toBe(0);
+  });
+
+  it("only moves the orange thumb into the red once the blue share has reached the end", () => {
+    const { onChange, container } = renderBar({ valueMiB: 1024 });
+
+    pointer(orange(container), "pointerdown", 750);
+    pointer(orange(container), "pointermove", 500);
+
+    expect(onChange).toHaveBeenLastCalledWith(1024 + 4096);
+    expect(barGeometryOver(1024 + 4096)).toBe(1024);
+  });
+
+  it("dragging the orange thumb right first brings it back to the divider, then shrinks the blue share", () => {
+    const { onChange, container } = renderBar({ valueMiB: 8192 });
+
+    pointer(orange(container), "pointerdown", 500);
+    pointer(orange(container), "pointermove", 750);
+    expect(onChange).toHaveBeenLastCalledWith(4096);
+
+    pointer(orange(container), "pointermove", 800);
+    const shrunk = onChange.mock.calls[onChange.mock.calls.length - 1][0] as number;
+    expect(shrunk).toBeLessThan(4096);
+  });
+
+  it("gives both thumbs the same result for the same effort in the 'more' direction", () => {
+    const viaBlue = renderBar({ valueMiB: 1024 });
+    pointer(blue(viaBlue.container), "pointerdown", 812);
+    pointer(blue(viaBlue.container), "pointermove", 862);
+    const blueResult = viaBlue.onChange.mock.calls[viaBlue.onChange.mock.calls.length - 1][0];
+    viaBlue.unmount();
+
+    const viaOrange = renderBar({ valueMiB: 1024 });
+    pointer(orange(viaOrange.container), "pointerdown", 750);
+    pointer(orange(viaOrange.container), "pointermove", 700);
+    const orangeResult = viaOrange.onChange.mock.calls[viaOrange.onChange.mock.calls.length - 1][0];
+
+    expect(blueResult).toBe(orangeResult);
+  });
+
   it("stops following the pointer once it is released", () => {
     const { onChange, container } = renderBar({ valueMiB: 1024 });
 
-    pointer(thumb(container), "pointerdown", 500);
-    pointer(thumb(container), "pointerup", 500);
-    pointer(thumb(container), "pointermove", 100);
+    pointer(orange(container), "pointerdown", 750);
+    pointer(orange(container), "pointerup", 750);
+    pointer(orange(container), "pointermove", 500);
 
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -259,22 +291,22 @@ describe("MemoryBar dragging", () => {
   it("does not owe the overshoot: after pushing past the end, turning around moves the thumb at once", () => {
     const { onChange, container } = renderBar({ valueMiB: 4096 });
 
-    pointer(thumb(container), "pointerdown", 250);
-    pointer(thumb(container), "pointermove", 1050); // 早已远超最大值
+    pointer(blue(container), "pointerdown", 1000);
+    pointer(blue(container), "pointermove", 1800); // 4096 + 80% × 16384 远远推过最大值（16384）
     expect(onChange).toHaveBeenLastCalledWith(16_384);
 
-    pointer(thumb(container), "pointermove", 1000); // 掉头 5% = 819 MiB
+    pointer(blue(container), "pointermove", 1750); // 掉头 5% = 819 MiB
     expect(onChange).toHaveBeenLastCalledWith(16_384 - 1024);
   });
 
   it("does not owe the overshoot at the minimum either", () => {
     const { onChange, container } = renderBar({ valueMiB: 1024 });
 
-    pointer(thumb(container), "pointerdown", 62);
-    pointer(thumb(container), "pointermove", -450);
+    pointer(blue(container), "pointerdown", 812);
+    pointer(blue(container), "pointermove", 300);
     expect(onChange).toHaveBeenLastCalledWith(512);
 
-    pointer(thumb(container), "pointermove", -400); // 回头 5%
+    pointer(blue(container), "pointermove", 350); // 回头 5%
     expect(onChange).toHaveBeenLastCalledWith(1536);
   });
 
@@ -306,7 +338,7 @@ describe("MemoryBar dragging", () => {
 
     // 否则指针会变成「禁止」图标，后面的移动也收不到
     expect(pointer(track, "pointerdown", 900).defaultPrevented).toBe(true);
-    expect(pointer(thumb(container), "pointerdown", 62).defaultPrevented).toBe(true);
+    expect(pointer(container.querySelector(".memory-thumb.left") as Element, "pointerdown", 750).defaultPrevented).toBe(true);
     const dragStart = new Event("dragstart", { bubbles: true, cancelable: true });
     act(() => {
       track.dispatchEvent(dragStart);
@@ -353,7 +385,7 @@ describe("MemoryBar dragging", () => {
 });
 
 describe("MemoryBar keyboard and screen readers", () => {
-  it("exposes a real slider that stays in step with the thumb", () => {
+  it("exposes a real slider that stays in step with the thumbs", () => {
     renderBar({ valueMiB: 6144 });
 
     const slider = screen.getByRole("slider", { name: "游戏内存上限" });
@@ -372,7 +404,7 @@ describe("MemoryBar keyboard and screen readers", () => {
     expect(onChange).toHaveBeenCalledWith(8192);
   });
 
-  it("keeps the thumb and the label inside the range for an out-of-range value", () => {
+  it("keeps the thumbs and the label inside the range for an out-of-range value", () => {
     renderBar({ valueMiB: 999_999 });
 
     expect(screen.getByRole("slider", { name: "游戏内存上限" })).toHaveValue("16384");
