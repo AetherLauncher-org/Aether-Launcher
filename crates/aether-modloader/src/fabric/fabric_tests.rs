@@ -291,6 +291,41 @@ fn a_real_intermediary_is_supported() {
     let versions = parse_loader_versions("1.21.1", json).unwrap();
 
     assert_eq!(versions[0].unsupported_reason(), None);
+
+    // 有 intermediary 时不带 FabricMcEmu：加载器能自己找到主类，官方 profile 也不带。
+    let plan = versions[0].install_plan("1.21.1", DEFAULT_MAVEN_BASE);
+    assert!(plan_content(&plan)["arguments"].is_null());
+}
+
+#[test]
+fn a_version_without_intermediary_gets_the_fabric_emu_argument() {
+    // 26.x 起没有 intermediary 映射，必须靠 FabricMcEmu 指定原版主类，
+    // 否则启动报 no such method: ...Main.main(String[])void/invokeStatic。
+    let json = r#"[{"loader":{"version":"0.20.1","stable":true},"intermediary":{"version":"0.0.0","stable":true}}]"#;
+
+    let versions = parse_loader_versions("26.1.2", json).unwrap();
+    let plan = versions[0].install_plan("26.1.2", DEFAULT_MAVEN_BASE);
+    let content = plan_content(&plan);
+
+    let jvm = content["arguments"]["jvm"]
+        .as_array()
+        .expect("arguments.jvm must be an array");
+    assert_eq!(jvm.len(), 1);
+    assert_eq!(
+        jvm[0].as_str(),
+        Some("-DFabricMcEmu= net.minecraft.client.main.Main")
+    );
+}
+
+/// 取出计划里写出去的那份版本 JSON。
+fn plan_content(plan: &crate::installer::ModLoaderInstallPlan) -> serde_json::Value {
+    plan.steps
+        .iter()
+        .find_map(|step| match step {
+            InstallStep::WriteVersionJson { content, .. } => Some(content.clone()),
+            _ => None,
+        })
+        .expect("plan ends with a version json")
 }
 
 #[test]
@@ -393,18 +428,24 @@ fn version_json_omits_arguments() {
 fn version_json_puts_the_core_libraries_first() {
     let json = first_loader().to_version_json("1.21.1");
 
+    // 顺序照官方 profile：intermediary 最前，`fabric-loader` 最后。
+    // 换掉位置会让 loader 在 26.x 上找不到原版主类。
     let expected = [
         "net.fabricmc:intermediary:1.21.1",
-        "net.fabricmc:fabric-loader:0.16.0",
         "org.ow2.asm:asm:9.6",
         "org.ow2.asm:asm-analysis:9.6",
         "net.fabricmc:sponge-mixin:0.15.4+mixin.0.8.7",
+        "net.fabricmc:fabric-loader:0.16.0",
     ];
     assert_eq!(library_names(&json), expected);
 
     let libraries = json["libraries"].as_array().unwrap();
     assert_eq!(libraries[0]["url"], DEFAULT_MAVEN_BASE);
-    assert_eq!(libraries[1]["url"], DEFAULT_MAVEN_BASE);
+    assert_eq!(
+        libraries[libraries.len() - 1]["url"],
+        DEFAULT_MAVEN_BASE,
+        "fabric-loader 也指向官方 maven"
+    );
 }
 
 #[test]
@@ -461,12 +502,13 @@ fn version_json_keeps_libraries_that_have_no_repository() {
         library_names(&json),
         [
             "net.fabricmc:intermediary:1.21.1",
-            "net.fabricmc:fabric-loader:0.1.0.48",
             "net.minecraft:launchwrapper:1.12",
             "org.ow2.asm:asm:7.0",
+            "net.fabricmc:fabric-loader:0.1.0.48",
         ]
     );
-    assert!(json["libraries"][2].get("url").is_none());
+    // 没有仓库地址的库仍保留在列表里（由被继承的原版提供）。
+    assert!(json["libraries"][1].get("url").is_none());
 }
 
 // ---- 安装计划 ----

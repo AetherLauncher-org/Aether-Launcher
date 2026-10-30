@@ -68,3 +68,20 @@ fn quilt_is_reported_as_unsupported_before_any_io() {
     let error = build_plan(ModLoaderKind::Quilt, "1.21.1", "0.27.0").unwrap_err();
     assert!(error.contains("Quilt"), "unexpected error: {error}");
 }
+
+#[test]
+fn every_downloaded_library_is_a_safe_destination() {
+    // 计划的每个写入目标都要能通过 `safe_target`，否则执行时会中途失败。
+    let game_root = std::path::Path::new("C:/game");
+    for coordinate in [
+        "net.fabricmc:intermediary:1.21.1",
+        "net.fabricmc:fabric-loader:0.20.1",
+        "org.ow2.asm:asm:9.10.1",
+    ] {
+        let relative = maven_relative_path(coordinate).expect("valid coordinate");
+        assert!(
+            safe_target(game_root, &format!("libraries/{relative}")).is_ok(),
+            "rejected: {relative}"
+        );
+    }
+}

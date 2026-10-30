@@ -9,7 +9,9 @@ use serde_json::Value;
 
 use crate::ModLoaderKind;
 use crate::installer::{InstallStep, ModLoaderInstallPlan};
-use crate::json::{inherited_version, loader_library, opt_bool, opt_string, parse_json};
+use crate::json::{
+    inherited_version_with_arguments, loader_library, opt_bool, opt_string, parse_json,
+};
 use crate::transport::{MetaError, MetaSource};
 
 /// Fabric meta 的默认根地址（**不带**结尾斜杠，配 [`MetaSource`] 使用）。
@@ -20,6 +22,10 @@ pub const DEFAULT_MAVEN_BASE: &str = "https://maven.fabricmc.net/";
 
 /// 客户端主类。`launcherMeta.mainClass.client` 缺失时用它兜底。
 pub const MAIN_CLASS_CLIENT: &str = "net.fabricmc.loader.impl.launch.knot.KnotClient";
+
+/// 原版客户端主类。26.x 起 Fabric 没有 intermediary 映射，需要靠
+/// -DFabricMcEmu 指定它，否则加载器找不到入口。
+pub const MAIN_CLASS_VANILLA: &str = "net.minecraft.client.main.Main";
 
 const GAME_VERSIONS_PATH: &str = "v2/versions/game";
 const LOADER_VERSIONS_PATH: &str = "v2/versions/loader";
@@ -89,7 +95,14 @@ impl FabricLoaderVersion {
         let mut seen: HashSet<String> = HashSet::new();
         let mut libraries = Vec::new();
 
-        for coordinate in self.core_libraries() {
+        // 库的顺序照官方 profile：`launcherMeta` 里的库在前，`fabric-loader` 在
+        // **最后**；有 intermediary 时它排在最前面。
+        //
+        // 顺序不是无关紧要的：`fabric-loader` 自己要在 classpath 上晚于它依赖的
+        // asm / mixin 出现，位置换掉会让 loader 在 26.x 上找不到原版主类
+        // （`no such method: ...Main.main(String[])`）。
+        if self.has_real_intermediary() {
+            let coordinate = format!("net.fabricmc:intermediary:{}", self.intermediary_version);
             if seen.insert(coordinate.clone()) {
                 libraries.push(loader_library(&coordinate, Some(DEFAULT_MAVEN_BASE)));
             }
@@ -99,8 +112,39 @@ impl FabricLoaderVersion {
                 libraries.push(loader_library(&library.name, library.url.as_deref()));
             }
         }
+        if !self.loader_version.trim().is_empty() {
+            let coordinate = format!("net.fabricmc:fabric-loader:{}", self.loader_version);
+            if seen.insert(coordinate.clone()) {
+                libraries.push(loader_library(&coordinate, Some(DEFAULT_MAVEN_BASE)));
+            }
+        }
 
-        inherited_version(&id, game_version, &self.main_class, &libraries)
+        // 版本 JSON 必须带上官方 profile 的 JVM 参数。26.x 起 Fabric 没有
+        // intermediary 映射，`net.minecraft.client.main.Main` 只能靠
+        // `FabricMcEmu` 定位；缺了它启动会报
+        // `no such method: ...Main.main(String[])void/invokeStatic`。
+        inherited_version_with_arguments(
+            &id,
+            game_version,
+            &self.main_class,
+            &libraries,
+            self.jvm_arguments(),
+        )
+    }
+
+    /// 官方 profile 里的 `arguments.jvm`。
+    ///
+    /// 目前只有 `-DFabricMcEmu= net.minecraft.client.main.Main` 这一条，
+    /// 取自 `GET /v2/versions/loader/<game>/<loader>/profile/json`。
+    fn jvm_arguments(&self) -> serde_json::Value {
+        if self.has_real_intermediary() {
+            // 有 intermediary 映射时加载器能自己找到主类，官方 profile 也不带参数。
+            return serde_json::Value::Null;
+        }
+        serde_json::json!({
+            "game": [],
+            "jvm": [format!("-DFabricMcEmu= {}", MAIN_CLASS_VANILLA)],
+        })
     }
 
     /// 安装计划：每个能定位到的库一条下载步骤，最后写入版本 JSON。
