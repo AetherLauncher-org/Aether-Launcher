@@ -9,6 +9,7 @@ members = [
   "crates/aether-manifest",
   "crates/aether-modloader",
   "crates/aether-runtime",
+  "crates/aether-schematic",
   "crates/aether-storage",
   "src-tauri",
 ]
