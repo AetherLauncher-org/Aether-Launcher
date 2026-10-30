@@ -44,6 +44,28 @@ describe("overallFraction", () => {
     expect(samples[0]).toBe(0);
   });
 
+  it("keeps moving forward through a mod loader install, which has an extra stage", () => {
+    // 加载器按步骤计数：files_done / files_total，没有字节数。
+    const samples = [
+      progress("metadata", 0, 0),
+      progress("assets", 100, 100),
+      progress("modLoader", 0, 7),
+      progress("modLoader", 3, 7),
+      progress("modLoader", 7, 7),
+      progress("finalize", 0, 1),
+    ].map(overallFraction);
+    for (let index = 1; index < samples.length; index += 1) {
+      expect(samples[index]).toBeGreaterThanOrEqual(samples[index - 1]);
+    }
+    expect(samples.every((value) => Number.isFinite(value) && value <= 1)).toBe(true);
+  });
+
+  it("does not throw on the modLoader stage the backend sends", () => {
+    // 回归：这一阶段以前不在表里，渲染进度条时会 `undefined is not iterable`。
+    expect(() => overallFraction(progress("modLoader", 1, 7))).not.toThrow();
+    expect(describeStage("modLoader")).toBe("安装模组加载器");
+  });
+
   it("falls back to file counts when no byte total is known", () => {
     expect(overallFraction(progress("assets", 0, 0, 5, 10))).toBeGreaterThan(
       overallFraction(progress("assets", 0, 0, 0, 10)),

@@ -4,6 +4,7 @@ import type { InstallProgress, InstallStage } from "../ipc";
  * 安装进度的纯逻辑：阶段文案、整体进度、速度估算、字节格式化。
  */
 
+/** 原版安装的阶段。装模组加载器时在 `assets` 和 `finalize` 之间多一个 `modLoader`。 */
 export const installStages: readonly InstallStage[] = [
   "metadata",
   "files",
@@ -15,6 +16,7 @@ const stageLabels: Record<InstallStage, string> = {
   metadata: "获取版本清单",
   files: "下载游戏文件",
   assets: "下载游戏资源",
+  modLoader: "安装模组加载器",
   finalize: "创建实例",
 };
 
@@ -27,7 +29,11 @@ const stageRanges: Record<InstallStage, readonly [number, number]> = {
   metadata: [0, 0.04],
   files: [0.04, 0.3],
   assets: [0.3, 0.97],
-  finalize: [0.97, 1],
+  // 只在装模组加载器时出现，夹在资源和创建实例之间；它按步骤计数，没有字节数。
+  // finalize 让到 0.99：这样加载器安装的进度条是单调的。原版安装没有 modLoader 这一
+  // 阶段，进度条在资源结束（0.97）之后直接进入 finalize，只是起点从 0.97 挪到 0.99。
+  modLoader: [0.97, 0.99],
+  finalize: [0.99, 1],
 };
 
 /** 0–1 的整体进度。阶段内按字节比例推进，没有总量时停在阶段起点。 */

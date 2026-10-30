@@ -27,12 +27,12 @@ aether-auth = { path = "../crates/aether-auth" }
 aether-download = { path = "../crates/aether-download" }
 aether-launch = { path = "../crates/aether-launch" }
 aether-manifest = { path = "../crates/aether-manifest" }
+aether-modloader = { path = "../crates/aether-modloader" }
 aether-runtime = { path = "../crates/aether-runtime" }
 aether-storage = { path = "../crates/aether-storage" }
 serde.workspace = true
+serde_json.workspace = true
 tauri-plugin-dialog = "2"
 tracing.workspace = true
 ureq.workspace = true
-
-[dev-dependencies]
-serde_json.workspace = true
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }

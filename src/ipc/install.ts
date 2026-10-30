@@ -12,7 +12,7 @@ import type { InstanceSummary } from "./instances";
  * `install://progress` 事件推送，不需要轮询。
  */
 
-export type InstallStage = "metadata" | "files" | "assets" | "finalize";
+export type InstallStage = "metadata" | "files" | "assets" | "modLoader" | "finalize";
 
 /** 当前阶段的进度。文件数和字节数都包含「已存在且校验通过」的部分。 */
 export type InstallProgress = {

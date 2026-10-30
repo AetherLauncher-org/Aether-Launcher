@@ -9,7 +9,9 @@ use serde_json::Value;
 
 use crate::ModLoaderKind;
 use crate::installer::{InstallStep, ModLoaderInstallPlan};
-use crate::json::{inherited_version, loader_library, opt_bool, opt_string, parse_json};
+use crate::json::{
+    inherited_version_with_arguments, loader_library, opt_bool, opt_string, parse_json,
+};
 use crate::transport::{MetaError, MetaSource};
 
 /// Fabric meta 的默认根地址（**不带**结尾斜杠，配 [`MetaSource`] 使用）。
@@ -20,6 +22,10 @@ pub const DEFAULT_MAVEN_BASE: &str = "https://maven.fabricmc.net/";
 
 /// 客户端主类。`launcherMeta.mainClass.client` 缺失时用它兜底。
 pub const MAIN_CLASS_CLIENT: &str = "net.fabricmc.loader.impl.launch.knot.KnotClient";
+
+/// 原版客户端主类。26.x 起 Fabric 没有 intermediary 映射，需要靠
+/// -DFabricMcEmu 指定它，否则加载器找不到入口。
+pub const MAIN_CLASS_VANILLA: &str = "net.minecraft.client.main.Main";
 
 const GAME_VERSIONS_PATH: &str = "v2/versions/game";
 const LOADER_VERSIONS_PATH: &str = "v2/versions/loader";
@@ -42,6 +48,9 @@ pub struct FabricLibrary {
     pub url: Option<String>,
     /// 文件大小（字节），缺失为 `None`
     pub size: Option<u64>,
+    /// 官方给的文件摘要。Fabric 的 `launcherMeta` 里带 `sha1`，
+    /// 有就必须校验 —— 这是唯一可信的哈希来源。
+    pub sha1: Option<String>,
 }
 
 /// `GET /v2/versions/loader/<game>` 里的一项。
@@ -89,7 +98,14 @@ impl FabricLoaderVersion {
         let mut seen: HashSet<String> = HashSet::new();
         let mut libraries = Vec::new();
 
-        for coordinate in self.core_libraries() {
+        // 库的顺序照官方 profile：`launcherMeta` 里的库在前，`fabric-loader` 在
+        // **最后**；有 intermediary 时它排在最前面。
+        //
+        // 顺序不是无关紧要的：`fabric-loader` 自己要在 classpath 上晚于它依赖的
+        // asm / mixin 出现，位置换掉会让 loader 在 26.x 上找不到原版主类
+        // （`no such method: ...Main.main(String[])`）。
+        if self.has_real_intermediary() {
+            let coordinate = format!("net.fabricmc:intermediary:{}", self.intermediary_version);
             if seen.insert(coordinate.clone()) {
                 libraries.push(loader_library(&coordinate, Some(DEFAULT_MAVEN_BASE)));
             }
@@ -99,11 +115,46 @@ impl FabricLoaderVersion {
                 libraries.push(loader_library(&library.name, library.url.as_deref()));
             }
         }
+        if !self.loader_version.trim().is_empty() {
+            let coordinate = format!("net.fabricmc:fabric-loader:{}", self.loader_version);
+            if seen.insert(coordinate.clone()) {
+                libraries.push(loader_library(&coordinate, Some(DEFAULT_MAVEN_BASE)));
+            }
+        }
 
-        inherited_version(&id, game_version, &self.main_class, &libraries)
+        // 版本 JSON 必须带上官方 profile 的 JVM 参数。26.x 起 Fabric 没有
+        // intermediary 映射，`net.minecraft.client.main.Main` 只能靠
+        // `FabricMcEmu` 定位；缺了它启动会报
+        // `no such method: ...Main.main(String[])void/invokeStatic`。
+        inherited_version_with_arguments(
+            &id,
+            game_version,
+            &self.main_class,
+            &libraries,
+            self.jvm_arguments(),
+        )
+    }
+
+    /// 官方 profile 里的 `arguments.jvm`。
+    ///
+    /// 目前只有 `-DFabricMcEmu= net.minecraft.client.main.Main` 这一条，
+    /// 取自 `GET /v2/versions/loader/<game>/<loader>/profile/json`。
+    fn jvm_arguments(&self) -> serde_json::Value {
+        if self.has_real_intermediary() {
+            // 有 intermediary 映射时加载器能自己找到主类，官方 profile 也不带参数。
+            return serde_json::Value::Null;
+        }
+        serde_json::json!({
+            "game": [],
+            "jvm": [format!("-DFabricMcEmu= {}", MAIN_CLASS_VANILLA)],
+        })
     }
 
     /// 安装计划：每个能定位到的库一条下载步骤，最后写入版本 JSON。
+    ///
+    /// 核心两件（`intermediary`、`fabric-loader`）与 `launcherMeta` 里的库都会被写进版本
+    /// JSON，所以**两者都必须生成下载步骤** —— 只写 JSON 不下载，启动时就会报
+    /// 「required local file does not exist」。
     ///
     /// - 下载目标：`libraries/<maven 相对路径>`，URL 用库自己的仓库地址；仓库地址是官方
     ///   [`DEFAULT_MAVEN_BASE`] 时换成调用方给的 `maven_base`，方便走镜像。
@@ -120,7 +171,28 @@ impl FabricLoaderVersion {
         .with_target(target.clone())
         .with_main_class(self.main_class.clone());
 
+        // 核心两件（intermediary、fabric-loader）与 launcherMeta 里的库都会被写进版本
+        // JSON，所以两者都必须生成下载步骤 —— 只写 JSON 不下载，启动时就会报
+        // 「required local file does not exist」。
+        let core = self.core_libraries();
+        for coordinate in &core {
+            let Some(relative) = maven_relative_path(coordinate) else {
+                continue;
+            };
+            plan = plan.push(InstallStep::Download {
+                url: join_repository(maven_base, &relative),
+                destination: format!("libraries/{relative}"),
+                sha1: None,
+                size: None,
+                label: coordinate.clone(),
+            });
+        }
+
         for library in &self.libraries {
+            // 核心两件已经在上面按 maven_base 加过了，避免重复下载。
+            if core.contains(&library.name) {
+                continue;
+            }
             let Some(relative) = maven_relative_path(&library.name) else {
                 continue;
             };
@@ -130,7 +202,7 @@ impl FabricLoaderVersion {
             plan = plan.push(InstallStep::Download {
                 url: join_repository(&repository, &relative),
                 destination: format!("libraries/{relative}"),
-                sha1: None,
+                sha1: library.sha1.clone(),
                 size: library.size,
                 label: library.name.clone(),
             });
@@ -142,10 +214,23 @@ impl FabricLoaderVersion {
         })
     }
 
-    /// 两件核心库的坐标（版本号为空时跳过对应的一件）。
+    /// 这个加载器版本有没有无法安装的已知问题。
+    ///
+    /// 目前没有：`intermediary` 是占位版本 `0.0.0` 只说明这个游戏版本不需要它
+    /// （26.x 起 Fabric 改用官方映射），官方 profile 里也同样没有这一件，
+    /// 照常安装即可 —— 见 [`Self::has_real_intermediary`]。
+    pub fn unsupported_reason(&self) -> Option<String> {
+        None
+    }
+
+    /// 核心库坐标：`fabric-loader` 一定需要，`intermediary` 只在有真实映射时才加。
+    ///
+    /// 26.x 起 Fabric 改用官方映射，接口仍会在 `intermediary` 字段里填占位版本
+    /// `0.0.0`（那是 572 字节的空壳），但官方 profile 已经不再包含它。这里跟官方
+    /// profile 保持一致：占位版本直接跳过，而不是把它写进版本 JSON。
     fn core_libraries(&self) -> Vec<String> {
         let mut core = Vec::new();
-        if !self.intermediary_version.trim().is_empty() {
+        if self.has_real_intermediary() {
             core.push(format!(
                 "net.fabricmc:intermediary:{}",
                 self.intermediary_version
@@ -158,6 +243,15 @@ impl FabricLoaderVersion {
             ));
         }
         core
+    }
+
+    /// intermediary 是否是一个真实存在的映射。
+    ///
+    /// `0.0.0` 是 Fabric 对「这个游戏版本不再需要 intermediary」给出的占位值；
+    /// 空串表示接口没给。两种情况都不该去下载它。
+    fn has_real_intermediary(&self) -> bool {
+        let version = self.intermediary_version.trim();
+        !version.is_empty() && version != "0.0.0"
     }
 }
 
@@ -364,6 +458,7 @@ fn parse_libraries(launcher_meta: Option<&Value>) -> Vec<FabricLibrary> {
             libraries.push(FabricLibrary {
                 url: opt_string(entry, "url").filter(|url| !url.trim().is_empty()),
                 size: entry.get("size").and_then(Value::as_u64),
+                sha1: opt_string(entry, "sha1").filter(|sha1| !sha1.trim().is_empty()),
                 name,
             });
         }

@@ -233,7 +233,7 @@ describe("DownloadPage version detail", () => {
         return { instances: listings === 1 ? [] : [created], skipped: [] };
       },
     });
-    renderWithState(<DownloadPage page={page} />);
+    const { navigate } = renderWithState(<DownloadPage page={page} />);
     await screen.findByText("最新正式版");
     await openVersion("1.21.1");
     fireEvent.click(screen.getByRole("button", { name: "安装" }));
@@ -264,9 +264,8 @@ describe("DownloadPage version detail", () => {
       install.resolve(created);
     });
 
-    expect(await screen.findByText("安装完成")).toBeInTheDocument();
-    expect(screen.getByText(/实例「1\.21\.1」已创建/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看实例" })).toBeInTheDocument();
+    // 装完自动回到实例页：不再停在成功卡片上。
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith("instances"));
     // 完成后实例列表被刷新
     await waitFor(() => expect(listings).toBeGreaterThanOrEqual(2));
   });
@@ -300,7 +299,7 @@ describe("DownloadPage version detail", () => {
         return created;
       },
     });
-    renderWithState(<DownloadPage page={page} />);
+    const { navigate } = renderWithState(<DownloadPage page={page} />);
     await screen.findByText("最新正式版");
     await openVersion("1.21.1");
     fireEvent.click(screen.getByRole("button", { name: "安装" }));
@@ -308,7 +307,7 @@ describe("DownloadPage version detail", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("HTTP 503 x2");
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
 
-    expect(await screen.findByText("安装完成")).toBeInTheDocument();
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith("instances"));
     expect(calls).toBe(2);
   });
 

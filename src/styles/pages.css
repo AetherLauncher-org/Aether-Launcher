@@ -1230,3 +1230,365 @@
   letter-spacing: 0.18em;
   user-select: all;
 }
+
+/* ── 模组加载器：版本详情左侧的分组卡片 ───────────────────────── */
+
+/*
+ * 四行一行一个加载器，行高、hover、禁用态跟设置页的 .runtime-option 一致；
+ * 展开的版本列表自己滚动，最矮的窗口也只占 8 行高度。
+ */
+.modloader-card {
+  gap: 10px;
+}
+
+.modloader-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modloader-head h2 {
+  margin: 0;
+}
+
+.modloader-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fontSizeBase200);
+}
+
+.modloader-note-icon {
+  flex: none;
+}
+
+.modloader-empty {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.modloader-error {
+  color: var(--colorStatusDangerForeground1);
+}
+
+.modloader-list {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.modloader-item {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  /* 四行依次浮现，--i 是它在这组里的序号 */
+  animation: fade-in var(--durationNormal) var(--curveDecelerateMid) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
+}
+
+/* 行 + 右侧的 X。X 是同级按钮，不能嵌在行按钮里（按钮不能套按钮）。 */
+.modloader-row-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.modloader-row-wrap > .modloader-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.modloader-clear {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  border: 0;
+  border-radius: var(--borderRadiusMedium);
+  color: var(--colorNeutralForeground3);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background var(--durationFast) var(--curveEasyEase),
+    color var(--durationFast) var(--curveEasyEase);
+}
+
+.modloader-clear:hover {
+  color: var(--colorNeutralForeground1);
+  background: var(--card-bg-hover);
+}
+
+.modloader-clear:focus-visible {
+  outline: 2px solid var(--colorStrokeFocus2);
+  outline-offset: 2px;
+}
+
+.modloader-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) 16px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--borderRadiusMedium);
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--durationFast) var(--curveEasyEase),
+    border-color var(--durationFast) var(--curveEasyEase);
+}
+
+.modloader-row:hover {
+  background: var(--card-bg-hover);
+}
+
+.modloader-row:active {
+  background: var(--colorSubtleBackgroundPressed);
+}
+
+.modloader-row:focus-visible {
+  outline: 2px solid var(--colorStrokeFocus2);
+  outline-offset: 2px;
+}
+
+/* 展开中的那一行：和卡片连成一块，下边框让位给列表 */
+.modloader-row[aria-expanded="true"] {
+  border-color: var(--colorBrandStroke1);
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+  background: var(--colorBrandBackground2);
+}
+
+/* 不可用：置灰、不响应指针，整行只剩读原因的 hover（Tooltip 依然能弹） */
+.modloader-row[data-available="false"] {
+  border-color: transparent;
+  background: transparent;
+  color: var(--colorNeutralForegroundDisabled);
+  cursor: default;
+}
+
+.modloader-row[data-available="false"] .modloader-status-icon {
+  color: var(--colorNeutralForegroundDisabled);
+}
+
+.modloader-row[data-available="false"] .modloader-band {
+  background: var(--colorNeutralForegroundDisabled);
+  opacity: 0.5;
+}
+
+/* 名字前的一道色带，对应各家加载器的主色（都用令牌，不写死色值） */
+.modloader-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.modloader-band {
+  flex: none;
+  width: 3px;
+  height: 18px;
+  border-radius: 2px;
+  background: var(--colorBrandBackground);
+}
+
+.modloader-item[data-band="forge"] .modloader-band {
+  background: var(--colorNeutralForeground2);
+}
+
+.modloader-item[data-band="neoforge"] .modloader-band {
+  background: var(--colorPaletteMarigoldBackground3);
+}
+
+.modloader-item[data-band="fabric"] .modloader-band {
+  background: var(--colorPaletteRoyalBlueBackground3);
+}
+
+.modloader-item[data-band="quilt"] .modloader-band {
+  background: var(--colorPaletteMagentaBackground3);
+}
+
+.modloader-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--colorNeutralForeground3);
+  font-size: var(--fontSizeBase200);
+}
+
+.modloader-status-icon {
+  flex: none;
+  color: var(--colorStatusSuccessForeground1);
+}
+
+.modloader-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 展开时箭头转向下：状态变了，箭头跟着指过去 */
+.row-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.modloader-row:hover .row-chevron.expanded {
+  transform: rotate(90deg) translateX(2px);
+}
+
+/* 不可用的行没有箭头，用同宽的占位保持三列对齐 */
+.modloader-chevron-placeholder {
+  width: 16px;
+}
+
+.modloader-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin-top: -1px;
+  padding: 12px;
+  border: 1px solid var(--colorBrandStroke1);
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+  border-end-start-radius: var(--borderRadiusMedium);
+  border-end-end-radius: var(--borderRadiusMedium);
+  background: var(--colorNeutralBackground2);
+  animation: fade-in var(--durationNormal) var(--curveDecelerateMid) both;
+}
+
+/*
+ * 版本列表：定高 + 滚动。行高 34px、间距 2px，8 行 = 8 × 36 - 2 = 286px；
+ * 版本再多也不会把下面的表单顶出屏幕。
+ */
+.modloader-versions {
+  --row-h: 34px;
+  display: grid;
+  gap: 2px;
+  max-height: calc(var(--row-h) * 8 + 2px * 7);
+  margin: 0;
+  padding: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--borderRadiusSmall);
+  scrollbar-gutter: stable;
+  list-style: none;
+}
+
+.modloader-version {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  height: var(--row-h);
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--borderRadiusSmall);
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--durationFaster) var(--curveEasyEase);
+}
+
+.modloader-version:hover {
+  background: var(--card-bg-hover);
+}
+
+.modloader-version:active {
+  background: var(--colorSubtleBackgroundPressed);
+}
+
+.modloader-version:focus-visible {
+  outline: 2px solid var(--colorStrokeFocus2);
+  outline-offset: -2px;
+}
+
+.modloader-version.selected {
+  border-color: var(--colorBrandStroke1);
+  background: var(--colorBrandBackground2);
+}
+
+.modloader-version-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modloader-version-tag {
+  flex: none;
+  color: var(--colorNeutralForeground3);
+  font-size: var(--fontSizeBase200);
+}
+
+.modloader-version.selected .modloader-version-tag {
+  color: var(--colorBrandForeground1);
+}
+
+.modloader-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.modloader-feedback {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--borderRadiusMedium);
+  font-size: var(--fontSizeBase200);
+  animation: rise var(--durationNormal) var(--curveDecelerateMid) both;
+}
+
+.modloader-feedback svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.modloader-feedback.success {
+  color: var(--colorStatusSuccessForeground1);
+  background: var(--colorStatusSuccessBackground1);
+}
+
+.modloader-feedback.failed {
+  color: var(--colorStatusDangerForeground1);
+  background: var(--colorStatusDangerBackground1);
+}
+
+/* 窄窗口：状态文字被压到第二行，三列换成两列，箭头仍在最右 */
+@media (max-width: 720px) {
+  .modloader-row {
+    grid-template-columns: minmax(0, 1fr) 16px;
+    row-gap: 2px;
+    /* 名字和状态上下排；箭头占两行，自己垂直居中 */
+    align-content: center;
+  }
+
+  .modloader-name {
+    grid-column: 1 / 2;
+  }
+
+  .modloader-row > .row-chevron,
+  .modloader-chevron-placeholder {
+    grid-column: 2 / 3;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+
+  .modloader-status {
+    grid-column: 1 / 2;
+  }
+}

@@ -17,8 +17,12 @@ export type InstallJob = {
 
 export type InstallApi = {
   job: InstallJob | null;
-  /** 开始安装并创建实例。已有安装在跑时忽略。 */
-  start: (version: string, name: string) => Promise<void>;
+  /** 开始安装并创建实例。`loader` 为空时只装原版。已有安装在跑时忽略。 */
+  start: (
+    version: string,
+    name: string,
+    loader?: { kind: string; version: string } | null,
+  ) => Promise<void>;
   cancel: () => void;
   /** 清掉已结束的安装记录（完成、失败或取消后）。 */
   dismiss: () => void;

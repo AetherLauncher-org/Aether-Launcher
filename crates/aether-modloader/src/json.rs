@@ -49,6 +49,21 @@ pub(crate) fn inherited_version(
     main_class: &str,
     libraries: &[Value],
 ) -> Value {
+    inherited_version_with_arguments(id, inherits_from, main_class, libraries, Value::Null)
+}
+
+/// 同 [`inherited_version`]，但可以带上 `arguments`（例如 Fabric 的
+/// `-DFabricMcEmu= net.minecraft.client.main.Main`）。
+///
+/// `arguments` 为 `Value::Null` 时不写这个字段 —— 空对象会让启动器误以为
+/// 「有参数但为空」，覆盖掉被继承版本自己的参数。
+pub(crate) fn inherited_version_with_arguments(
+    id: &str,
+    inherits_from: &str,
+    main_class: &str,
+    libraries: &[Value],
+    arguments: Value,
+) -> Value {
     // 注：`Map` 的插入顺序不保证与输出顺序一致（见函数文档）。
     let mut map = Map::new();
     map.insert("id".to_owned(), Value::String(id.to_owned()));
@@ -58,6 +73,9 @@ pub(crate) fn inherited_version(
     );
     map.insert("type".to_owned(), Value::String("release".to_owned()));
     map.insert("mainClass".to_owned(), Value::String(main_class.to_owned()));
+    if !arguments.is_null() {
+        map.insert("arguments".to_owned(), arguments);
+    }
     map.insert("libraries".to_owned(), Value::Array(libraries.to_vec()));
     Value::Object(map)
 }

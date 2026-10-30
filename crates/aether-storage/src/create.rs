@@ -187,7 +187,7 @@ pub fn create_instance(
     let (id, directory) = allocate_directory(&instances)?;
 
     // 8. Everything from here on has to roll the directory back on failure.
-    if let Err(error) = create_skeleton(&directory) {
+    if let Err(error) = create_skeleton(&directory, version) {
         rollback(&directory);
         return Err(error);
     }
@@ -343,9 +343,52 @@ fn read_record_name(directory: &Path) -> Option<String> {
         .map(|existing| existing.name)
 }
 
-/// Creates the `minecraft/` working directory inside a freshly allocated directory.
-fn create_skeleton(directory: &Path) -> Result<(), CreateError> {
-    fs::create_dir(directory.join(MINECRAFT_DIR)).map_err(CreateError::Io)
+/// Creates the `minecraft/` working directory inside a freshly allocated directory
+/// and seeds it with the options a new instance should start with.
+fn create_skeleton(directory: &Path, version: &str) -> Result<(), CreateError> {
+    let game_dir = directory.join(MINECRAFT_DIR);
+    fs::create_dir(&game_dir).map_err(CreateError::Io)?;
+    write_default_options(&game_dir, version)
+}
+
+/// 新实例第一次启动时用的 `options.txt`。
+///
+/// 和 PCL2 的做法一致：只在这个文件**不存在**时写入，绝不覆盖玩家自己的设置；
+/// 整合包自带 `options.txt` 时也保留它。
+///
+/// 写这几项是因为全新实例第一次启动会先进「辅助功能」向导，然后停在英文界面：
+///
+/// - `onboardAccessibility:false` —— 跳过辅助功能向导
+/// - `lang` —— 直接进中文；旧版本对大小写敏感（见 [`default_language`]）
+/// - `tutorialStep:none` —— 跳过新手提示
+/// - `skipMultiplayerWarning:true` —— 跳过多人游戏警告
+fn write_default_options(game_dir: &Path, version: &str) -> Result<(), CreateError> {
+    let path = game_dir.join("options.txt");
+    if path.exists() {
+        return Ok(());
+    }
+
+    let contents = format!(
+        "lang:{}\nonboardAccessibility:false\ntutorialStep:none\nskipMultiplayerWarning:true\n",
+        default_language(version)
+    );
+    fs::write(&path, contents).map_err(CreateError::Io)
+}
+
+/// 中文语言代码。
+///
+/// 1.10 及更早认 `zh_CN`（末两位必须大写，否则崩溃或退回英文），1.11 起认
+/// `zh_cn`（写成 `zh_CN` 会错误地显示为英文）。判断方式和 PCL2 相同。
+fn default_language(version: &str) -> &'static str {
+    let vanilla = version.split('-').next().unwrap_or(version);
+    let mut parts = vanilla.split('.');
+    let major = parts.next().and_then(|part| part.parse::<u32>().ok());
+    let minor = parts.next().and_then(|part| part.parse::<u32>().ok());
+    match (major, minor) {
+        (Some(1), Some(minor)) if minor <= 10 => "zh_CN",
+        // 快照（`26w14a`）之类的一律用新写法：它们都晚于 1.11。
+        _ => "zh_cn",
+    }
 }
 
 /// Picks a fresh identifier, creates its directory and returns both.
