@@ -86,9 +86,13 @@ async function openLoader(label: string) {
 async function chooseVersion(label: string, version: string) {
   await openLoader(label);
   const list = await screen.findByRole("listbox", { name: `${label} 版本` });
-  fireEvent.click(
-    within(list).getByRole("option", { name: new RegExp(version.replace(/\./g, "\\.")) }),
-  );
+  const option = within(list)
+    .getAllByRole("option")
+    .find((item) => item.textContent?.startsWith(version));
+  if (option === undefined) {
+    throw new Error(`版本列表里没有 ${version}`);
+  }
+  fireEvent.click(option);
 }
 
 beforeEach(() => {
