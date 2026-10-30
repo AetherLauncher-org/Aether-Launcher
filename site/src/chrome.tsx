@@ -141,6 +141,7 @@ export function SiteHeader({ route }: { route: Route }) {
     { page: "home", label: text.nav.home },
     { page: "security", label: text.nav.security },
     { page: "privacy", label: text.nav.privacy },
+    { page: "terms", label: text.nav.terms },
   ];
   const other = otherLanguage(route);
   const homeHref = hrefFor({ lang: route.lang, page: "home" });

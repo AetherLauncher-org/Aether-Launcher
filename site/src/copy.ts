@@ -1,10 +1,10 @@
-import type { Lang } from "./router";
+import type { Lang, PageId } from "./router";
 
 /** Text shared by every page. Page bodies live next to their pages. */
 export type Chrome = {
   htmlLang: string;
   skip: string;
-  nav: { home: string; security: string; privacy: string; github: string };
+  nav: { home: string; security: string; privacy: string; terms: string; github: string };
   switchTo: string;
   footerDisclaimer: string;
   /** The sentence around the GitHub link: text before it and after it. */
@@ -16,7 +16,7 @@ export const chrome: Record<Lang, Chrome> = {
   en: {
     htmlLang: "en",
     skip: "Skip to content",
-    nav: { home: "Home", security: "Security", privacy: "Privacy", github: "GitHub" },
+    nav: { home: "Home", security: "Security", privacy: "Privacy", terms: "Terms", github: "GitHub" },
     switchTo: "中文",
     menuLabel: "Main",
     footerDisclaimer:
@@ -26,7 +26,7 @@ export const chrome: Record<Lang, Chrome> = {
   zh: {
     htmlLang: "zh-CN",
     skip: "跳到正文",
-    nav: { home: "首页", security: "安全", privacy: "隐私", github: "GitHub" },
+    nav: { home: "首页", security: "安全", privacy: "隐私", terms: "条款", github: "GitHub" },
     switchTo: "English",
     menuLabel: "主导航",
     footerDisclaimer:
@@ -37,7 +37,7 @@ export const chrome: Record<Lang, Chrome> = {
 
 export type PageMeta = { title: string; description: string };
 
-export const meta: Record<Lang, Record<"home" | "security" | "privacy", PageMeta>> = {
+export const meta: Record<Lang, Record<PageId, PageMeta>> = {
   en: {
     home: {
       title: "Aether Launcher: a transparent Minecraft launcher",
@@ -53,6 +53,10 @@ export const meta: Record<Lang, Record<"home" | "security" | "privacy", PageMeta
       title: "Privacy | Aether Launcher",
       description: "What Aether Launcher and this website do and do not do with your data.",
     },
+    terms: {
+      title: "Terms of use | Aether Launcher",
+      description: "The terms for using Aether Launcher and this website.",
+    },
   },
   zh: {
     home: {
@@ -67,6 +71,10 @@ export const meta: Record<Lang, Record<"home" | "security" | "privacy", PageMeta
     privacy: {
       title: "隐私 | Aether Launcher",
       description: "Aether Launcher 和这个网站会做什么、不会做什么。",
+    },
+    terms: {
+      title: "使用条款 | Aether Launcher",
+      description: "使用 Aether Launcher 和这个网站的条款。",
     },
   },
 };

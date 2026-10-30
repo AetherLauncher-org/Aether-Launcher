@@ -89,7 +89,7 @@ describe("the site follows DESIGN.md", () => {
   });
 
   it("never points at another site for art, fonts or scripts", () => {
-    expect(violations(/https?:\/\/(?!github\.com|account\.live\.com|www\.cloudflare\.com|launcher\.abnt\.it)[^\s"'`)]+/g)).toEqual([]);
+    expect(violations(/https?:\/\/(?!github\.com|account\.live\.com|www\.cloudflare\.com|www\.apache\.org|www\.minecraft\.net|launcher\.abnt\.it)[^\s"'`)]+/g)).toEqual([]);
   });
 
   it("does not use a different theme than Fluent's own", () => {

@@ -6,6 +6,7 @@ import { useRoute } from "./navigation";
 import { Home } from "./pages/Home";
 import { Privacy } from "./pages/Privacy";
 import { Security } from "./pages/Security";
+import { Terms } from "./pages/Terms";
 import { hrefFor, siteOrigin } from "./router";
 import type { Route } from "./router";
 import { backdrop } from "./tokens";
@@ -62,6 +63,8 @@ function Page({ route }: { route: Route }) {
       return <Security lang={route.lang} />;
     case "privacy":
       return <Privacy lang={route.lang} />;
+    case "terms":
+      return <Terms lang={route.lang} />;
     default:
       return <Home lang={route.lang} />;
   }
