@@ -100,6 +100,7 @@ export type { JavaRuntimeInfo } from "./java";
 
 // 微软账户登录
 export {
+  beginMicrosoftBrowserLogin,
   beginMicrosoftLogin,
   cancelMicrosoftLogin,
   describeLoginFailure,
@@ -111,6 +112,7 @@ export {
   removeMicrosoftAccount,
 } from "./accounts";
 export type {
+  BrowserLoginInfo,
   DeviceCodeInfo,
   LoginEvent,
   LoginFailure,

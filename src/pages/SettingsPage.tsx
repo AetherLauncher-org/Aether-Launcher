@@ -1,6 +1,7 @@
 import { Radio, RadioGroup, Switch, Text } from "@fluentui/react-components";
 import type { ReactNode } from "react";
 import { JavaRuntimeSection } from "../components/JavaRuntimeSection";
+import { LoginMethodSection } from "../components/LoginMethodSection";
 import { MemorySection } from "../components/MemorySection";
 import { PageHeader } from "../components/PageHeader";
 import { isThemePreference } from "../lib/theme";
@@ -82,6 +83,7 @@ export function SettingsPage({
 
       <MemorySection />
       <JavaRuntimeSection />
+      <LoginMethodSection />
 
       <section className="status-panel setting-group" aria-labelledby="download-heading">
         <Text id="download-heading" as="h2" size={400} weight="semibold">

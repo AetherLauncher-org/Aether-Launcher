@@ -7,8 +7,10 @@ import { isTauri } from "./index";
  * 微软账户登录的 IPC。
  *
  * 命令定义在 `src-tauri/src/commands/microsoft.rs`。登录是设备码流程：
- * `beginMicrosoftLogin()` 返回一个短码，用户在浏览器里输入后，后端在后台轮询并走完
- * Xbox 与 Minecraft 的步骤，结果通过 `login://status` 事件推过来。
+ * 有两种登录方式，用户在设置里选：设备码（`beginMicrosoftLogin()` 返回一个短码，用户在
+ * 浏览器里输入）和浏览器授权（`beginMicrosoftBrowserLogin()`，后端自己打开登录页，
+ * 授权码 + PKCE，浏览器跳回本机回环地址）。之后后端在后台走完 Xbox 与 Minecraft 的
+ * 步骤，结果都通过 `login://status` 事件推过来。
  *
  * **这里没有任何令牌。** 前端只看到账户身份（名字、UUID）、设备码的展示值和稳定的
  * 失败分类；访问令牌和刷新令牌留在后端，刷新令牌在系统凭据库里。
@@ -27,6 +29,11 @@ export type MicrosoftAccount = {
 export type DeviceCodeInfo = {
   userCode: string;
   verificationUri: string;
+  expiresInSecs: number;
+};
+
+/** 浏览器授权登录的信息：没有码要显示，登录页由后端打开。 */
+export type BrowserLoginInfo = {
   expiresInSecs: number;
 };
 
@@ -66,6 +73,7 @@ declare module "./call" {
   interface CommandArgs {
     microsoft_login_available: void;
     begin_microsoft_login: void;
+    begin_microsoft_browser_login: void;
     cancel_microsoft_login: void;
     open_microsoft_verification_page: void;
     list_microsoft_accounts: void;
@@ -75,6 +83,7 @@ declare module "./call" {
   interface CommandResults {
     microsoft_login_available: boolean;
     begin_microsoft_login: DeviceCodeInfo;
+    begin_microsoft_browser_login: BrowserLoginInfo;
     cancel_microsoft_login: boolean;
     open_microsoft_verification_page: null;
     list_microsoft_accounts: MicrosoftAccount[];
@@ -102,6 +111,17 @@ export function beginMicrosoftLogin(): Promise<DeviceCodeInfo> {
     return Promise.reject(new Error(desktopOnly));
   }
   return callCommand("begin_microsoft_login");
+}
+
+/**
+ * 打开微软登录页并等浏览器跳回来（授权码 + PKCE）。登录页的地址、端口和密钥都由后端
+ * 生成，前端什么都不传。
+ */
+export function beginMicrosoftBrowserLogin(): Promise<BrowserLoginInfo> {
+  if (!isTauri()) {
+    return Promise.reject(new Error(desktopOnly));
+  }
+  return callCommand("begin_microsoft_browser_login");
 }
 
 /** 取消正在进行的登录；返回之前是否有登录在进行。 */
@@ -154,7 +174,7 @@ export async function listenLoginStatus(
 }
 
 const failureText: Record<LoginFailureReason, string> = {
-  expired: "验证码已过期，请重新开始登录。",
+  expired: "这次登录已过期，请重新开始。",
   denied: "你在浏览器里拒绝了这次登录。",
   network: "连接不上微软的登录服务，请检查网络后重试。",
   service:

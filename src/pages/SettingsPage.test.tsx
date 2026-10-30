@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pretendBrowser, pretendDesktop, routeInvoke } from "../test/support";
 import { SettingsPage } from "./SettingsPage";
+import { loginMethodStorageKey } from "../lib/loginMethod";
 import type { MotionPreference } from "../lib/motion";
 import type { ThemePreference } from "../lib/theme";
 import type { PageDefinition } from "../navigation";
@@ -36,6 +37,10 @@ function renderSettings(preference: ThemePreference = "dark", motion: MotionPref
   return { themeChanges, motionChanges };
 }
 
+beforeEach(() => {
+  window.localStorage.clear();
+});
+
 afterEach(() => {
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
 });
@@ -55,6 +60,27 @@ describe("SettingsPage", () => {
     fireEvent.click(screen.getByRole("radio", { name: "浅色" }));
 
     expect(themeChanges).toEqual(["light"]);
+  });
+
+  it("lets the user choose how to sign in to Microsoft, with the device code as the default", () => {
+    renderSettings();
+
+    expect(screen.getByRole("heading", { name: "账户登录" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "设备码（默认）" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "浏览器授权" })).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole("radio", { name: "浏览器授权" }));
+
+    expect(screen.getByRole("radio", { name: "浏览器授权" })).toBeChecked();
+    expect(window.localStorage.getItem(loginMethodStorageKey)).toBe("browser");
+  });
+
+  it("shows the sign-in method that was saved", () => {
+    window.localStorage.setItem(loginMethodStorageKey, "browser");
+
+    renderSettings();
+
+    expect(screen.getByRole("radio", { name: "浏览器授权" })).toBeChecked();
   });
 
   it("has a switch for interface animation that reflects and changes the preference", () => {

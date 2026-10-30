@@ -19,7 +19,7 @@ import type { GameRunStatus } from "../ipc/launch";
 import type { MinecraftCatalogVersion, MinecraftVersionCatalog } from "../ipc/catalog";
 import type { ImportResult, ImportSource, LauncherInstallation } from "../ipc/import";
 import type { JavaRuntimeInfo } from "../ipc/java";
-import type { DeviceCodeInfo, LoginEvent, MicrosoftAccount } from "../ipc/accounts";
+import type { BrowserLoginInfo, DeviceCodeInfo, LoginEvent, MicrosoftAccount } from "../ipc/accounts";
 import type { SystemMemory } from "../ipc/system";
 
 type Args = Record<string, unknown> | undefined;
@@ -210,7 +210,7 @@ const loginFailures: Record<string, Extract<LoginEvent, { state: "failed" }>["fa
   "login-expired": { reason: "expired", message: "the sign-in code expired" },
 };
 
-function beginLogin(): DeviceCodeInfo {
+function startLogin(): void {
   if (mode === "no-login") {
     throw "microsoft-not-configured";
   }
@@ -242,8 +242,16 @@ function beginLogin(): DeviceCodeInfo {
     writeJson(accountsKey, [...accounts().filter((existing) => existing.id !== account.id), account]);
     emit("login://status", { state: "signed-in", account } satisfies LoginEvent);
   });
+}
 
+function beginLogin(): DeviceCodeInfo {
+  startLogin();
   return { userCode: "MOCK1234", verificationUri: "https://www.microsoft.com/link", expiresInSecs: 900 };
+}
+
+function beginBrowserLogin(): BrowserLoginInfo {
+  startLogin();
+  return { expiresInSecs: 600 };
 }
 
 // ---- 导入 --------------------------------------------------------------------------------
@@ -351,6 +359,8 @@ async function handle(command: string, args: Args): Promise<unknown> {
       return mode !== "no-login";
     case "begin_microsoft_login":
       return beginLogin();
+    case "begin_microsoft_browser_login":
+      return beginBrowserLogin();
     case "cancel_microsoft_login": {
       const was = loginRunning;
       loginCancelled = loginRunning;

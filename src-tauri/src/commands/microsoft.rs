@@ -1,9 +1,12 @@
 //! Microsoft account sign-in and the credentials a launch needs.
 //!
-//! Sign-in is the OAuth device code flow: [`begin_microsoft_login`] returns a short code
-//! and a verification page, a background thread polls until the user finishes in the
-//! browser, then runs the Xbox and Minecraft stages (`aether_auth::signin`). Progress
-//! reaches the frontend as `login://status` events.
+//! There are two ways to sign in, and the user picks one in Settings. The OAuth device
+//! code flow: [`begin_microsoft_login`] returns a short code and a verification page, a
+//! background thread polls until the user finishes in the browser, then runs the Xbox and
+//! Minecraft stages (`aether_auth::signin`). And the authorization code flow with PKCE:
+//! [`begin_microsoft_browser_login`] opens the sign-in page itself and waits for the
+//! browser to be redirected to a one-shot loopback listener (see [`browser`]). Both end in
+//! the same stages and report through the same `login://status` events.
 //!
 //! # What crosses IPC
 //!
@@ -39,6 +42,8 @@ use aether_auth::xbox::XboxError;
 use aether_auth::{AccountId, AccountKind};
 use serde::Serialize;
 use tauri::{Emitter, Manager};
+
+mod browser;
 
 /// Error text when no Azure application id is configured; the frontend matches on it.
 pub const NOT_CONFIGURED: &str = "microsoft-not-configured";
@@ -527,6 +532,67 @@ pub async fn begin_microsoft_login(
         return Err("cannot start the sign-in worker".to_owned());
     }
     Ok(dto)
+}
+
+/// What the dialog needs for a browser sign-in: only how long it has. The sign-in page is
+/// opened by the backend and there is no code to show.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserLoginDto {
+    pub expires_in_secs: u64,
+}
+
+/// Opens the Microsoft sign-in page in the browser and waits for it to come back.
+///
+/// The authorization code flow with PKCE and a one-shot loopback listener (see
+/// [`browser`]). The frontend passes nothing: the URL, the port and the secrets are made
+/// here. The outcome arrives as `login://status` events, like the device code flow.
+#[tauri::command]
+pub async fn begin_microsoft_browser_login(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, MicrosoftLoginState>,
+) -> Result<BrowserLoginDto, String> {
+    let client_id = configured_client_id().ok_or_else(|| NOT_CONFIGURED.to_owned())?;
+    let root = accounts_root(&app)?;
+    let session = state.start()?;
+
+    let prepared = match browser::prepare(&client_id) {
+        Ok(prepared) => prepared,
+        Err(message) => {
+            session.done.store(true, Ordering::SeqCst);
+            return Err(message);
+        }
+    };
+    if let Ok(mut page) = session.page.lock() {
+        *page = Some(prepared.url.clone());
+    }
+    // Best effort: when no browser opens, the dialog's button tries again.
+    if is_trusted_verification_uri(&prepared.url) {
+        let _ = open_in_browser(&prepared.url);
+    }
+
+    let worker_session = Arc::clone(&session);
+    let spawned = std::thread::Builder::new()
+        .name("microsoft-browser-login".to_owned())
+        .spawn(move || {
+            let _ = app.emit(STATUS_EVENT, &LoginEvent::Waiting);
+            let event = browser::run(
+                &client_id,
+                &root,
+                &prepared,
+                &worker_session,
+                browser::LOGIN_TIMEOUT,
+            );
+            worker_session.done.store(true, Ordering::SeqCst);
+            let _ = app.emit(STATUS_EVENT, &event);
+        });
+    if spawned.is_err() {
+        session.done.store(true, Ordering::SeqCst);
+        return Err("cannot start the sign-in worker".to_owned());
+    }
+    Ok(BrowserLoginDto {
+        expires_in_secs: browser::LOGIN_TIMEOUT.as_secs(),
+    })
 }
 
 fn request_device_code(

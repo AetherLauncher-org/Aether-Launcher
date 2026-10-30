@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  beginMicrosoftBrowserLogin,
   beginMicrosoftLogin,
   cancelMicrosoftLogin,
   listMicrosoftAccounts,
@@ -98,6 +99,21 @@ describe("the browser mock backend", () => {
     await removeMicrosoftAccount(accounts![0].id);
     expect(await listMicrosoftAccounts()).toEqual([]);
     unlisten();
+  });
+
+  it("walks a browser sign-in without any code to show", async () => {
+    const events: LoginEvent[] = [];
+    const unlisten = await listenLoginStatus((event) => events.push(event));
+
+    const info = await beginMicrosoftBrowserLogin();
+    expect(info.expiresInSecs).toBeGreaterThan(0);
+    // Only one sign-in at a time, whichever method started it.
+    await expect(beginMicrosoftLogin()).rejects.toMatch(/already in progress/);
+
+    await vi.advanceTimersByTimeAsync(7000);
+    expect(events.map((event) => event.state)).toEqual(["waiting", "signed-in"]);
+    unlisten();
+    await removeMicrosoftAccount("069a79f4-44e9-4726-a5be-fca90e38aaf5");
   });
 
   it("reports a cancelled sign-in", async () => {

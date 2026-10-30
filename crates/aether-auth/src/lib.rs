@@ -9,7 +9,8 @@
 //! The sign-in chain is split into four stages that mirror the endpoints the real
 //! services expose:
 //!
-//! 1. [`device_code`] polls the Microsoft identity platform for an OAuth 2.0 token.
+//! 1. [`device_code`] polls the Microsoft identity platform for an OAuth 2.0 token, or
+//!    [`auth_code`] gets one through the browser with the authorization code flow and PKCE.
 //! 2. [`xbox`] trades that token for an Xbox Live (XBL) token and an XSTS token.
 //! 3. [`minecraft`] trades the XSTS token for a Minecraft access token and profile.
 //! 4. [`store`] decides whether anything is allowed to touch the disk.
@@ -17,6 +18,7 @@
 //! [`offline`] covers the disconnected account path and [`token`] holds the redacting
 //! newtypes that make accidental token logging hard.
 
+pub mod auth_code;
 pub mod device_code;
 pub mod http;
 pub mod minecraft;

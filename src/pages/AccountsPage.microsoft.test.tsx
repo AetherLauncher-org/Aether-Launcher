@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { accountBookStorageKey } from "../lib/accounts";
+import { loginMethodStorageKey } from "../lib/loginMethod";
 import type { PageDefinition } from "../navigation";
 import { pretendBrowser, pretendDesktop, renderWithState, routeInvoke } from "../test/support";
 import type { Handlers } from "../test/support";
@@ -190,6 +191,99 @@ describe("Microsoft sign-in on the accounts page", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "打开登录页面" }));
 
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("open_microsoft_verification_page"));
+  });
+
+  describe("with the browser sign-in chosen in Settings", () => {
+    beforeEach(() => {
+      window.localStorage.setItem(loginMethodStorageKey, "browser");
+    });
+
+    const browserBackend = (overrides: Handlers = {}) =>
+      backend({ begin_microsoft_browser_login: () => ({ expiresInSecs: 600 }), ...overrides });
+
+    it("opens the browser instead of showing a code", async () => {
+      routeInvoke(vi.mocked(invoke), browserBackend());
+      renderPage();
+
+      const dialog = await startLogin();
+
+      expect(await within(dialog).findByText(/已在浏览器里打开微软的登录页面/)).toBeInTheDocument();
+      expect(invoke).toHaveBeenCalledWith("begin_microsoft_browser_login");
+      expect(invoke).not.toHaveBeenCalledWith("begin_microsoft_login");
+      expect(within(dialog).queryByLabelText("登录码")).not.toBeInTheDocument();
+    });
+
+    it("signs the account in when the backend reports it", async () => {
+      routeInvoke(vi.mocked(invoke), browserBackend());
+      renderPage();
+      const dialog = await startLogin();
+      await within(dialog).findByText(/已在浏览器里打开/);
+
+      emit({ state: "signed-in", account: notch });
+
+      expect(await within(dialog).findByText("已登录：Notch")).toBeInTheDocument();
+    });
+
+    it("reopens the sign-in page without sending any URL from the page", async () => {
+      routeInvoke(vi.mocked(invoke), browserBackend());
+      renderPage();
+      const dialog = await startLogin();
+      await within(dialog).findByText(/已在浏览器里打开/);
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "重新打开登录页面" }));
+
+      await waitFor(() => expect(invoke).toHaveBeenCalledWith("open_microsoft_verification_page"));
+    });
+
+    it("offers the device code when the browser sign-in fails, for this attempt only", async () => {
+      routeInvoke(vi.mocked(invoke), browserBackend());
+      renderPage();
+      const dialog = await startLogin();
+      await within(dialog).findByText(/已在浏览器里打开/);
+      emit({ state: "failed", failure: { reason: "service", message: "AADSTS50011" } });
+
+      fireEvent.click(await within(dialog).findByRole("button", { name: "改用设备码重试" }));
+
+      expect(await within(dialog).findByText("ABCD1234")).toBeInTheDocument();
+      expect(invoke).toHaveBeenCalledWith("begin_microsoft_login");
+      // 设置里保存的还是浏览器授权
+      expect(window.localStorage.getItem(loginMethodStorageKey)).toBe("browser");
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      vi.mocked(invoke).mockClear();
+
+      const next = await startLogin();
+      await within(next).findByText(/已在浏览器里打开/);
+      expect(invoke).toHaveBeenCalledWith("begin_microsoft_browser_login");
+    });
+
+    it("retrying keeps the method that was used", async () => {
+      routeInvoke(vi.mocked(invoke), browserBackend());
+      renderPage();
+      const dialog = await startLogin();
+      await within(dialog).findByText(/已在浏览器里打开/);
+      emit({ state: "failed", failure: { reason: "denied", message: "declined" } });
+
+      fireEvent.click(await within(dialog).findByRole("button", { name: "重试" }));
+
+      await waitFor(() =>
+        expect(
+          vi.mocked(invoke).mock.calls.filter(([name]) => name === "begin_microsoft_browser_login"),
+        ).toHaveLength(2),
+      );
+    });
+
+    it("cancels the sign-in when the dialog is closed", async () => {
+      routeInvoke(vi.mocked(invoke), browserBackend());
+      renderPage();
+      const dialog = await startLogin();
+      await within(dialog).findByText(/已在浏览器里打开/);
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+
+      await waitFor(() => expect(invoke).toHaveBeenCalledWith("cancel_microsoft_login"));
+    });
   });
 
   it("brings the signed-in accounts back from the backend at startup", async () => {

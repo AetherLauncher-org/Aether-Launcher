@@ -107,6 +107,11 @@ function English() {
           refresh token in the operating system’s credential vault.
         </li>
         <li>
+          You can sign in with a device code (the default) or in your browser. The browser option opens a temporary port
+          on your own computer, reachable only from it, for the few minutes the sign-in takes, and closes it afterwards.
+          Nothing is sent to Aether either way.
+        </li>
+        <li>
           “Remove account” deletes both. You can also revoke Aether’s access at any time at{" "}
           <Link href={consent} rel="noopener">
             account.live.com/consent/Manage
@@ -176,6 +181,10 @@ function Chinese() {
           权限，没有别的。它读不到你的邮件、文件或联系人。
         </li>
         <li>玩家名、Minecraft 档案 UUID 和 Xbox 用户 ID 保存在你电脑上的一个小文件里，刷新令牌保存在操作系统的凭据库里。</li>
+        <li>
+          可以用设备码登录（默认），也可以在浏览器里登录。浏览器方式会在你自己的电脑上临时开一个只有本机能访问的端口，
+          只在登录的那几分钟里存在，结束就关闭。两种方式都不会向 Aether 发送任何东西。
+        </li>
         <li>
           「移除账户」会把这两处都删掉。你也可以随时在{" "}
           <Link href={consent} rel="noopener">

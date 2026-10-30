@@ -103,6 +103,7 @@ pub fn run() {
             commands::import::import_versions,
             commands::microsoft::microsoft_login_available,
             commands::microsoft::begin_microsoft_login,
+            commands::microsoft::begin_microsoft_browser_login,
             commands::microsoft::cancel_microsoft_login,
             commands::microsoft::open_microsoft_verification_page,
             commands::microsoft::list_microsoft_accounts,
