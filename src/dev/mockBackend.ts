@@ -19,6 +19,7 @@ import type { GameRunStatus } from "../ipc/launch";
 import type { MinecraftCatalogVersion, MinecraftVersionCatalog } from "../ipc/catalog";
 import type { ImportResult, ImportSource, LauncherInstallation } from "../ipc/import";
 import type { JavaRuntimeInfo } from "../ipc/java";
+import type { ContentItem, ContentKind, InstanceDetails, LogContent, LogEntry } from "../ipc/manage";
 import type { BrowserLoginInfo, DeviceCodeInfo, LoginEvent, MicrosoftAccount } from "../ipc/accounts";
 import type { SystemMemory } from "../ipc/system";
 
@@ -254,6 +255,117 @@ function beginBrowserLogin(): BrowserLoginInfo {
   return { expiresInSecs: 600 };
 }
 
+// ---- 实例管理 ------------------------------------------------------------------------------
+
+const contentKindList: ContentKind[] = ["mods", "resourcepacks", "shaderpacks", "saves", "schematics"];
+
+const file = (name: string, sizeBytes: number, enabled = true): ContentItem => ({ name, sizeBytes, enabled, isFolder: false });
+const folder = (name: string, sizeBytes: number): ContentItem => ({ name, sizeBytes, enabled: true, isFolder: true });
+
+function seedContent(): Record<ContentKind, ContentItem[]> {
+  return {
+    mods: [file("sodium-fabric-0.6.0.jar", 1_240_000), file("lithium-fabric-0.14.0.jar.disabled", 880_000, false), file("iris-1.8.0.jar", 2_400_000)],
+    resourcepacks: [file("Faithful 32x.zip", 14_200_000), folder("我的资源包", 3_100_000)],
+    shaderpacks: [file("BSL_v8.2.zip", 1_900_000)],
+    saves: [folder("新的世界", 84_000_000), folder("创造测试", 12_500_000)],
+    schematics: [file("House.litematic", 42_000), file("Tower.litematic", 118_000)],
+  };
+}
+
+const contentByInstance = new Map<string, Record<ContentKind, ContentItem[]>>();
+
+function contentOf(id: string): Record<ContentKind, ContentItem[]> {
+  if (!instances.some((instance) => instance.id === id)) {
+    throw "cannot open the instance: instance not found";
+  }
+  let content = contentByInstance.get(id);
+  if (content === undefined) {
+    content = seedContent();
+    contentByInstance.set(id, content);
+  }
+  return content;
+}
+
+function instanceDetails(id: string): InstanceDetails {
+  const instance = instances.find((item) => item.id === id);
+  if (instance === undefined) {
+    throw "cannot open the instance: instance not found";
+  }
+  const content = contentOf(id);
+  const counts = Object.fromEntries(contentKindList.map((kind) => [kind, content[kind].length])) as InstanceDetails["counts"];
+  const sizeBytes = contentKindList.flatMap((kind) => content[kind]).reduce((sum, item) => sum + item.sizeBytes, 0);
+  return { ...instance, loader: instance.name.includes("Fabric") ? "Fabric 0.16.5" : null, sizeBytes, counts };
+}
+
+function mockLogs(): LogEntry[] {
+  return [
+    { kind: "latest", name: "latest.log", sizeBytes: 4_200, modified: 1_761_800_000 },
+    { kind: "crash", name: "crash-2026-10-28_20.18.51-client.txt", sizeBytes: 9_800, modified: 1_761_680_000 },
+  ];
+}
+
+function mockLog(kind: string): LogContent {
+  return kind === "crash"
+    ? {
+        text: "---- Minecraft Crash Report ----\nDescription: Loading library LWJGL system\n\njava.lang.UnsatisfiedLinkError: Failed to locate library: lwjgl.dll\n\nPlayer: <USERNAME:1>\n",
+        truncated: false,
+      }
+    : {
+        text: "[18:24:01] [main/INFO]: Setting user: <USERNAME:1>\n[18:24:03] [Render thread/INFO]: Reloading ResourceManager\n[18:24:07] [Render thread/INFO]: Stopping!\n",
+        truncated: false,
+      };
+}
+
+function removeFrom(id: string, kind: ContentKind, name: string) {
+  const content = contentOf(id);
+  if (!content[kind].some((item) => item.name === name)) {
+    throw "that item does not exist";
+  }
+  content[kind] = content[kind].filter((item) => item.name !== name);
+}
+
+function toggleMod(id: string, name: string, enabled: boolean) {
+  const content = contentOf(id);
+  const item = content.mods.find((candidate) => candidate.name === name);
+  if (item === undefined) {
+    throw "that item does not exist";
+  }
+  if (item.enabled === enabled) {
+    return;
+  }
+  const next = enabled ? name.replace(/\.disabled$/, "") : `${name}.disabled`;
+  if (content.mods.some((candidate) => candidate.name === next)) {
+    throw "a file with the new name already exists";
+  }
+  item.name = next;
+  item.enabled = enabled;
+}
+
+function renameMock(id: string, name: string): InstanceSummary {
+  const instance = instances.find((item) => item.id === id);
+  if (instance === undefined) {
+    throw "cannot open the instance: instance not found";
+  }
+  const trimmed = name.trim();
+  if (instances.some((item) => item.id !== id && item.name.toLowerCase() === trimmed.toLowerCase())) {
+    throw "an instance with this name already exists";
+  }
+  const renamed = { ...instance, name: trimmed };
+  instances = instances.map((item) => (item.id === id ? renamed : item));
+  saveInstances();
+  return renamed;
+}
+
+function deleteMock(id: string) {
+  if (games.get(id)?.state === "running") {
+    throw "stop the game before deleting this instance";
+  }
+  contentOf(id);
+  instances = instances.filter((item) => item.id !== id);
+  contentByInstance.delete(id);
+  saveInstances();
+}
+
 // ---- 导入 --------------------------------------------------------------------------------
 
 const importSources: ImportSource[] = [
@@ -375,6 +487,30 @@ async function handle(command: string, args: Args): Promise<unknown> {
         accountsKey,
         accounts().filter((account) => account.id !== args?.id),
       );
+      return null;
+    case "instance_details":
+      return instanceDetails(String(args?.id));
+    case "rename_installed_instance":
+      return renameMock(String(args?.id), String(args?.name));
+    case "delete_installed_instance":
+      deleteMock(String(args?.id));
+      return null;
+    case "list_instance_content":
+      return contentOf(String(args?.id))[args?.kind as ContentKind] ?? [];
+    case "set_instance_mod_enabled":
+      toggleMod(String(args?.id), String(args?.name), Boolean(args?.enabled));
+      return null;
+    case "remove_instance_content":
+      removeFrom(String(args?.id), args?.kind as ContentKind, String(args?.name));
+      return null;
+    case "list_instance_logs":
+      contentOf(String(args?.id));
+      return mockLogs();
+    case "read_instance_log":
+      contentOf(String(args?.id));
+      return mockLog(String(args?.kind));
+    case "open_instance_folder":
+      contentOf(String(args?.id));
       return null;
     case "pick_import_folder":
       await sleep(300);

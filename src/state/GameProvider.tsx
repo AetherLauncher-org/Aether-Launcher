@@ -16,7 +16,7 @@ import {
   statusPollIntervalMs,
 } from "../lib/game";
 import type { GameSession } from "../lib/game";
-import { resolveLaunchMemoryMiB } from "../lib/launchMemory";
+import { resolveLaunchSettings } from "../lib/instanceSettings";
 import { saveLastPlayedId } from "../lib/settings";
 import { useAccounts } from "./accounts";
 import { GameContext } from "./game";
@@ -48,10 +48,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
       setSession(instance.id, startingSession);
       try {
+        // 这个实例自己的覆盖优先，没有就用设置页里的全局值
+        const launch = await resolveLaunchSettings(instance.id);
         const status = await startInstalledInstance(
           instance.id,
           account.name,
-          await resolveLaunchMemoryMiB(),
+          launch.memoryMiB,
           account.kind === "offline" ? account.uuid : null,
           account.kind === "microsoft" ? account.id : null,
         );

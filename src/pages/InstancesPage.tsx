@@ -11,6 +11,7 @@ import {
   ArrowImport20Regular,
   ArrowSync20Regular,
   Box24Regular,
+  Settings20Regular,
   Warning24Regular,
 } from "@fluentui/react-icons";
 import { useMemo, useState } from "react";
@@ -18,6 +19,7 @@ import type { CSSProperties } from "react";
 import { EmptyState } from "../components/EmptyState";
 import { GameControls } from "../components/GameControls";
 import { ImportInstancesDialog } from "../components/ImportInstancesDialog";
+import { InstanceDetail } from "../components/InstanceDetail";
 import { InstanceCover } from "../components/InstanceCover";
 import { PageHeader } from "../components/PageHeader";
 import { DesktopOnlyNotice, ErrorState } from "../components/PageState";
@@ -42,7 +44,8 @@ type InstancesPageProps = {
  * 实例页：卡片网格。每张卡片有封面、名称、版本和启动／停止按钮。
  *
  * 实例有两条来源：下载页的安装流程，以及从别的启动器导入。两者都落到同一个
- * 实例存储，所以这里只有一个入口负责展示和启动。
+ * 实例存储，所以这里只有一个入口负责展示和启动。点「管理」进入单个实例的管理页：
+ * 详情、改名、删除、模组与存档等内容、日志。
  */
 export function InstancesPage({ page }: InstancesPageProps) {
   const { desktop, status, instances, skipped, error, reload } = useInstances();
@@ -50,12 +53,30 @@ export function InstancesPage({ page }: InstancesPageProps) {
   const { navigate } = useNavigation();
   const [query, setQuery] = useState("");
   const [importing, setImporting] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [memoryLabel] = useState(() => describeMemorySetting(loadMemoryMode(), loadMemoryMiB()));
 
   const visible = useMemo(
     () => sortInstances(filterInstances(instances, query)),
     [instances, query],
   );
+
+  // 选中的实例被删掉或列表里没有了，就回到列表
+  const selected = selectedId === null ? null : (instances.find((item) => item.id === selectedId) ?? null);
+  if (desktop && selected !== null) {
+    return (
+      <InstanceDetail
+        key={selected.id}
+        instance={selected}
+        onBack={() => setSelectedId(null)}
+        onChanged={reload}
+        onDeleted={() => {
+          setSelectedId(null);
+          reload();
+        }}
+      />
+    );
+  }
 
   const actions = (
     <div className="page-actions">
@@ -171,7 +192,18 @@ export function InstancesPage({ page }: InstancesPageProps) {
                 <Text className="muted instance-card-meta" size={200}>
                   Vanilla {instance.version} · 内存 {memoryLabel}
                 </Text>
-                <GameControls instance={instance} />
+                <div className="instance-card-actions">
+                  <GameControls instance={instance} />
+                  <Button
+                    appearance="subtle"
+                    size="small"
+                    icon={<Settings20Regular />}
+                    aria-label={`管理 ${instance.name}`}
+                    onClick={() => setSelectedId(instance.id)}
+                  >
+                    管理
+                  </Button>
+                </div>
               </div>
             </li>
           ))}

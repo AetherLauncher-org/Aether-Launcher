@@ -1616,3 +1616,107 @@
     grid-column: 1 / 2;
   }
 }
+
+/* ---- 实例管理页 ----------------------------------------------------------------------- */
+
+.instance-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.manage-tabs {
+  margin: 4px 0 16px;
+  overflow-x: auto;
+}
+
+.tab-count {
+  margin-left: 6px;
+  font-size: var(--fontSizeBase200);
+  color: var(--colorNeutralForeground3);
+}
+
+.manage-body,
+.manage-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.manage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.content-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.content-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: var(--borderRadiusMedium);
+}
+
+.content-row:hover {
+  background: var(--colorNeutralBackground1Hover);
+}
+
+.content-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.content-size {
+  min-width: 64px;
+  text-align: right;
+}
+
+.content-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.log-select {
+  min-width: 260px;
+  max-width: 100%;
+}
+
+.log-view {
+  max-height: 60vh;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--borderRadiusMedium);
+  background: var(--colorNeutralBackground2);
+  font-family: var(--fontFamilyMonospace);
+  font-size: var(--fontSizeBase200);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.danger-action {
+  background: var(--colorPaletteRedBackground3);
+  border-color: transparent;
+  color: var(--colorNeutralForegroundOnBrand);
+}
+
+.danger-action:hover:not(:disabled) {
+  background: var(--colorPaletteRedForeground1);
+  color: var(--colorNeutralForegroundOnBrand);
+}

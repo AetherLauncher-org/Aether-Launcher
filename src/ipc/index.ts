@@ -124,6 +124,29 @@ export type {
 export { gameStatus, startInstalledInstance, stopInstalledInstance } from "./launch";
 export type { GameRunStatus } from "./launch";
 
+// 实例管理：详情、改名、删除、内容文件夹、日志、打开文件夹
+export {
+  contentKinds,
+  deleteInstance,
+  getInstanceDetails,
+  listInstanceContent,
+  listInstanceLogs,
+  openInstanceFolder,
+  readInstanceLog,
+  removeContent,
+  renameInstance,
+  setModEnabled,
+} from "./manage";
+export type {
+  ContentCounts,
+  ContentItem,
+  ContentKind,
+  FolderTarget,
+  InstanceDetails,
+  LogContent,
+  LogEntry,
+} from "./manage";
+
 // 无边框窗口的控制
 export {
   closeWindow,
