@@ -30,15 +30,39 @@ const installLoader = vi.mocked(installModLoaderVersion);
 /** 四个加载器，故意不按固定顺序返回；Forge 和 Quilt 不可用。 */
 function choices(): ModLoaderChoice[] {
   return [
-    { kind: "fabric", label: "Fabric", available: true, reason: null, versions: ["0.16.9", "0.15.11"] },
-    { kind: "quilt", label: "Quilt", available: false, reason: "Quilt 还没有发布支持 1.21.1 的版本", versions: [] },
-    { kind: "forge", label: "Forge", available: false, reason: "这个版本只能用 NeoForge", versions: [] },
+    {
+      kind: "fabric",
+      label: "Fabric",
+      available: true,
+      reason: null,
+      versions: ["0.16.9", "0.15.11"],
+      companions: [
+        { label: "Fabric API", versions: ["0.116.6+1.21.1"], reason: null },
+      ],
+    },
+    {
+      kind: "quilt",
+      label: "Quilt",
+      available: false,
+      reason: "与 Fabric 不兼容",
+      versions: [],
+      companions: [],
+    },
+    {
+      kind: "forge",
+      label: "Forge",
+      available: false,
+      reason: "这个版本只能用 NeoForge",
+      versions: [],
+      companions: [],
+    },
     {
       kind: "neoforge",
       label: "NeoForge",
       available: true,
       reason: null,
       versions: ["21.1.72", "21.1.68", "21.1.60"],
+      companions: [],
     },
   ];
 }
@@ -83,9 +107,11 @@ describe("ModLoaderPicker", () => {
     expect(within(list).getByText("Quilt")).toBeInTheDocument();
 
     // 两个可用、两个写明原因
-    expect(within(list).getAllByText("可以添加")).toHaveLength(2);
+    // 还没选版本时，可用的行写「未选择版本」；选了版本这里就变成版本号。
+    expect(within(list).getAllByText("未选择版本")).toHaveLength(2);
     expect(await rowOf("Forge")).toHaveTextContent("这个版本只能用 NeoForge");
-    expect(await rowOf("Quilt")).toHaveTextContent("Quilt 还没有发布支持 1.21.1 的版本");
+    // 不兼容的原因由后端给，前端原样显示。
+    expect(await rowOf("Quilt")).toHaveTextContent("与 Fabric 不兼容");
     expect(listVersions).toHaveBeenCalledWith("1.21.1");
   });
 
@@ -98,7 +124,7 @@ describe("ModLoaderPicker", () => {
     expect(quilt).toHaveAttribute("data-available", "false");
     // 不可用的行没有展开状态，点了也不展开
     expect(quilt).not.toHaveAttribute("aria-expanded");
-    expect(quilt).toHaveTextContent("Quilt 还没有发布支持 1.21.1 的版本");
+    expect(quilt).toHaveTextContent("与 Fabric 不兼容");
 
     fireEvent.click(quilt);
 
@@ -139,6 +165,27 @@ describe("ModLoaderPicker", () => {
     expect(
       screen.getByText("将安装 Fabric 0.15.11：先装游戏本体，再装上加载器并新建一个实例。"),
     ).toBeInTheDocument();
+  });
+
+  it("shows the picked version on the row and lists Fabric API", async () => {
+    renderPicker();
+
+    await openLoader("Fabric");
+    const versions = await screen.findByRole("listbox", { name: "Fabric 版本" });
+    fireEvent.click(within(versions).getByRole("option", { name: /0\.15\.11/ }));
+
+    // 选中的版本要显示在行上（收起列表后也还在）。
+    // 选中的版本要显示在行上（列表里也有一份，所以查行本身）。
+    await waitFor(() => expect(screen.getByRole("button", { name: "Fabric" })).toHaveTextContent("0.15.11"));
+
+    // Fabric API 是随 Fabric 一起装的附属组件。
+    expect(screen.getByText("Fabric API")).toBeInTheDocument();
+    expect(screen.getByText("0.116.6+1.21.1")).toBeInTheDocument();
+    expect(screen.getByText("会一起装上")).toBeInTheDocument();
+
+    // 只有「最新」那个版本带标签，其它行不带。
+    expect(within(versions).getByText("最新")).toBeInTheDocument();
+    expect(within(versions).queryByText("可选")).not.toBeInTheDocument();
   });
 
   it("installs the chosen loader and reports the new instance", async () => {

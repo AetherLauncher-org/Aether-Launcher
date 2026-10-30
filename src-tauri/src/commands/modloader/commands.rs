@@ -16,6 +16,26 @@ pub struct ModLoaderChoiceInfo {
     pub available: bool,
     pub reason: Option<String>,
     pub versions: Vec<String>,
+    pub companions: Vec<ModLoaderCompanionInfo>,
+}
+
+/// 跟着加载器一起装的附属组件。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModLoaderCompanionInfo {
+    pub label: String,
+    pub versions: Vec<String>,
+    pub reason: Option<String>,
+}
+
+impl From<super::ModLoaderCompanion> for ModLoaderCompanionInfo {
+    fn from(companion: super::ModLoaderCompanion) -> Self {
+        Self {
+            label: companion.label,
+            versions: companion.versions,
+            reason: companion.reason,
+        }
+    }
 }
 
 impl From<super::ModLoaderChoice> for ModLoaderChoiceInfo {
@@ -26,6 +46,11 @@ impl From<super::ModLoaderChoice> for ModLoaderChoiceInfo {
             available: choice.available,
             reason: choice.reason,
             versions: choice.versions,
+            companions: choice
+                .companions
+                .into_iter()
+                .map(ModLoaderCompanionInfo::from)
+                .collect(),
         }
     }
 }

@@ -35,6 +35,16 @@ declare module "./call" {
   }
 }
 
+/** 跟着加载器一起装的附属组件，例如 Fabric API。 */
+export type ModLoaderCompanion = {
+  /** 给人看的名字，例如 `Fabric API`。 */
+  label: string;
+  /** 匹配当前游戏版本的版本号，最新的在前。 */
+  versions: string[];
+  /** 读不到版本时的原因；`null` 表示列表正常。 */
+  reason: string | null;
+};
+
 /** 一个加载器对某个游戏版本的可用情况。 */
 export type ModLoaderChoice = {
   kind: ModLoaderKind;
@@ -45,6 +55,8 @@ export type ModLoaderChoice = {
   reason: string | null;
   /** 可选的加载器版本，最新的在前。 */
   versions: string[];
+  /** 会连带装上的附属组件。目前只有 Fabric 的 Fabric API。 */
+  companions: ModLoaderCompanion[];
 };
 
 /**

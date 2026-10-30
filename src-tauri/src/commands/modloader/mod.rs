@@ -8,11 +8,14 @@ pub mod commands;
 pub(super) mod execute;
 mod fetch;
 
-use aether_modloader::transport::MetaSource;
+use aether_modloader::transport::{MetaFetcher, MetaSource};
 use aether_modloader::{ModLoaderKind, fabric, forge, neoforge};
 use serde::Serialize;
 
 pub use fetch::HttpMetaFetcher;
+
+/// Fabric API 在 Modrinth 上的 project slug。
+const FABRIC_API_PROJECT: &str = "fabric-api";
 
 /// 一个加载器在某个游戏版本下的可用情况。
 #[derive(Debug, Clone, Serialize)]
@@ -27,6 +30,23 @@ pub struct ModLoaderChoice {
     pub reason: Option<String>,
     /// 可选的加载器版本，最新的排在前面。
     pub versions: Vec<String>,
+    /// 会连带装上的附属组件。目前只有 Fabric 的 Fabric API。
+    ///
+    /// 有了这个字段，前端在选择 Fabric 时就能直接看到 Fabric API 的版本，
+    /// 不用等用户自己想起来还要另装一个。
+    pub companions: Vec<ModLoaderCompanion>,
+}
+
+/// 跟着加载器一起装的附属组件。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModLoaderCompanion {
+    /// 给人看的名字，例如 `Fabric API`。
+    pub label: String,
+    /// 匹配当前游戏版本的版本号，最新的在前。
+    pub versions: Vec<String>,
+    /// 读不到版本时的原因；`None` 表示列表正常。
+    pub reason: Option<String>,
 }
 
 /// 拉取四个加载器对某个游戏版本的可用版本。
@@ -40,15 +60,21 @@ pub fn list_modloader_choices(game_version: &str) -> Vec<ModLoaderChoice> {
     choices.push({
         let source = MetaSource::new(fabric::DEFAULT_META_BASE, HttpMetaFetcher::new());
         match fabric::fetch_loader_versions(&source, game_version) {
-            Ok(list) => ModLoaderChoice {
-                kind: "fabric".to_owned(),
-                label: "Fabric".to_owned(),
-                available: !list.is_empty(),
-                reason: list
-                    .is_empty()
-                    .then(|| format!("Fabric 没有支持 {game_version} 的加载器版本")),
-                versions: list.into_iter().map(|entry| entry.loader_version).collect(),
-            },
+            Ok(list) => {
+                let versions: Vec<String> =
+                    list.into_iter().map(|entry| entry.loader_version).collect();
+                ModLoaderChoice {
+                    kind: "fabric".to_owned(),
+                    label: "Fabric".to_owned(),
+                    available: !versions.is_empty(),
+                    reason: versions
+                        .is_empty()
+                        .then(|| format!("Fabric 没有支持 {game_version} 的加载器版本")),
+                    versions,
+                    // Fabric API 是绝大多数 Fabric 模组的硬依赖，装上加载器就该一起装。
+                    companions: vec![fabric_api_companion(game_version)],
+                }
+            }
             Err(error) => unavailable("fabric", "Fabric", error),
         }
     });
@@ -60,6 +86,7 @@ pub fn list_modloader_choices(game_version: &str) -> Vec<ModLoaderChoice> {
         available: false,
         reason: Some("Quilt 的元数据接口还没接入".to_owned()),
         versions: Vec::new(),
+        companions: Vec::new(),
     });
 
     // Forge：官方 maven 的 metadata 列出全部版本，按游戏版本前缀筛。
@@ -80,6 +107,7 @@ pub fn list_modloader_choices(game_version: &str) -> Vec<ModLoaderChoice> {
                         .is_empty()
                         .then(|| format!("Forge 没有支持 {game_version} 的版本")),
                     versions,
+                    companions: Vec::new(),
                 }
             }
             Err(error) => unavailable("forge", "Forge", error),
@@ -104,13 +132,122 @@ pub fn list_modloader_choices(game_version: &str) -> Vec<ModLoaderChoice> {
                         .is_empty()
                         .then(|| format!("NeoForge 没有支持 {game_version} 的版本")),
                     versions,
+                    companions: Vec::new(),
                 }
             }
             Err(error) => unavailable("neoforge", "NeoForge", error),
         }
     });
 
+    mark_incompatible(&mut choices);
     choices
+}
+
+/// 能在同一个版本上共存的加载器只有一组：Forge 和 NeoForge 二选一，Fabric 和
+/// Quilt 二选一（Quilt 自己就是 Fabric 的续作）。跨组之间互斥。
+///
+/// 这里是**静态规则**，不依赖网络，所以每个加载器各自失败也不影响判断。
+fn loader_family(kind: &str) -> &'static str {
+    match kind {
+        "forge" | "neoforge" => "forge",
+        "fabric" | "quilt" => "fabric",
+        _ => "other",
+    }
+}
+
+/// 给已经在列表里的加载器补上「与 X 不兼容」的说明。
+///
+/// 只在对方**确实可装**时才说：如果 Forge 在这个版本根本装不了，写「与 Forge 不兼容」
+/// 就没有意义，用户也点不了。
+fn mark_incompatible(choices: &mut [ModLoaderChoice]) {
+    let installable: Vec<(String, String)> = choices
+        .iter()
+        .filter(|choice| choice.available)
+        .map(|choice| (choice.kind.clone(), choice.label.clone()))
+        .collect();
+
+    for choice in choices.iter_mut() {
+        if !choice.available {
+            continue;
+        }
+        let family = loader_family(&choice.kind);
+        let clash = installable
+            .iter()
+            .find(|(kind, _)| *kind != choice.kind && loader_family(kind) != family);
+        if let Some((_, label)) = clash {
+            choice.reason = Some(format!("与 {label} 不兼容"));
+        }
+    }
+}
+
+/// 读 Fabric API 对某个游戏版本的版本列表。
+///
+/// 走 Modrinth 的公开接口（`https://api.modrinth.com/v2/...`），按游戏版本和
+/// `fabric` 加载器筛选。读不到不算错误：`reason` 里写原因，界面照常显示，用户
+/// 自己去下载就行。
+fn fabric_api_companion(game_version: &str) -> ModLoaderCompanion {
+    let label = "Fabric API".to_owned();
+    match fetch_modrinth_versions(FABRIC_API_PROJECT, game_version, "fabric") {
+        Ok(versions) if !versions.is_empty() => ModLoaderCompanion {
+            label,
+            versions,
+            reason: None,
+        },
+        Ok(_) => ModLoaderCompanion {
+            label,
+            versions: Vec::new(),
+            reason: Some(format!("Fabric API 没有支持 {game_version} 的版本")),
+        },
+        Err(reason) => ModLoaderCompanion {
+            label,
+            versions: Vec::new(),
+            reason: Some(reason),
+        },
+    }
+}
+
+/// Modrinth 的公开 v2 接口。
+const MODRINTH_API_BASE: &str = "https://api.modrinth.com/v2";
+
+/// 从 Modrinth 读某个 project 对 `game_version` + `loader` 的版本号，最新的在前。
+fn fetch_modrinth_versions(
+    project: &str,
+    game_version: &str,
+    loader: &str,
+) -> Result<Vec<String>, String> {
+    let url = format!("{MODRINTH_API_BASE}/project/{project}/version");
+    let body = HttpMetaFetcher::new()
+        .fetch_text(&url)
+        .map_err(|error| format!("读取 {project} 版本失败：{error}"))?;
+
+    let parsed: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|error| format!("{project} 的版本列表不是合法 JSON：{error}"))?;
+    let entries = parsed
+        .as_array()
+        .ok_or_else(|| format!("{project} 的版本列表不是数组"))?;
+
+    let mut versions = Vec::new();
+    for entry in entries {
+        let matches_game = entry
+            .get("game_versions")
+            .and_then(|value| value.as_array())
+            .is_some_and(|list| list.iter().any(|item| item.as_str() == Some(game_version)));
+        let matches_loader = entry
+            .get("loaders")
+            .and_then(|value| value.as_array())
+            .is_some_and(|list| list.iter().any(|item| item.as_str() == Some(loader)));
+        if !matches_game || !matches_loader {
+            continue;
+        }
+        if let Some(version) = entry.get("version_number").and_then(|value| value.as_str()) {
+            versions.push(version.to_owned());
+        }
+    }
+
+    // Modrinth 默认按「最近发布」排，不是按版本号；这里只保证最新的排在最前，
+    // 与其它加载器的列表语义一致，不做严格的 semver 比较。
+    versions.reverse();
+    Ok(versions)
 }
 
 fn unavailable(kind: &str, label: &str, error: impl std::fmt::Display) -> ModLoaderChoice {
@@ -120,6 +257,7 @@ fn unavailable(kind: &str, label: &str, error: impl std::fmt::Display) -> ModLoa
         available: false,
         reason: Some(format!("读取官方元数据失败：{error}")),
         versions: Vec::new(),
+        companions: Vec::new(),
     }
 }
 
@@ -132,5 +270,65 @@ pub fn parse_kind(kind: &str) -> Option<ModLoaderKind> {
         "neoforge" => Some(ModLoaderKind::NeoForge),
         "quilt" => Some(ModLoaderKind::Quilt),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn choice(kind: &str, label: &str, available: bool) -> ModLoaderChoice {
+        ModLoaderChoice {
+            kind: kind.to_owned(),
+            label: label.to_owned(),
+            available,
+            reason: None,
+            versions: if available {
+                vec!["1.0".to_owned()]
+            } else {
+                Vec::new()
+            },
+            companions: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn fabric_and_forge_are_each_other_s_incompatible() {
+        let mut choices = vec![
+            choice("forge", "Forge", true),
+            choice("fabric", "Fabric", true),
+        ];
+        mark_incompatible(&mut choices);
+
+        assert_eq!(choices[0].reason.as_deref(), Some("与 Fabric 不兼容"));
+        assert_eq!(choices[1].reason.as_deref(), Some("与 Forge 不兼容"));
+    }
+
+    #[test]
+    fn forge_and_neoforge_do_not_clash_with_each_other() {
+        // 同一族里二选一，不该互相标成不兼容。
+        let mut choices = vec![
+            choice("forge", "Forge", true),
+            choice("neoforge", "NeoForge", true),
+            choice("fabric", "Fabric", false),
+        ];
+        mark_incompatible(&mut choices);
+
+        // 只有 Fabric 不可用时，Forge 一族的 reason 仍然是 None。
+        assert_eq!(choices[0].reason, None);
+        assert_eq!(choices[1].reason, None);
+    }
+
+    #[test]
+    fn an_unavailable_loader_is_not_blamed_for_a_conflict() {
+        // Fabric 只是读取失败（不可装），不该让 Forge 背上「与 Fabric 不兼容」。
+        let mut choices = vec![
+            choice("forge", "Forge", true),
+            choice("fabric", "Fabric", false),
+        ];
+        mark_incompatible(&mut choices);
+
+        assert_eq!(choices[0].reason, None);
+        assert_eq!(choices[1].reason, None);
     }
 }

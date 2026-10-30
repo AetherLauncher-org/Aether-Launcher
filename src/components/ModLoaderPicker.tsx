@@ -2,7 +2,6 @@ import { Button, Text, Tooltip } from "@fluentui/react-components";
 import {
   ArrowDownload20Regular,
   CheckmarkCircle20Filled,
-  ChevronDown20Regular,
   ChevronRight16Regular,
   Warning16Filled,
 } from "@fluentui/react-icons";
@@ -45,23 +44,29 @@ type DownloadState =
 
 const idle: DownloadState = { status: "idle" };
 
-/** 中间那段状态文字：可用就提示「可以添加」，不可用直接写原因。 */
-function describeChoice(choice: ModLoaderChoice): string {
+/**
+ * 中间那段状态文字。
+ *
+ * 可用且已经选了版本时直接显示选中的版本号 —— 这也是「选了显示在上面」的意思：
+ * 收起列表以后，行上写的仍然是你要装的那个版本，不用再展开去找。
+ */
+function describeChoice(choice: ModLoaderChoice, selected: string | undefined): string {
   if (!choice.available) {
     return choice.reason ?? "暂不可用";
   }
   if (choice.versions.length === 0) {
     return "没有可选的版本";
   }
-  return "可以添加";
+  return selected ?? "未选择版本";
 }
 
-/** 列表里每个版本右边的标签。 */
-function describeVersion(choice: ModLoaderChoice, version: string): string {
-  if (choice.versions[0] === version) {
-    return "最新";
-  }
-  return "可选";
+/**
+ * 列表里每个版本右边的标签。
+ *
+ * 只标「最新」：其余行再写「可选」没有信息量，列表本来就是可选的。
+ */
+function describeVersion(choice: ModLoaderChoice, version: string): string | null {
+  return choice.versions[0] === version ? "最新" : null;
 }
 
 export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerProps) {
@@ -156,11 +161,6 @@ export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerPro
           {gameVersion}
         </Text>
       </div>
-      <Text className="muted" size={200}>
-        给这个版本加上 Forge、NeoForge、Fabric 或 Quilt。加载器版本和下载地址都来自各自的官方接口，
-        下载后会校验哈希。
-      </Text>
-
       {!desktop ? (
         <Text className="muted modloader-note" role="note">
           需要桌面版：浏览器预览拿不到模组加载器列表。
@@ -192,7 +192,13 @@ export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerPro
                 data-band={choice.kind}
               >
                 <Tooltip
-                  content={choice.available ? `为 ${gameVersion} 添加 ${choice.label}` : describeChoice(choice)}
+                  content={
+                    choice.available
+                      ? selected === undefined
+                        ? `为 ${gameVersion} 添加 ${choice.label}`
+                        : `${choice.label} ${selected}`
+                      : describeChoice(choice, selected)
+                  }
                   relationship="description"
                   withArrow
                   positioning="above-start"
@@ -213,11 +219,16 @@ export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerPro
                     </span>
                     <span className="modloader-status">
                       {choice.available && choice.versions.length > 0 ? (
-                        <CheckmarkCircle20Filled className="modloader-status-icon" aria-hidden="true" />
+                        <CheckmarkCircle20Filled
+                          className="modloader-status-icon"
+                          aria-hidden="true"
+                        />
                       ) : (
                         <Warning16Filled className="modloader-status-icon" aria-hidden="true" />
                       )}
-                      <span className="modloader-status-text">{describeChoice(choice)}</span>
+                      <span className="modloader-status-text">
+                        {describeChoice(choice, selected)}
+                      </span>
                     </span>
                     {choice.available ? (
                       <ChevronRight16Regular
@@ -255,15 +266,34 @@ export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerPro
                                   onClick={() => pick(choice.kind, version)}
                                 >
                                   <span className="modloader-version-label">{version}</span>
-                                  <span className="modloader-version-tag">
-                                    {describeVersion(choice, version)}
-                                  </span>
+                                  {describeVersion(choice, version) === null ? null : (
+                                    <span className="modloader-version-tag">
+                                      {describeVersion(choice, version)}
+                                    </span>
+                                  )}
                                 </button>
                               </li>
                             );
                           })}
                         </ul>
 
+                        {choice.companions.map((companion) => (
+                          <div className="modloader-companion" key={companion.label}>
+                            <span className="modloader-companion-name">{companion.label}</span>
+                            {companion.versions.length > 0 ? (
+                              <>
+                                <span className="modloader-companion-version">
+                                  {companion.versions[0]}
+                                </span>
+                                <span className="modloader-companion-note">会一起装上</span>
+                              </>
+                            ) : (
+                              <span className="modloader-companion-note">
+                                {companion.reason ?? "读不到版本"}
+                              </span>
+                            )}
+                          </div>
+                        ))}
                         <div className="modloader-actions">
                           <Button
                             appearance="primary"
@@ -308,13 +338,6 @@ export function ModLoaderPicker({ gameVersion, onInstalled }: ModLoaderPickerPro
           })}
         </ul>
       )}
-
-      {desktop && !loading && choices.length > 0 ? (
-        <Text className="muted modloader-note" size={200}>
-          <ChevronDown20Regular aria-hidden="true" className="modloader-note-icon" />
-          点一行展开它的版本；灰色的是这个游戏版本装不了的加载器。
-        </Text>
-      ) : null}
     </section>
   );
 }

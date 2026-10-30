@@ -1500,6 +1500,29 @@
   color: var(--colorBrandForeground1);
 }
 
+/* Fabric API 这类会跟着装上的附属组件。 */
+.modloader-companion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--borderRadiusMedium);
+  background: var(--colorNeutralBackground3);
+}
+
+.modloader-companion-name {
+  font-weight: 600;
+}
+
+.modloader-companion-version {
+  font-variant-numeric: tabular-nums;
+}
+
+.modloader-companion-note {
+  font-size: 12px;
+  color: var(--colorNeutralForeground3);
+}
 .modloader-actions {
   display: flex;
   flex-wrap: wrap;

@@ -139,6 +139,7 @@ export {
 } from "./modloader";
 export type {
   ModLoaderChoice,
+  ModLoaderCompanion,
   ModLoaderInstallResult,
   ModLoaderKind,
 } from "./modloader";
