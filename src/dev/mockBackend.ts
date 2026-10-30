@@ -319,7 +319,7 @@ async function importVersions(token: string, ids: string[]): Promise<ImportResul
 async function handle(command: string, args: Args): Promise<unknown> {
   switch (command) {
     case "application_info":
-      return { name: "Aether Launcher", version: "0.1.0-mock", coreStatus: "mock backend" };
+      return { name: "Aether Launcher", version: "0.1.0", coreStatus: "mock backend" };
     case "list_java_runtimes":
       return javaRuntimes;
     case "system_memory":

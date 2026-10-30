@@ -22,11 +22,27 @@ const useStyles = makeStyles({
   },
   hero: {
     display: "grid",
-    rowGap: space.l,
-    justifyItems: "start",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    alignItems: "center",
+    columnGap: space.xxl,
+    rowGap: space.xl,
     paddingTop: space.page,
+    [screen.tablet]: { gridTemplateColumns: "minmax(0, 1fr)" },
   },
+  heroText: { display: "grid", rowGap: space.l, justifyItems: "start" },
   heroLogo: { width: sizes.heroLogo, height: sizes.heroLogo },
+  // A real screenshot of the launcher, in the same solid, bordered panel as a card.
+  shot: {
+    display: "block",
+    width: "100%",
+    height: "auto",
+    padding: space.s,
+    backgroundColor: tokens.colorNeutralBackground1,
+    border: `${sizes.hairline} solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusXLarge,
+    boxSizing: "border-box",
+  },
+  shotImage: { display: "block", width: "100%", height: "auto", borderRadius: tokens.borderRadiusLarge },
   lead: { maxWidth: widths.prose, color: tokens.colorNeutralForeground2 },
   actions: { display: "flex", flexWrap: "wrap", columnGap: space.m, rowGap: space.m },
   caption: { color: tokens.colorNeutralForeground3 },
@@ -81,6 +97,7 @@ type Step = { tone: "done" | "wip" | "todo"; label: string; name: string; detail
 
 type Copy = {
   status: string;
+  shotAlt: string;
   lead: string;
   primary: string;
   secondary: string;
@@ -94,6 +111,7 @@ type Copy = {
 
 const en: Copy = {
   status: "Early development: no public release yet.",
+  shotAlt: "The Aether Launcher home screen: the instance to continue, the current account and the Java runtimes. The interface is currently in Chinese.",
   lead: "A transparent, resilient Minecraft: Java Edition launcher built with Rust, Tauri 2 and Fluent 2.",
   primary: "View on GitHub",
   secondary: "Read the security model",
@@ -144,6 +162,7 @@ const en: Copy = {
 
 const zh: Copy = {
   status: "早期开发中：暂无公开发行版。",
+  shotAlt: "Aether Launcher 的主页：继续游戏的实例、当前账户和 Java 运行时。",
   lead: "一个透明、可靠的 Minecraft Java 版启动器，使用 Rust、Tauri 2 和 Fluent 2 构建。",
   primary: "在 GitHub 查看",
   secondary: "阅读安全模型",
@@ -206,6 +225,7 @@ export function Home({ lang }: { lang: Lang }) {
   return (
     <div className={styles.container}>
       <section className={styles.hero}>
+        <div className={styles.heroText}>
         <img className={styles.heroLogo} src="/logo.svg" alt="" width={56} height={56} />
         <Text as="h1" size={textSize.title} weight="semibold">
           Aether Launcher
@@ -222,6 +242,11 @@ export function Home({ lang }: { lang: Lang }) {
         <Text size={textSize.ui} className={styles.caption}>
           {copy.status}
         </Text>
+        </div>
+        <picture className={styles.shot}>
+          <source media="(prefers-color-scheme: dark)" srcSet="/launcher-dark.webp" />
+          <img className={styles.shotImage} src="/launcher-light.webp" alt={copy.shotAlt} width={2360} height={1520} />
+        </picture>
       </section>
 
       <section className={styles.section} aria-labelledby="features">

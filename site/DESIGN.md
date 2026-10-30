@@ -7,7 +7,7 @@ The goal is calm: one background, one accent, one rhythm. If something looks lou
 ## Colour
 
 - **Theme:** Fluent's stock `webLightTheme` / `webDarkTheme`, following the system. We do not make up a brand ramp for the site; Fluent's own is calibrated for contrast.
-- **Backdrop:** a deep navy (dark) or pale blue-grey (light) fill with one **original** SVG per theme (`public/backdrop-*.svg`): a few large, soft, low-contrast planes with a faint edge line and a handful of tiny stars. It is fixed behind the page and never carries text. The two backdrop colours in `tokens.ts` are the only hand-written colours.
+- **Backdrop:** a deep navy (dark) or pale blue-grey (light) fill with one **original** SVG per theme (public/backdrop-*.svg): four large, heavily blurred colour clouds, with no edges, lines or stars. It is fixed behind the whole page, header included, and never carries text. The two backdrop colours in tokens.ts are the only hand-written colours.
 - **Surfaces:** everything that carries text is a **solid** Fluent surface (`colorNeutralBackground1`) with a 1px `colorNeutralStroke2` border and a large radius: every card, the status list and each prose page. The header is the exception: it is transparent, so the backdrop runs behind it. No translucency, blur or shadow on a surface.
 - **Text:** `colorNeutralForeground1` for headings and body, `colorNeutralForeground2` for leads and secondary text, `colorNeutralForeground3` for captions and dates. Text that sits directly on the backdrop (the home hero, section headings, the footer) uses these same tokens.
 - **Accent:** `colorBrand*` only on the primary button, links and the current-page underline. Nowhere else.
@@ -52,7 +52,7 @@ Prose is capped at 720px, which is about 70 characters, so lines stay readable.
 - One container, **960px** wide, centred, with the gutter above. Prose pages use a 720px column inside it.
 - The header is 56px tall, transparent, with no border. The logo and name on the left; links on the right.
 - Cards sit on a strict grid: three columns from 880px up, two from 600px, one below. All cards in a row are the same height.
-- Content is left aligned. Nothing floats on the right to fill space.
+- Text is left aligned. The home hero is two equal columns: the title, lead and buttons on the left, and a real screenshot of the launcher on the right in a solid, bordered panel (one image per theme, switched by the system setting). Below 880px they stack. Nothing decorative fills space.
 
 ## Motion
 

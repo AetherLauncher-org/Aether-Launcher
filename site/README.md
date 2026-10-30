@@ -27,6 +27,10 @@ npx wrangler pages deploy site/dist --project-name aether-launcher --branch main
 - With no `404.html`, Cloudflare Pages serves `index.html` for every unknown path, which is what the client-side router relies on.
 - The canonical origin is `https://launcher.abnt.it` (`siteOrigin` in `src/router.ts`, `public/sitemap.xml`, `public/robots.txt`). Attach it under Workers & Pages, then `aether-launcher`, then Custom domains.
 
+## Screenshots
+
+`public/launcher-dark.webp` and `launcher-light.webp` are real captures of the launcher's interface, taken from the dev server running against its mock backend (`src/dev/mockBackend.ts`), so the instance names and the account in them are sample data. They are 1180 by 760 at 2x. Retake them when the interface changes noticeably: run `npm run dev -- --port 5192`, open it in a 1180 by 760 window in each theme (`localStorage["aether.theme"]` is `dark` or `light`), remove the "mock data" chip, and save as WebP. The launcher's interface is currently in Chinese only, which the alt text says.
+
 ## Keeping it honest
 
 Everything on the site must match the launcher. When behaviour changes, update the status list in `src/pages/Home.tsx`, the network table in `src/pages/Privacy.tsx` and the rules in `src/pages/Security.tsx`, and bump `lastUpdated` in `src/router.ts`. The English and Chinese copy are written side by side in each page file; change both.
