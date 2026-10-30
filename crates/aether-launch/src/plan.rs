@@ -71,16 +71,25 @@ const SCRATCH_PROPERTIES: [&str; 3] = [
     "-Dio.netty.native.workdir=",
 ];
 
-/// Points a scratch property that targets the natives directory at `scratch` instead.
+/// Points a scratch property that targets the natives directory, or a folder below it
+/// (newer versions write `${natives_directory}/jna`), at `scratch` instead.
 ///
 /// The natives directory is verified byte for byte against its source JARs before every
 /// launch and must hold nothing else, so the game must not write into it. Left alone, the
 /// first launch leaves `jna/jna<digits>.dll` behind and the second one refuses to start.
 /// `-Djava.library.path`, which only reads, keeps the verified directory.
-fn redirect_scratch(argument: String, natives: &str, scratch: &str) -> String {
+fn redirect_scratch(argument: String, natives: &Path, scratch: &Path) -> String {
     for property in SCRATCH_PROPERTIES {
-        if argument.strip_prefix(property) == Some(natives) {
-            return format!("{property}{scratch}");
+        let Some(value) = argument.strip_prefix(property) else {
+            continue;
+        };
+        if let Ok(rest) = Path::new(value).strip_prefix(natives) {
+            let target = if rest.as_os_str().is_empty() {
+                scratch.to_path_buf()
+            } else {
+                scratch.join(rest)
+            };
+            return format!("{property}{}", target.display());
         }
     }
     argument
@@ -118,18 +127,21 @@ pub fn build_launch_plan(
 
     let mut library_jars = Vec::new();
     for library in manifest.active_libraries(environment) {
-        // Classified native JARs contribute extracted binaries, not Java
-        // classes. Their verification and installation is the coordinator's
-        // responsibility; never add them to the classpath.
-        if library
+        // A native JAR for another platform is never downloaded, so it has no place on the
+        // classpath. One for this platform stays: the game's LWJGL loads its libraries out of
+        // these JARs itself (modern versions point `java.library.path` at a directory that
+        // does not exist), exactly as with the official launcher. Their binaries are also
+        // extracted and verified separately by the coordinator.
+        let foreign_native = library
             .name
             .split('@')
             .next()
             .unwrap_or("")
             .split(':')
             .nth(3)
-            .is_some_and(|classifier| classifier.starts_with("natives-"))
-        {
+            .filter(|classifier| classifier.starts_with("natives-"))
+            .is_some_and(|classifier| !crate::native::classifier_applies(classifier, environment));
+        if foreign_native {
             continue;
         }
         let relative = library_path(library)?;
@@ -193,18 +205,13 @@ pub fn build_launch_plan(
         .iter()
         .any(|arg| matches!(arg.as_str(), "-cp" | "-classpath" | "--class-path"));
 
-    let natives_text = variables
-        .get("natives_directory")
-        .cloned()
-        .unwrap_or_default();
-    let scratch_text = scratch_directory(&options.working_directory)
-        .to_string_lossy()
-        .into_owned();
+    let natives_path = plain_path(&options.natives_directory);
+    let scratch_path = scratch_directory(&options.working_directory);
 
     let mut arguments = vec![format!("-Xmx{}m", request.memory_mib)];
     for arg in jvm {
         let expanded = substitute(&arg, &variables)?;
-        arguments.push(redirect_scratch(expanded, &natives_text, &scratch_text));
+        arguments.push(redirect_scratch(expanded, &natives_path, &scratch_path));
     }
     if !classpath_provided {
         arguments.extend(["-cp".to_owned(), classpath]);

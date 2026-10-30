@@ -196,7 +196,7 @@ fn expand_native_architecture(
     Ok(template.replace("${arch}", bits))
 }
 
-fn classifier_applies(classifier: &str, environment: &Environment) -> bool {
+pub(crate) fn classifier_applies(classifier: &str, environment: &Environment) -> bool {
     let platform = match environment.os_name.as_str() {
         "windows" => "natives-windows",
         "linux" => "natives-linux",

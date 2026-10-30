@@ -253,13 +253,19 @@ fn rejects_path_traversal_and_missing_libraries() {
 }
 
 #[test]
-fn omits_native_classifier_jars_from_classpath_after_preparation() {
+fn keeps_only_this_platforms_native_jars_on_the_classpath() {
     let f = Fixture::new();
+    f.library("org/lwjgl/lwjgl/3.3/lwjgl-3.3-natives-windows.jar");
     let manifest = parse_version_manifest(
         r#"{
         "id":"v","mainClass":"Main",
         "javaVersion":{"component":"delta","majorVersion":21},
-        "libraries":[{"name":"org.lwjgl:lwjgl:3.3:natives-windows"}],"arguments":{}
+        "libraries":[
+            {"name":"org.lwjgl:lwjgl:3.3:natives-windows","downloads":{"artifact":{
+                "path":"org/lwjgl/lwjgl/3.3/lwjgl-3.3-natives-windows.jar",
+                "sha1":"x","size":1,"url":"x"}}},
+            {"name":"org.lwjgl:lwjgl:3.3:natives-linux"}
+        ],"arguments":{"jvm":["-cp","${classpath}"],"game":[]}
     }"#,
     )
     .unwrap();
@@ -271,12 +277,9 @@ fn omits_native_classifier_jars_from_classpath_after_preparation() {
         &f.options,
     )
     .unwrap();
-    assert!(
-        !plan
-            .arguments
-            .iter()
-            .any(|arg| arg.contains("natives-windows"))
-    );
+    let classpath = &plan.arguments[2];
+    assert!(classpath.contains("lwjgl-3.3-natives-windows.jar"));
+    assert!(!classpath.contains("natives-linux"));
 }
 
 #[cfg(unix)]
@@ -330,7 +333,8 @@ fn keeps_the_game_from_writing_scratch_files_into_the_natives_directory() {
             "-Djna.tmpdir=${natives_directory}",
             "-Dorg.lwjgl.system.SharedLibraryExtractPath=${natives_directory}",
             "-Dio.netty.native.workdir=${natives_directory}",
-            "-Djna.tmpdir=${game_directory}"
+            "-Djna.tmpdir=${game_directory}",
+            "-Djna.tmpdir=${natives_directory}/jna"
         ],"game":[]}
     }"#,
     )
@@ -370,5 +374,10 @@ fn keeps_the_game_from_writing_scratch_files_into_the_natives_directory() {
     assert_eq!(
         plan.arguments[5],
         format!("-Djna.tmpdir={}", f.options.working_directory.display())
+    );
+    // Newer versions name a folder below the natives directory; it moves too.
+    assert_eq!(
+        plan.arguments[6],
+        format!("-Djna.tmpdir={}", scratch.join("jna").display())
     );
 }
