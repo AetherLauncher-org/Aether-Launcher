@@ -65,6 +65,10 @@ impl JavaRuntime {
 /// allocate a console for it. `CREATE_NO_WINDOW` asks for one that stays
 /// invisible; it has no effect on other platforms.
 pub fn hidden_command(program: &Path) -> Command {
+    // `mut` 只有 Windows 分支用得到（`creation_flags` 需要 `&mut self`）。
+    // 其他平台上这段代码被 cfg 掉，clippy 会报 `unused_mut` —— 不能简单删掉
+    // `mut`，那样 Windows 上就编译不过了。
+    #[allow(unused_mut)]
     let mut command = Command::new(program);
     #[cfg(target_os = "windows")]
     {
