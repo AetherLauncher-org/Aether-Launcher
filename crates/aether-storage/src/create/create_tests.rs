@@ -123,7 +123,7 @@ fn create_persists_the_requested_instance() {
 }
 
 #[test]
-fn create_builds_an_empty_minecraft_directory() {
+fn create_builds_the_minecraft_directory_with_default_options() {
     let temp = TempDir::new("skeleton");
 
     let instance =
@@ -131,15 +131,47 @@ fn create_builds_an_empty_minecraft_directory() {
 
     let minecraft = instance.root.join("minecraft");
     assert!(minecraft.is_dir(), "minecraft/ should be a directory");
+    // 全新实例只放一个 options.txt：跳过辅助功能向导、直接进中文。
     assert_eq!(
         entries(&minecraft),
-        Vec::<String>::new(),
-        "minecraft/ should be created empty"
+        ["options.txt".to_owned()],
+        "minecraft/ should hold the default options only"
     );
+    let options = std::fs::read_to_string(minecraft.join("options.txt")).expect("options.txt");
+    assert!(options.contains("lang:zh_cn"), "unexpected: {options}");
+    assert!(options.contains("onboardAccessibility:false"));
     assert_eq!(
         entries(&instance.root),
         ["instance.json".to_owned(), "minecraft".to_owned()],
         "the instance directory should hold the record and the skeleton only"
+    );
+}
+
+#[test]
+fn a_new_instance_keeps_language_case_for_old_versions() {
+    let temp = TempDir::new("old-version");
+
+    // 1.10 及更早只认大写的 zh_CN。
+    let old = create_instance(temp.path(), "Old", "1.10.2").expect("creation should succeed");
+    let options =
+        std::fs::read_to_string(old.root.join("minecraft").join("options.txt")).expect("options");
+    assert!(options.contains("lang:zh_CN"), "unexpected: {options}");
+}
+
+#[test]
+fn create_does_not_overwrite_an_existing_options_file() {
+    let temp = TempDir::new("existing-options");
+
+    // 整合包常常自带 options.txt，不能被启动器的默认值覆盖。
+    let first = create_instance(temp.path(), "First", "1.21.1").expect("creation should succeed");
+    let minecraft = first.root.join("minecraft");
+    let options = minecraft.join("options.txt");
+    std::fs::write(&options, "lang:en_us\n").expect("write");
+
+    super::write_default_options(&minecraft, "1.21.1").expect("writing should succeed");
+    assert_eq!(
+        std::fs::read_to_string(&options).expect("read"),
+        "lang:en_us\n"
     );
 }
 

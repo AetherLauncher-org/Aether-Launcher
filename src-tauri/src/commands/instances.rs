@@ -15,7 +15,7 @@ use tauri::Manager;
 ///
 /// Every type that crosses the IPC boundary must be public: Tauri generates a
 /// wrapper whose signature mentions it.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstanceSummary {
     id: String,
@@ -32,6 +32,15 @@ impl InstanceSummary {
             version: instance.version.as_str().to_owned(),
             state: instance_state_label(&instance.state),
         }
+    }
+}
+
+impl InstanceSummary {
+    /// 新实例的 id。测试里用它找回刚建好的实例目录，不该按名字回查：
+    /// 撞上同名实例会找错对象。
+    #[cfg(test)]
+    pub(super) fn id(&self) -> &str {
+        &self.id
     }
 }
 

@@ -17,4 +17,5 @@ pub mod instances;
 pub mod java;
 pub mod launch;
 pub mod microsoft;
+pub mod modloader;
 pub mod vanilla;

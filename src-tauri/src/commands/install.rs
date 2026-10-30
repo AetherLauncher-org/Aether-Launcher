@@ -47,6 +47,32 @@ pub enum Stage {
     Files,
     Assets,
     Finalize,
+    /// 模组加载器安装：下载 installer / 运行 installer / 写版本文件。
+    ///
+    /// 加载器安装没有可以提前算出的字节数，所以这一阶段的进度按**步骤**计
+    /// （`files_done` / `files_total` 表示第几个步骤），`bytes_*` 恒为 0。
+    ModLoader,
+}
+
+/// 当前阶段是模组加载器安装时，`version` 字段里放的加载器版本 id
+/// （例如 `fabric-loader-0.16.0-1.21.1`），而不是原版版本号。
+impl InstallProgress {
+    /// 构造一条模组加载器安装的进度：按步骤计数，没有字节数。
+    pub(super) fn mod_loader(
+        version: impl Into<String>,
+        stage: Stage,
+        steps_done: usize,
+        steps_total: usize,
+    ) -> Self {
+        Self {
+            version: version.into(),
+            stage,
+            files_done: steps_done.min(steps_total),
+            files_total: steps_total,
+            bytes_done: 0,
+            bytes_total: 0,
+        }
+    }
 }
 
 /// Progress of the current stage. Byte and file counts include files that were
@@ -412,7 +438,7 @@ fn describe_failure(error: &DownloadError) -> String {
 }
 
 /// Fail fast on an unusable instance name, before a long download.
-fn check_instance_name(base: &Path, name: &str) -> Result<(), String> {
+pub(super) fn check_instance_name(base: &Path, name: &str) -> Result<(), String> {
     validate_instance_name(name).map_err(|error| format!("invalid instance name: {error}"))?;
     fs::create_dir_all(base.join("instances"))
         .map_err(|_| "cannot prepare the instance store".to_owned())?;
@@ -470,6 +496,22 @@ pub(super) fn install_and_create_with(
     reporter: &dyn Reporter,
 ) -> Result<InstanceSummary, String> {
     check_instance_name(base, name)?;
+    install_game_files(transport, base, version, options, cancel, reporter)?;
+    create_ready_instance(base, name, version, reporter)
+}
+
+/// Fetches and verifies the version JSON, then the client JAR, libraries, natives
+/// and assets of `version` into `base/game`. It creates no instance: a caller that
+/// still has more to install (a mod loader) creates the instance only once all of it
+/// succeeded, so a failure never leaves a half-installed instance behind.
+pub(super) fn install_game_files(
+    transport: &dyn HttpTransport,
+    base: &Path,
+    version: &str,
+    options: InstallOptions<'_>,
+    cancel: &CancellationToken,
+    reporter: &dyn Reporter,
+) -> Result<(), String> {
     let game_root = base.join("game");
 
     reporter.report(&InstallProgress {
@@ -496,7 +538,19 @@ pub(super) fn install_and_create_with(
         cancel,
         reporter,
     )?;
+    Ok(())
+}
 
+/// Creates the instance for an installed `version` (already verified on disk) and
+/// marks it ready. `version` may be a mod loader's version ID that inherits from a
+/// vanilla one.
+pub(super) fn create_ready_instance(
+    base: &Path,
+    name: &str,
+    version: &str,
+    reporter: &dyn Reporter,
+) -> Result<InstanceSummary, String> {
+    let game_root = base.join("game");
     reporter.report(&InstallProgress {
         version: version.to_owned(),
         stage: Stage::Finalize,

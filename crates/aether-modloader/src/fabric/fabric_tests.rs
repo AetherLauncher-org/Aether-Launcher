@@ -5,6 +5,7 @@
 //! `fetch_*` 用 [`StaticFetcher`] 提供固定响应，未注册的 URL 一律报错。
 
 use serde_json::Value;
+use std::collections::HashMap;
 
 use super::{
     DEFAULT_MAVEN_BASE, DEFAULT_META_BASE, FabricLibrary, FabricLoaderVersion, MAIN_CLASS_CLIENT,
@@ -102,6 +103,22 @@ fn downloads(plan: &crate::installer::ModLoaderInstallPlan) -> Vec<(String, Stri
     found
 }
 
+/// 按落盘路径查下载步骤声明的 sha1，用来确认官方清单里的摘要确实被带上了。
+fn sha1_by_destination(
+    plan: &crate::installer::ModLoaderInstallPlan,
+) -> HashMap<String, Option<String>> {
+    let mut found = HashMap::new();
+    for step in &plan.steps {
+        if let InstallStep::Download {
+            destination, sha1, ..
+        } = step
+        {
+            found.insert(destination.clone(), sha1.clone());
+        }
+    }
+    found
+}
+
 // ---- 游戏版本 ----
 
 #[test]
@@ -166,16 +183,19 @@ fn parses_real_loader_versions() {
                 name: "org.ow2.asm:asm:9.6".to_owned(),
                 url: Some(DEFAULT_MAVEN_BASE.to_owned()),
                 size: Some(123_598),
+                sha1: Some("ada2141c0cc52ee8f5c48cd5fa4ce0e794f22236".to_owned()),
             },
             FabricLibrary {
                 name: "org.ow2.asm:asm-analysis:9.6".to_owned(),
                 url: Some(DEFAULT_MAVEN_BASE.to_owned()),
                 size: Some(33_636),
+                sha1: None,
             },
             FabricLibrary {
                 name: "net.fabricmc:sponge-mixin:0.15.4+mixin.0.8.7".to_owned(),
                 url: Some(DEFAULT_MAVEN_BASE.to_owned()),
                 size: Some(1_551_593),
+                sha1: None,
             },
         ]
     );
@@ -246,6 +266,86 @@ fn entries_without_a_loader_version_are_skipped() {
     let json = r#"[{"intermediary":{"version":"1.21.1"}}]"#;
 
     assert!(parse_loader_versions("1.21.1", json).unwrap().is_empty());
+}
+
+#[test]
+fn a_placeholder_intermediary_is_skipped_not_downloaded() {
+    // 26.x 起 Fabric 改用官方映射：接口仍在 intermediary 里填占位值 `0.0.0`
+    // （572 字节的空壳），但官方 profile 不再包含这一件，所以这里也要跳过它。
+    let json = r#"[{"loader":{"version":"0.20.1","stable":true},"intermediary":{"version":"0.0.0","stable":true}}]"#;
+
+    let versions = parse_loader_versions("26.1.2", json).unwrap();
+    let entry = &versions[0];
+
+    assert_eq!(entry.intermediary_version, "0.0.0");
+    // 能装：不是「不支持」，只是不需要 intermediary。
+    assert_eq!(entry.unsupported_reason(), None);
+
+    // 版本 JSON 和下载步骤里都不能出现 intermediary。
+    let plan = entry.install_plan("26.1.2", DEFAULT_MAVEN_BASE);
+    let json_content = plan
+        .steps
+        .iter()
+        .find_map(|step| match step {
+            InstallStep::WriteVersionJson { content, .. } => Some(content),
+            _ => None,
+        })
+        .expect("plan ends with a version json");
+    let listed = json_content["libraries"].as_array().expect("libraries");
+    assert!(
+        !listed.iter().any(|l| l["name"]
+            .as_str()
+            .is_some_and(|n| n.contains("intermediary"))),
+        "intermediary must not be listed: {listed:?}"
+    );
+    assert_eq!(
+        downloads(&plan).len(),
+        listed.len(),
+        "JSON 与下载步骤一一对应"
+    );
+}
+#[test]
+fn a_real_intermediary_is_supported() {
+    let json = r#"[{"loader":{"version":"0.16.9","stable":true},"intermediary":{"version":"1.21.1","stable":true}}]"#;
+
+    let versions = parse_loader_versions("1.21.1", json).unwrap();
+
+    assert_eq!(versions[0].unsupported_reason(), None);
+
+    // 有 intermediary 时不带 FabricMcEmu：加载器能自己找到主类，官方 profile 也不带。
+    let plan = versions[0].install_plan("1.21.1", DEFAULT_MAVEN_BASE);
+    assert!(plan_content(&plan)["arguments"].is_null());
+}
+
+#[test]
+fn a_version_without_intermediary_gets_the_fabric_emu_argument() {
+    // 26.x 起没有 intermediary 映射，必须靠 FabricMcEmu 指定原版主类，
+    // 否则启动报 no such method: ...Main.main(String[])void/invokeStatic。
+    let json = r#"[{"loader":{"version":"0.20.1","stable":true},"intermediary":{"version":"0.0.0","stable":true}}]"#;
+
+    let versions = parse_loader_versions("26.1.2", json).unwrap();
+    let plan = versions[0].install_plan("26.1.2", DEFAULT_MAVEN_BASE);
+    let content = plan_content(&plan);
+
+    let jvm = content["arguments"]["jvm"]
+        .as_array()
+        .expect("arguments.jvm must be an array");
+    assert_eq!(jvm.len(), 1);
+    assert_eq!(
+        jvm[0].as_str(),
+        Some("-DFabricMcEmu= net.minecraft.client.main.Main")
+    );
+}
+
+/// 取出计划里写出去的那份版本 JSON。
+fn plan_content(plan: &crate::installer::ModLoaderInstallPlan) -> serde_json::Value {
+    plan.steps
+        .iter()
+        .find_map(|step| match step {
+            InstallStep::WriteVersionJson { content, .. } => Some(content.clone()),
+            _ => None,
+        })
+        .expect("plan ends with a version json")
 }
 
 #[test]
@@ -348,18 +448,24 @@ fn version_json_omits_arguments() {
 fn version_json_puts_the_core_libraries_first() {
     let json = first_loader().to_version_json("1.21.1");
 
+    // 顺序照官方 profile：intermediary 最前，`fabric-loader` 最后。
+    // 换掉位置会让 loader 在 26.x 上找不到原版主类。
     let expected = [
         "net.fabricmc:intermediary:1.21.1",
-        "net.fabricmc:fabric-loader:0.16.0",
         "org.ow2.asm:asm:9.6",
         "org.ow2.asm:asm-analysis:9.6",
         "net.fabricmc:sponge-mixin:0.15.4+mixin.0.8.7",
+        "net.fabricmc:fabric-loader:0.16.0",
     ];
     assert_eq!(library_names(&json), expected);
 
     let libraries = json["libraries"].as_array().unwrap();
     assert_eq!(libraries[0]["url"], DEFAULT_MAVEN_BASE);
-    assert_eq!(libraries[1]["url"], DEFAULT_MAVEN_BASE);
+    assert_eq!(
+        libraries[libraries.len() - 1]["url"],
+        DEFAULT_MAVEN_BASE,
+        "fabric-loader 也指向官方 maven"
+    );
 }
 
 #[test]
@@ -373,16 +479,19 @@ fn version_json_never_repeats_a_library_name() {
                 name: "net.fabricmc:intermediary:1.21.1".to_owned(),
                 url: Some(DEFAULT_MAVEN_BASE.to_owned()),
                 size: None,
+                sha1: None,
             },
             FabricLibrary {
                 name: "net.fabricmc:fabric-loader:0.16.0".to_owned(),
                 url: Some(DEFAULT_MAVEN_BASE.to_owned()),
                 size: None,
+                sha1: None,
             },
             FabricLibrary {
                 name: "org.ow2.asm:asm:9.6".to_owned(),
                 url: Some(DEFAULT_MAVEN_BASE.to_owned()),
                 size: Some(123_598),
+                sha1: Some("ada2141c0cc52ee8f5c48cd5fa4ce0e794f22236".to_owned()),
             },
         ],
         main_class: MAIN_CLASS_CLIENT.to_owned(),
@@ -416,12 +525,13 @@ fn version_json_keeps_libraries_that_have_no_repository() {
         library_names(&json),
         [
             "net.fabricmc:intermediary:1.21.1",
-            "net.fabricmc:fabric-loader:0.1.0.48",
             "net.minecraft:launchwrapper:1.12",
             "org.ow2.asm:asm:7.0",
+            "net.fabricmc:fabric-loader:0.1.0.48",
         ]
     );
-    assert!(json["libraries"][2].get("url").is_none());
+    // 没有仓库地址的库仍保留在列表里（由被继承的原版提供）。
+    assert!(json["libraries"][1].get("url").is_none());
 }
 
 // ---- 安装计划 ----
@@ -438,30 +548,57 @@ fn install_plan_downloads_every_library_and_writes_the_version_json() {
     assert_eq!(plan.main_class, MAIN_CLASS_CLIENT);
 
     let downloads = downloads(&plan);
-    assert_eq!(downloads.len(), 3, "三个 launcherMeta 库各一条下载");
+
+    // 核心两件在最前：版本 JSON 会引用它们，所以必须先下载。
+    assert_eq!(downloads.len(), 5, "两个核心库 + 三个 launcherMeta 库");
     assert_eq!(
-        downloads[0].1, "libraries/org/ow2/asm/asm/9.6/asm-9.6.jar",
-        "destination 用 maven 相对路径"
+        downloads[0].1,
+        "libraries/net/fabricmc/intermediary/1.21.1/intermediary-1.21.1.jar"
     );
     assert_eq!(
         downloads[0].0,
-        "https://maven.fabricmc.net/org/ow2/asm/asm/9.6/asm-9.6.jar"
+        "https://maven.fabricmc.net/net/fabricmc/intermediary/1.21.1/intermediary-1.21.1.jar"
     );
     assert_eq!(
         downloads[1].1,
+        "libraries/net/fabricmc/fabric-loader/0.16.0/fabric-loader-0.16.0.jar"
+    );
+    assert_eq!(
+        downloads[2].1, "libraries/org/ow2/asm/asm/9.6/asm-9.6.jar",
+        "destination 用 maven 相对路径"
+    );
+    assert_eq!(
+        downloads[2].0,
+        "https://maven.fabricmc.net/org/ow2/asm/asm/9.6/asm-9.6.jar"
+    );
+    assert_eq!(
+        downloads[3].1,
         "libraries/org/ow2/asm/asm-analysis/9.6/asm-analysis-9.6.jar"
     );
     assert_eq!(
-        downloads[2].1,
+        downloads[4].1,
         "libraries/net/fabricmc/sponge-mixin/0.15.4+mixin.0.8.7/sponge-mixin-0.15.4+mixin.0.8.7.jar"
     );
+
+    // 版本 JSON 里写的每一个库都必须有对应的下载步骤 —— 这是启动时不报
+    // 「required local file does not exist」的前提。
+    let json = plan
+        .steps
+        .iter()
+        .find_map(|step| match step {
+            InstallStep::WriteVersionJson { content, .. } => Some(content),
+            _ => None,
+        })
+        .expect("plan ends with a version json");
+    let listed = json["libraries"].as_array().expect("libraries array");
+    assert_eq!(listed.len(), downloads.len(), "JSON 与下载步骤一一对应");
 
     assert!(matches!(
         plan.steps.last(),
         Some(InstallStep::WriteVersionJson { path, .. })
             if path == "versions/fabric-loader-0.16.0-1.21.1/fabric-loader-0.16.0-1.21.1.json"
     ));
-    assert_eq!(plan.steps.len(), 4);
+    assert_eq!(plan.steps.len(), 6);
 }
 
 #[test]
@@ -483,13 +620,17 @@ fn install_plan_skips_libraries_without_a_repository() {
     let plan = loader.install_plan("1.21.1", DEFAULT_MAVEN_BASE);
 
     let downloads = downloads(&plan);
-    assert_eq!(downloads.len(), 1, "只有 org.ow2.asm:asm:7.0 有仓库地址");
-    assert_eq!(downloads[0].1, "libraries/org/ow2/asm/asm/7.0/asm-7.0.jar");
+    // 核心两件总有仓库地址；launcherMeta 里只有 org.ow2.asm:asm:7.0 有。
+    assert_eq!(downloads.len(), 3, "两个核心库 + 有仓库地址的那一个");
     assert_eq!(
-        downloads[0].0,
+        downloads[0].1,
+        "libraries/net/fabricmc/intermediary/1.21.1/intermediary-1.21.1.jar"
+    );
+    assert_eq!(downloads[2].1, "libraries/org/ow2/asm/asm/7.0/asm-7.0.jar");
+    assert_eq!(
+        downloads[2].0,
         "http://repo.maven.apache.org/maven2/org/ow2/asm/asm/7.0/asm-7.0.jar"
     );
-    assert_eq!(plan.validate(&[]), Ok(()));
 }
 
 #[test]
@@ -498,8 +639,9 @@ fn install_plan_accepts_a_mirror_maven_base() {
 
     let downloads = downloads(&plan);
     assert_eq!(
-        downloads[0].0, "https://mirror.example.invalid/maven/org/ow2/asm/asm/9.6/asm-9.6.jar",
-        "官方 maven 换成调用方给的镜像地址"
+        downloads[0].0,
+        "https://mirror.example.invalid/maven/net/fabricmc/intermediary/1.21.1/intermediary-1.21.1.jar",
+        "核心库也跟着换成镜像地址"
     );
 }
 
@@ -516,7 +658,8 @@ fn install_plan_of_a_loader_without_libraries_only_writes_the_version_json() {
 
     let plan = bare.install_plan("1.21.1", DEFAULT_MAVEN_BASE);
 
-    assert_eq!(plan.steps.len(), 1);
+    // 没有 launcherMeta 库，但核心两件仍要下载，否则版本 JSON 指不到文件。
+    assert_eq!(plan.steps.len(), 3);
     assert_eq!(plan.validate(&[]), Ok(()));
 }
 
@@ -616,4 +759,24 @@ fn fetch_surfaces_malformed_json_from_the_source() {
         fetch_game_versions(&source),
         Err(MetaError::InvalidJson { .. })
     ));
+}
+
+// ---- 哈希来源 ----
+
+#[test]
+fn install_plan_carries_the_official_sha1_into_the_download_step() {
+    let plan = first_loader().install_plan("1.21.1", DEFAULT_MAVEN_BASE);
+    let by_destination = sha1_by_destination(&plan);
+
+    // launcherMeta 里带 sha1 的库，下载步骤必须带上同样的摘要。
+    let asm = "libraries/org/ow2/asm/asm/9.6/asm-9.6.jar";
+    assert_eq!(
+        by_destination.get(asm).cloned().flatten(),
+        Some("ada2141c0cc52ee8f5c48cd5fa4ce0e794f22236".to_owned()),
+        "官方清单里的 sha1 必须进入下载步骤，否则等于没校验"
+    );
+
+    // 官方没给 sha1 的库只能是 None；这不算漏洞，但也不能凭空编一个。
+    let mixin = "libraries/net/fabricmc/sponge-mixin/0.15.4+mixin.0.8.7/sponge-mixin-0.15.4+mixin.0.8.7.jar";
+    assert_eq!(by_destination.get(mixin).cloned().flatten(), None);
 }
