@@ -51,6 +51,41 @@ pub enum LaunchBuildError {
     MissingPlaceholder(String),
 }
 
+/// Where the game may write scratch files, inside the instance directory.
+pub const SCRATCH_DIRECTORY_NAME: &str = "runtime-tmp";
+
+/// The per-instance directory the game's scratch output is redirected to.
+///
+/// The caller creates it before launching; building a plan writes nothing.
+#[must_use]
+pub fn scratch_directory(working_directory: &Path) -> PathBuf {
+    plain_path(&working_directory.join(SCRATCH_DIRECTORY_NAME))
+}
+
+/// JVM properties that Minecraft's own version JSON points at the natives directory,
+/// although they name places where libraries **write**: JNA unpacks its helper DLL
+/// there, LWJGL its shared libraries, Netty its native transport.
+const SCRATCH_PROPERTIES: [&str; 3] = [
+    "-Djna.tmpdir=",
+    "-Dorg.lwjgl.system.SharedLibraryExtractPath=",
+    "-Dio.netty.native.workdir=",
+];
+
+/// Points a scratch property that targets the natives directory at `scratch` instead.
+///
+/// The natives directory is verified byte for byte against its source JARs before every
+/// launch and must hold nothing else, so the game must not write into it. Left alone, the
+/// first launch leaves `jna/jna<digits>.dll` behind and the second one refuses to start.
+/// `-Djava.library.path`, which only reads, keeps the verified directory.
+fn redirect_scratch(argument: String, natives: &str, scratch: &str) -> String {
+    for property in SCRATCH_PROPERTIES {
+        if argument.strip_prefix(property) == Some(natives) {
+            return format!("{property}{scratch}");
+        }
+    }
+    argument
+}
+
 /// Assemble argv: JVM options, main class, and game arguments, in that order.
 /// No shell is used; callers must prepare natives and authentication separately.
 pub fn build_launch_plan(
@@ -158,9 +193,18 @@ pub fn build_launch_plan(
         .iter()
         .any(|arg| matches!(arg.as_str(), "-cp" | "-classpath" | "--class-path"));
 
+    let natives_text = variables
+        .get("natives_directory")
+        .cloned()
+        .unwrap_or_default();
+    let scratch_text = scratch_directory(&options.working_directory)
+        .to_string_lossy()
+        .into_owned();
+
     let mut arguments = vec![format!("-Xmx{}m", request.memory_mib)];
     for arg in jvm {
-        arguments.push(substitute(&arg, &variables)?);
+        let expanded = substitute(&arg, &variables)?;
+        arguments.push(redirect_scratch(expanded, &natives_text, &scratch_text));
     }
     if !classpath_provided {
         arguments.extend(["-cp".to_owned(), classpath]);

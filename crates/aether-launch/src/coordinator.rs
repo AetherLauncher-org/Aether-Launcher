@@ -17,7 +17,7 @@ use aether_storage::{InstanceLoadError, InstanceStore};
 use thiserror::Error;
 
 use crate::native::{NativePlanError, build_native_plan};
-use crate::plan::{LaunchBuildError, LaunchOptions, build_launch_plan};
+use crate::plan::{LaunchBuildError, LaunchOptions, build_launch_plan, scratch_directory};
 use crate::process::LogRecord;
 use crate::registry::{InstanceProcessRegistry, InstanceProcessStatus, RegistryError};
 use crate::{JavaSelectionError, LaunchPlan, LaunchRequest, select_java_runtime};
@@ -175,6 +175,9 @@ impl InstanceLaunchCoordinator {
             let destination = parent.join(instance_id.to_string());
             match fs::symlink_metadata(&destination) {
                 Ok(_) => {
+                    // Earlier launches let the game write into this directory; clear what
+                    // it left there before the byte-for-byte check.
+                    Self::prune_game_scratch(&destination)?;
                     native_plan.verify_installed(&self.game_directory, &destination)?;
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -190,6 +193,8 @@ impl InstanceLaunchCoordinator {
             }
             destination
         };
+        // The game's scratch output goes here instead of the verified natives directory.
+        fs::create_dir_all(scratch_directory(&instance.root))?;
         let options = LaunchOptions {
             game_directory: self.game_directory.clone(),
             working_directory: instance.root.clone(),
@@ -208,6 +213,33 @@ impl InstanceLaunchCoordinator {
             environment,
             &options,
         )?)
+    }
+
+    /// Removes what Minecraft's libraries wrote into the natives directory themselves.
+    ///
+    /// JNA unpacks `jna/jna<digits>.dll`, LWJGL `lwjgl*` and Netty `netty*` there when the
+    /// version JSON points their scratch properties at it, which older launches did. These are
+    /// real directories created by the game process, never part of the verified natives, and
+    /// deleting them cannot make an installed native file trusted or untrusted. Anything else
+    /// unexpected, and every installed file that differs from its source, is still an error:
+    /// a corrupted natives directory is never silently replaced.
+    fn prune_game_scratch(natives_directory: &Path) -> std::io::Result<()> {
+        let Ok(entries) = fs::read_dir(natives_directory) else {
+            return Ok(());
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+            let is_scratch_name =
+                name == "jna" || name.starts_with("lwjgl") || name.starts_with("netty");
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            // Only real directories: a symlink or file with such a name is not scratch.
+            if is_scratch_name && kind.is_dir() && !kind.is_symlink() {
+                fs::remove_dir_all(entry.path())?;
+            }
+        }
+        Ok(())
     }
 
     /// Only a prepared trusted plan can reach the process registry. On a

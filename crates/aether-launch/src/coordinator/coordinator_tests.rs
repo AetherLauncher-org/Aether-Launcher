@@ -294,6 +294,19 @@ fn prepares_missing_natives_once_and_verifies_them_before_reuse() {
     );
     assert!(f.prepare().is_ok());
 
+    // A previous launch let JNA unpack its helper into the natives directory.
+    fs::create_dir_all(native_dir.join("jna")).unwrap();
+    fs::write(native_dir.join("jna/jna123.dll"), b"scratch").unwrap();
+    assert!(f.prepare().is_ok());
+    assert!(!native_dir.join("jna").exists());
+    // Only the game's own scratch directories are cleared; other extra files stay an error.
+    fs::write(native_dir.join("stray.dll"), b"x").unwrap();
+    assert!(matches!(
+        f.prepare(),
+        Err(CoordinatorError::NativeInstall(_))
+    ));
+    fs::remove_file(native_dir.join("stray.dll")).unwrap();
+
     fs::write(native_dir.join("native.dll"), b"evil").unwrap();
     assert!(matches!(
         f.prepare(),

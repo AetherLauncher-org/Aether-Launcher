@@ -317,3 +317,58 @@ fn does_not_recursively_expand_variable_contents() {
         "${auth_access_token}"
     );
 }
+
+#[test]
+fn keeps_the_game_from_writing_scratch_files_into_the_natives_directory() {
+    let f = Fixture::new();
+    let manifest = parse_version_manifest(
+        r#"{
+        "id":"v","mainClass":"Main","javaVersion":{"component":"delta","majorVersion":21},
+        "assets":"17","libraries":[],
+        "arguments":{"jvm":[
+            "-Djava.library.path=${natives_directory}",
+            "-Djna.tmpdir=${natives_directory}",
+            "-Dorg.lwjgl.system.SharedLibraryExtractPath=${natives_directory}",
+            "-Dio.netty.native.workdir=${natives_directory}",
+            "-Djna.tmpdir=${game_directory}"
+        ],"game":[]}
+    }"#,
+    )
+    .unwrap();
+    let plan = build_launch_plan(
+        &request(),
+        &manifest,
+        &runtime(),
+        &environment(),
+        &f.options,
+    )
+    .unwrap();
+
+    let natives = super::plain_path(&f.options.natives_directory);
+    let scratch = super::scratch_directory(&f.options.working_directory);
+    // Read-only lookup keeps the verified directory; every writable one moves.
+    assert_eq!(
+        plan.arguments[1],
+        format!("-Djava.library.path={}", natives.display())
+    );
+    assert_eq!(
+        plan.arguments[2],
+        format!("-Djna.tmpdir={}", scratch.display())
+    );
+    assert_eq!(
+        plan.arguments[3],
+        format!(
+            "-Dorg.lwjgl.system.SharedLibraryExtractPath={}",
+            scratch.display()
+        )
+    );
+    assert_eq!(
+        plan.arguments[4],
+        format!("-Dio.netty.native.workdir={}", scratch.display())
+    );
+    // A value that was never the natives directory is not ours to change.
+    assert_eq!(
+        plan.arguments[5],
+        format!("-Djna.tmpdir={}", f.options.working_directory.display())
+    );
+}
