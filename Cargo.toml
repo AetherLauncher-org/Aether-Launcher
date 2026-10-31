@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/aether-app",
   "crates/aether-auth",
   "crates/aether-core",
   "crates/aether-diagnose",

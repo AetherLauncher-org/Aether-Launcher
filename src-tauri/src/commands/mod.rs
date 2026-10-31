@@ -11,6 +11,7 @@
 //! fail-closed preconditions are fully implemented.
 
 pub mod catalog;
+mod host;
 pub mod import;
 pub mod install;
 pub mod instances;

@@ -10,7 +10,11 @@ React + Fluent UI  ──(Tauri IPC)──  src-tauri (aether-desktop)  ──  
 
 ```mermaid
 graph LR
-  desktop["aether-desktop (src-tauri)"] --> core[aether-core]
+  desktop["aether-desktop (src-tauri)"] --> app[aether-app]
+  app --> storage
+  app --> schematic[aether-schematic]
+  app --> diagnose[aether-diagnose]
+  desktop --> core[aether-core]
   manifest[aether-manifest] --> core
   storage[aether-storage] --> core
   launch[aether-launch] --> core
@@ -24,6 +28,8 @@ graph LR
 
 `aether-core` 在最底层，只放实例和版本的基础类型。`download`、`auth`、`modloader`、`runtime` 目前互不依赖，也不依赖 core。
 
+`aether-app` 在各 crate 之上、界面之下：界面能做的事（列实例、管理实例、打开和转换投影……）作为不依赖任何界面的函数放在这里，界面（现在是 `src-tauri`，之后是原生界面，见 [native-ui.md](design/native-ui.md)）只做参数转换。依赖只能往下：`aether-app` 不依赖任何界面库，核心 crate 不依赖 `aether-app`。
+
 ## Crate 一览
 
 | Crate | 职责 | 现有内容 |
@@ -35,6 +41,8 @@ graph LR
 | `aether-runtime` | Java 运行时与本机内存 | `JavaRuntime`、`supports`；`memory::system_memory` 读取物理内存（Windows 用系统接口，Linux 读 `/proc/meminfo`，macOS 用 `sysctl` 和 `vm_stat`）；跨平台检测 PATH / JAVA_HOME / 常见安装目录和 Minecraft runtime，探测 Java 版本、架构与厂商 |
 | `aether-launch` | 启动请求与计划 | `LaunchRequest`、`LaunchPlan`；`select_java_runtime` 选 Java；`build_launch_plan` 组装 JVM / classpath / 游戏参数；`build_native_plan` 选择 native JAR 并输出下载计划；`build_install_plan` 从已校验的版本 JSON 生成客户端 JAR、Libraries 和 native 压缩包的下载计划；`GameProcess` 监督子进程并捕获有界日志；`InstanceProcessRegistry` 按实例 ID 管理进程；`InstanceLaunchCoordinator` 从可信实例文件准备启动并校验客户端 JAR |
 | `aether-modloader` | 模组加载器 | `ModLoaderKind`（Fabric / Forge / NeoForge / Quilt）、`ModLoaderVersion` |
+| `aether-app` | 界面能做的事（与界面无关） | `Host` trait（数据目录、某个实例的游戏是否在运行）；`instances`（列表、按 id 取实例）、`manage`（详情、改名、删除、内容、日志、打开文件夹）、`schematics`（打开、转换）。改名保证实例名不重复，运行中的实例不能改文件，日志脱敏后才返回 |
+| `aether-schematic` | 投影文件 | NBT、Litematica / Sponge / 原版结构文件的读写与互转，见 [投影原理图](modules/schematics.md) |
 | `aether-storage` | 本地持久化 | `encode_instance` / `decode_instance`、`InstanceStore::load`（从受管理的 UUID 目录读取和验证实例） |
 
 按现有类型推断，启动一次游戏时的分工是：`manifest` 解析版本，`download` 生成并校验下载计划，`runtime` 选 Java，`launch` 组装启动计划，`storage` 保存实例。目前还没有代码把它们串起来。

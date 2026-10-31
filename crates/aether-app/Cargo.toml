@@ -1,0 +1,17 @@
+[package]
+name = "aether-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+aether-core = { path = "../aether-core" }
+aether-diagnose = { path = "../aether-diagnose" }
+aether-schematic = { path = "../aether-schematic" }
+aether-storage = { path = "../aether-storage" }
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

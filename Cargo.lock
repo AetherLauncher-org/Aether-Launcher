@@ -20,6 +20,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "aether-app"
+version = "0.1.0"
+dependencies = [
+ "aether-core",
+ "aether-diagnose",
+ "aether-schematic",
+ "aether-storage",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "aether-auth"
 version = "0.1.0"
 dependencies = [
@@ -45,15 +57,14 @@ dependencies = [
 name = "aether-desktop"
 version = "0.1.0"
 dependencies = [
+ "aether-app",
  "aether-auth",
  "aether-core",
- "aether-diagnose",
  "aether-download",
  "aether-launch",
  "aether-manifest",
  "aether-modloader",
  "aether-runtime",
- "aether-schematic",
  "aether-storage",
  "serde",
  "serde_json",
