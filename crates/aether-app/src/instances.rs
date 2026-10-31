@@ -34,6 +34,18 @@ impl InstanceSummary {
         &self.id
     }
 
+    /// The display name (not the folder name, which is the id).
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The Minecraft version, such as `1.21.1`.
+    #[must_use]
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
     /// The stable state label (ready, incomplete, …).
     #[must_use]
     pub fn state(&self) -> &'static str {

@@ -1,0 +1,14 @@
+[package]
+name = "native-ui-spike-common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+aether-app = { path = "../../../crates/aether-app" }
+aether-core = { path = "../../../crates/aether-core" }
+aether-storage = { path = "../../../crates/aether-storage" }
+cpu-time = "1"
+memory-stats = "1"

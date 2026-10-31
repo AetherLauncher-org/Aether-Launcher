@@ -1,0 +1,46 @@
+
+
+
+Name                        : AskLink Display Adapter (HDR)
+CurrentRefreshRate          : 
+CurrentHorizontalResolution : 
+CurrentVerticalResolution   : 
+DriverVersion               : 7.7.2.8
+
+Name                        : Todesk Virtual Display Adapter
+CurrentRefreshRate          : 
+CurrentHorizontalResolution : 
+CurrentVerticalResolution   : 
+DriverVersion               : 16.44.2.509
+
+Name                        : GameViewer Virtual Display Adapter
+CurrentRefreshRate          : 
+CurrentHorizontalResolution : 
+CurrentVerticalResolution   : 
+DriverVersion               : 15.6.5.199
+
+Name                        : NVIDIA GeForce GTX 1660 SUPER
+CurrentRefreshRate          : 59
+CurrentHorizontalResolution : 1920
+CurrentVerticalResolution   : 1080
+DriverVersion               : 32.0.16.1088
+
+
+
+
+--- round 1 spike-iced animate
+toolkit=iced mode=animate seconds=14.0 frames=769 fps=54.9 interval_ms mean=16.65 p50=16.69 p95=17.46 p99=21.42 max=22.91 over_1.5x_median=0 cpu_percent=13.7 memory_mb start=8 end=168 steady seconds=10.0 frames=599 fps=59.9 cpu_percent=8.3
+--- round 1 spike-egui animate
+toolkit=egui mode=animate seconds=14.0 frames=787 fps=56.2 interval_ms mean=16.72 p50=16.69 p95=18.93 p99=21.95 max=53.45 over_1.5x_median=7 cpu_percent=14.1 memory_mb start=9 end=218 steady seconds=10.0 frames=600 fps=60.0 cpu_percent=9.1
+--- round 1 spike-iced idle
+toolkit=iced mode=idle seconds=14.0 frames=1 fps=0.1 interval_ms mean=0.00 p50=0.00 p95=0.00 p99=0.00 max=0.00 over_1.5x_median=0 cpu_percent=7.1 memory_mb start=8 end=165 steady seconds=10.0 frames=0 fps=0.0 cpu_percent=0.5
+--- round 1 spike-egui idle
+toolkit=egui mode=idle seconds=14.0 frames=7 fps=0.5 interval_ms mean=13.79 p50=7.34 p95=52.22 p99=52.22 max=52.22 over_1.5x_median=2 cpu_percent=5.8 memory_mb start=9 end=215 steady seconds=10.0 frames=0 fps=0.0 cpu_percent=0.2
+--- round 2 spike-iced animate
+toolkit=iced mode=animate seconds=14.0 frames=770 fps=55.0 interval_ms mean=16.63 p50=16.68 p95=17.61 p99=21.53 max=22.53 over_1.5x_median=0 cpu_percent=14.5 memory_mb start=8 end=167 steady seconds=10.0 frames=599 fps=59.9 cpu_percent=8.0
+--- round 2 spike-egui animate
+toolkit=egui mode=animate seconds=14.0 frames=787 fps=56.2 interval_ms mean=16.73 p50=16.67 p95=19.05 p99=20.29 max=51.18 over_1.5x_median=4 cpu_percent=13.4 memory_mb start=9 end=218 steady seconds=10.0 frames=599 fps=59.9 cpu_percent=7.8
+--- round 2 spike-iced idle
+toolkit=iced mode=idle seconds=14.0 frames=1 fps=0.1 interval_ms mean=0.00 p50=0.00 p95=0.00 p99=0.00 max=0.00 over_1.5x_median=0 cpu_percent=7.8 memory_mb start=8 end=165 steady seconds=10.0 frames=0 fps=0.0 cpu_percent=0.5
+--- round 2 spike-egui idle
+toolkit=egui mode=idle seconds=14.0 frames=7 fps=0.5 interval_ms mean=13.70 p50=8.80 p95=51.09 p99=51.09 max=51.09 over_1.5x_median=2 cpu_percent=5.4 memory_mb start=9 end=215 steady seconds=10.0 frames=0 fps=0.0 cpu_percent=0.0
