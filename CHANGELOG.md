@@ -49,7 +49,7 @@ The project follows [Semantic Versioning](https://semver.org/) once public relea
 - Instance, library and account pages with Java runtime and memory settings blocks
 - Mods, resource packs, shader packs and worlds are shown as cards; mods, resource packs and shader packs are recognised on Modrinth by file SHA-1 and show the project's name, summary, version and icon (new `aether-content` crate; switch "联网识别" on the content tab, on by default; CurseForge is not implemented, see `docs/modules/content-metadata.md`)
 
-- Microsoft accounts show the player's skin as a 3D head with the hat layer (isometric, drawn on a canvas) instead of an initial; the skin comes from Mojang's public session server and `textures.minecraft.net`, and the avatar falls back to the initial when there is no skin or no network
+- Microsoft accounts show the player's skin head seen from the front, with the hat layer over the face (drawn on a canvas), instead of an initial; the skin comes from Mojang's public session server and `textures.minecraft.net`, and the avatar falls back to the initial when there is no skin or no network
 
 ### Security
 

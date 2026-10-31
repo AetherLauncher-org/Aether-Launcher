@@ -48,13 +48,13 @@ Modrinth 认不出的文件（自己改过的、别处下载的）照旧显示�
 
 ## 玩家皮肤（账户头像）
 
-微软账户的头像画的是玩家皮肤的 3D 头（里层的头加外层的帽子层），不再是名字首字母。
+微软账户的头像画的是玩家皮肤的头，正对着看：里层的脸加外层的帽子层（外层大 1/8，罩在外面一圈），不再是名字首字母。
 
 - 后端 `account_skin(uuid)`：`GET https://sessionserver.mojang.com/session/minecraft/profile/<uuid>`（公开，不需要令牌，玩家 UUID 本来就是公开的）→ 解 `textures` 属性（base64 的 JSON）→ 取 `SKIN.url` → 从 `textures.minecraft.net` 下载 PNG。
 - 同样的边界（`aether_content::skin`、`aether_app::skins`）：只连这两个地址，HTTPS、不跟随重定向；皮肤地址必须正好是 `textures.minecraft.net/texture/<十六进制>`（Mojang 给的 `http` 形式会改成 `https`）；两层 JSON 都有大小上限；图片最大 64 KiB，必须是 PNG，文件头里的尺寸必须是 64×64 或旧版的 64×32，**不解码就先看文件头**。给界面的是 `data:` URL。
 - 缓存在 `<数据目录>/cache/skins/<uuid>.png`，一天；没有自定义皮肤的玩家记一个 `.none` 标记，也是一天；没网时旧皮肤照用。每次读出来再验一遍，被改过的文件不会送给界面。
 - 取不到、没有皮肤、离线账户、这台机器没有 2D 画布：一律退回字母头像，不报错。
-- 画法在前端 `src/lib/skinHead.ts`：头的顶面、正面、侧面（外层同样三个面，大 1/8）各用一个仿射变换贴到斜 45° 的立方体上，侧面加暗；不用 WebGL，不依赖任何库。
+- 画法在前端 `src/lib/skinHead.ts`：先画里层的脸（皮肤图 (8,8) 起的 8×8），再在上面画外层的脸（(40,8)，铺满画布，里层在正中小 1/8），最近邻取样，不平滑，不加暗；没有顶面和侧面。不用 WebGL，不依赖任何库。
 
 ## 待定
 
