@@ -13,6 +13,8 @@ const fake = vi.hoisted(() => {
     setShowStats = vi.fn();
     setMouse = vi.fn();
     requestLock = vi.fn();
+    releaseLock = vi.fn();
+    look = vi.fn();
     scaleSpeed = vi.fn();
     releaseKeys = vi.fn();
     resize = vi.fn();
@@ -264,17 +266,71 @@ describe("SchematicViewer", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("captures the mouse on click, follows it while free, and changes speed with the wheel", () => {
+  it("never captures the mouse just because the picture was clicked", () => {
+    open();
+
+    fireEvent.click(screen.getByLabelText("3D 画面"));
+    fireEvent.mouseDown(screen.getByLabelText("3D 画面"), { clientX: 10, clientY: 10 });
+    fireEvent.mouseUp(window);
+
+    expect(latest().requestLock).not.toHaveBeenCalled();
+  });
+
+  it("turns the view while a button is held, even when the cursor leaves the picture, and stops on release", () => {
     open();
     const canvas = screen.getByLabelText("3D 画面");
 
-    fireEvent.click(canvas);
-    expect(latest().requestLock).toHaveBeenCalled();
+    fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
+    expect(canvas).toHaveAttribute("data-dragging", "true");
+    fireEvent.mouseMove(window, { clientX: 112, clientY: 95 });
+    expect(latest().look).toHaveBeenLastCalledWith(12, -5);
+    fireEvent.mouseMove(window, { clientX: 2000, clientY: 95 });
+    expect(latest().look).toHaveBeenLastCalledWith(1888, 0);
+
+    fireEvent.mouseUp(window);
+    expect(canvas).toHaveAttribute("data-dragging", "false");
+    latest().look.mockClear();
+    fireEvent.mouseMove(window, { clientX: 5, clientY: 5 });
+    expect(latest().look).not.toHaveBeenCalled();
+  });
+
+  it("keeps pointing at blocks with the cursor while looking around", () => {
+    open();
+    const canvas = screen.getByLabelText("3D 画面");
 
     fireEvent.mouseMove(canvas, { clientX: 40, clientY: 30 });
     expect(latest().setMouse).toHaveBeenCalledWith([40, 30]);
     fireEvent.mouseLeave(canvas);
     expect(latest().setMouse).toHaveBeenLastCalledWith(null);
+  });
+
+  it("does not open the browser's context menu on the picture", () => {
+    open();
+    const prevented = !fireEvent.contextMenu(screen.getByLabelText("3D 画面"));
+    expect(prevented).toBe(true);
+  });
+
+  it("offers mouse capture as a button, which says what the system hint is, and lets go again", () => {
+    open();
+    const capture = screen.getByRole("button", { name: "抓取鼠标" });
+    expect(capture).toHaveAttribute("title", expect.stringContaining("按 Esc 显示光标"));
+
+    fireEvent.click(capture);
+    expect(latest().requestLock).toHaveBeenCalledTimes(1);
+
+    act(() => latest().events.onLockChange(true));
+    // While captured, dragging does not also turn the view a second way.
+    fireEvent.mouseDown(screen.getByLabelText("3D 画面"), { clientX: 1, clientY: 1 });
+    fireEvent.mouseMove(window, { clientX: 50, clientY: 50 });
+    expect(latest().look).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "放开鼠标" }));
+    expect(latest().releaseLock).toHaveBeenCalledTimes(1);
+  });
+
+  it("changes speed with the wheel", () => {
+    open();
+    const canvas = screen.getByLabelText("3D 画面");
 
     fireEvent.wheel(canvas, { deltaY: -100 });
     expect(latest().scaleSpeed).toHaveBeenLastCalledWith(expect.closeTo(1.15, 5));
@@ -284,18 +340,21 @@ describe("SchematicViewer", () => {
 
   it("changes the help text once the mouse is captured", () => {
     open();
-    expect(screen.getByText(/点击画面开始转向/)).toBeInTheDocument();
+    expect(screen.getByText(/按住鼠标拖动转向/)).toBeInTheDocument();
 
     act(() => latest().events.onLockChange(true));
 
     expect(screen.getByText(/Esc 放开鼠标/)).toBeInTheDocument();
   });
 
-  it("cleans up: the renderer is disposed and the keys stop working", () => {
+  it("cleans up: the renderer is disposed, keys stop working and a drag in progress ends", () => {
     const { unmount } = open();
     const renderer = latest();
+    fireEvent.mouseDown(screen.getByLabelText("3D 画面"), { clientX: 1, clientY: 1 });
 
     unmount();
+    fireEvent.mouseMove(window, { clientX: 90, clientY: 90 });
+    expect(renderer.look).not.toHaveBeenCalled();
 
     expect(renderer.dispose).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(window, { code: "KeyW" });

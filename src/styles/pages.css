@@ -2055,3 +2055,17 @@
 .inspector-nbt {
   max-height: none;
 }
+
+.viewer-canvas {
+  cursor: grab;
+}
+
+.viewer-canvas[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+.viewer-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}

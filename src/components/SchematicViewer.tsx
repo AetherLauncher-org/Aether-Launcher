@@ -41,10 +41,14 @@ function buildGrid(view: SchematicView): VoxelGrid | Error {
 /**
  * 投影的 3D 预览（全屏）。
  *
- * 操作：点击画面抓住鼠标开始转向；WASD 移动，空格上升，Shift 下降，Ctrl 加速，滚轮调速；
- * 准星（或没抓鼠标时的鼠标）指到的方块会显示它的名字、ID、方块状态、坐标，以及方块实体的
- * NBT 和容器里的物品；按 F 把当前方块固定到右边的检查面板（鼠标不被抓住时可以滚动、
- * 选中复制）；F3 看帧率和帧预算；Esc 先放开鼠标，再按一次关闭。
+ * 操作：按住鼠标拖动转向（光标一直可见）；WASD 移动，空格上升，Shift 下降，Ctrl 加速，
+ * 滚轮调速；鼠标指到的方块会显示它的名字、ID、方块状态、坐标，以及方块实体的 NBT 和
+ * 容器里的物品；按 F 把当前方块固定到右边的检查面板（可以滚动、选中复制）；F3 看帧率和
+ * 帧预算；Esc 关闭。
+ *
+ * 默认不抓取鼠标：浏览器在页面抓取鼠标（pointer lock）时会自己弹一条「按 Esc 显示光标」
+ * 的系统提示，网页关不掉它。想要 FPS 游戏那样的无限转向，可以点标题栏的「抓取鼠标」，
+ * 此时用准星指方块，Esc 放开。
  *
  * 渲染的每一帧做什么、为什么能跟上显示器的刷新率，见 `lib/schematic/renderer.ts` 和
  * `docs/modules/schematics.md`。
@@ -54,6 +58,9 @@ export function SchematicViewer({ view, onClose }: SchematicViewerProps) {
   const rendererRef = useRef<SchematicRenderer | null>(null);
   const hoverRef = useRef<HoverInfo | null>(null);
   const lockedRef = useRef(false);
+  /** 正在拖动转向：上一次的鼠标位置。 */
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const stopDragRef = useRef<(() => void) | null>(null);
 
   const grid = useMemo(() => buildGrid(view), [view]);
   const entities = useMemo(() => indexEntities(view), [view]);
@@ -61,6 +68,7 @@ export function SchematicViewer({ view, onClose }: SchematicViewerProps) {
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [pinned, setPinned] = useState<HoverInfo | null>(null);
   const [locked, setLocked] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
   const [failure, setFailure] = useState<string | null>(grid instanceof Error ? grid.message : null);
@@ -122,6 +130,8 @@ export function SchematicViewer({ view, onClose }: SchematicViewerProps) {
     window.addEventListener("blur", onBlur);
 
     return () => {
+      // 一次还没结束的拖动：组件卸载时把它的监听摘掉。
+      stopDragRef.current?.();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onBlur);
@@ -135,6 +145,33 @@ export function SchematicViewer({ view, onClose }: SchematicViewerProps) {
     rendererRef.current?.setShowStats(showStats);
   }, [showStats]);
 
+  /** 按下鼠标开始拖动转向；松开（哪怕在窗口外）结束。抓取鼠标时转向走 pointer lock。 */
+  const startLook = (event: React.MouseEvent) => {
+    if (lockedRef.current || rendererRef.current === null) {
+      return;
+    }
+    event.preventDefault();
+    dragRef.current = { x: event.clientX, y: event.clientY };
+    setDragging(true);
+    const move = (moved: MouseEvent) => {
+      const last = dragRef.current;
+      if (last !== null) {
+        rendererRef.current?.look(moved.clientX - last.x, moved.clientY - last.y);
+        dragRef.current = { x: moved.clientX, y: moved.clientY };
+      }
+    };
+    const stop = () => {
+      dragRef.current = null;
+      stopDragRef.current = null;
+      setDragging(false);
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
+    };
+    stopDragRef.current = stop;
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", stop);
+  };
+
   const [sx, sy, sz] = view.size;
 
   return (
@@ -142,8 +179,10 @@ export function SchematicViewer({ view, onClose }: SchematicViewerProps) {
       <canvas
         ref={canvasRef}
         className="viewer-canvas"
+        data-dragging={dragging}
         aria-label="3D 画面"
-        onClick={() => rendererRef.current?.requestLock()}
+        onMouseDown={startLook}
+        onContextMenu={(event) => event.preventDefault()}
         onMouseMove={(event) => {
           const box = event.currentTarget.getBoundingClientRect();
           rendererRef.current?.setMouse([event.clientX - box.left, event.clientY - box.top]);
@@ -162,7 +201,16 @@ export function SchematicViewer({ view, onClose }: SchematicViewerProps) {
             {view.dataVersion === null ? "" : ` · 数据版本 ${view.dataVersion}`}
           </Text>
         </div>
-        <Button appearance="subtle" icon={<Dismiss20Regular />} aria-label="关闭预览" onClick={onClose} />
+        <div className="viewer-bar-actions">
+          <Button
+            appearance="subtle"
+            title="抓取鼠标后可以无限转向，用准星指方块。浏览器会自己弹一条「按 Esc 显示光标」的提示，那是系统的提示，网页关不掉。"
+            onClick={() => (locked ? rendererRef.current?.releaseLock() : rendererRef.current?.requestLock())}
+          >
+            {locked ? "放开鼠标" : "抓取鼠标"}
+          </Button>
+          <Button appearance="subtle" icon={<Dismiss20Regular />} aria-label="关闭预览" onClick={onClose} />
+        </div>
       </header>
 
       {failure !== null ? (
@@ -179,7 +227,7 @@ export function SchematicViewer({ view, onClose }: SchematicViewerProps) {
           <footer className="viewer-help">
             {locked
               ? "WASD 移动 · 空格 上升 · Shift 下降 · Ctrl 加速 · 滚轮调速 · F 固定方块信息 · F3 性能 · Esc 放开鼠标"
-              : "点击画面开始转向 · WASD 移动 · 空格 上升 · Shift 下降 · Ctrl 加速 · F 固定 · F3 性能 · Esc 关闭"}
+              : "按住鼠标拖动转向 · WASD 移动 · 空格 上升 · Shift 下降 · Ctrl 加速 · 滚轮调速 · F 固定 · F3 性能 · Esc 关闭"}
           </footer>
         </>
       )}

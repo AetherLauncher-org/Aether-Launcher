@@ -185,12 +185,17 @@ export class SchematicRenderer {
 
   // ---- 事件 -------------------------------------------------------------------------
 
+  /** 转向：鼠标位移（像素）。抓取鼠标时来自 `movementX/Y`，拖动转向时来自指针位移。 */
+  look(dx: number, dy: number): void {
+    this.pose = applyLook(this.pose, dx, dy);
+    this.moved = true;
+    this.dirty = true;
+    this.hoverDirty = true;
+  }
+
   private readonly onMouseMove = (event: MouseEvent): void => {
     if (this.locked) {
-      this.pose = applyLook(this.pose, event.movementX, event.movementY);
-      this.moved = true;
-      this.dirty = true;
-      this.hoverDirty = true;
+      this.look(event.movementX, event.movementY);
     }
   };
 
