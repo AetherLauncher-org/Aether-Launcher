@@ -11,6 +11,7 @@ use native_ui_spike_common::bench::Mode;
 use native_ui_spike_common::model::Model;
 use native_ui_spike_common::stats;
 
+mod fluent;
 mod gpu;
 
 fn main() -> iced::Result {
@@ -81,7 +82,7 @@ impl App {
     }
 
     fn theme(&self) -> Theme {
-        if self.dark { Theme::Dark } else { Theme::Light }
+        fluent::theme(self.dark)
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -99,7 +100,7 @@ impl App {
                     )
                     .width(Fill)
                     .padding(10)
-                    .style(if selected { button::primary } else { button::secondary })
+                    .style(fluent::nav_item(selected))
                     .on_press(Message::Select(index)),
                 )
             },
@@ -111,8 +112,16 @@ impl App {
                 text_input("实例名称", &self.model.input)
                     .on_input(Message::Input)
                     .on_submit(Message::Rename)
+                    .style(fluent::input)
                     .padding(10),
-                button("重命名").padding(10).on_press(Message::Rename),
+                button("重命名")
+                    .padding(10)
+                    .style(fluent::primary_button)
+                    .on_press(Message::Rename),
+                button("清空")
+                    .padding(10)
+                    .style(fluent::secondary_button)
+                    .on_press(Message::Input(String::new())),
             ]
             .spacing(8),
             text(self.model.message.clone()).size(13),
@@ -126,10 +135,17 @@ impl App {
 
         let preview = shader(gpu::CubeView { angle: self.angle }).width(Fill).height(Fill);
 
-        row![
+        container(row![
             container(scrollable(list)).width(300).padding(12),
-            column![preview, form].spacing(12).padding(12).width(Fill),
-        ]
+            column![
+                container(preview).style(fluent::card).padding(1).height(Fill),
+                container(form).style(fluent::card).padding(12),
+            ]
+            .spacing(12)
+            .padding(12)
+            .width(Fill),
+        ])
+        .style(fluent::page)
         .into()
     }
 }

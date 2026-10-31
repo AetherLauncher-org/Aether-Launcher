@@ -72,6 +72,7 @@ Slint 一开始没做，理由是它的许可证要负责人同意才能用。�
 - **许可证**：iced 和 egui 的依赖树都没有只能按 GPL 用的东西，标出来的三个（`r-efi`、`self_cell`）都是双许可、有宽松选项。iced 是 MIT，egui 是 MIT 或 Apache-2.0。**Slint 的每个 crate 都是 `GPL-3.0-only OR Slint Royalty-free 2.0 OR Slint Software 3.0`**：GPL 不能用（项目是 Apache-2.0）；免版税协议要求署名，并有它自己的条件，用它要负责人读完条款后同意；第三种是付费商业许可。这是 Slint 能不能选的前提，不是性能问题。
 - **可访问性**：egui 带 AccessKit（开了 `accesskit` 特性，没有用读屏软件测过）。Slint 也带 AccessKit（`accessibility` 特性，同样没有测过）。**iced 0.14 没有可访问性支持**，它的依赖里没有 AccessKit。验收条件写了「做不到的要写明」：选 iced，读屏读不出控件名，键盘能不能走完所有操作要另外验证。
 - **外观**：见 `screenshots/`。iced 默认的深色主题比 egui 的默认外观精致，圆角、留白和层次都更接近现在的 Fluent；egui 默认偏工具软件，要做出同样的层次要自己调很多；Slint 默认的深色控件介于两者之间，用的是自己的 `.slint` 描述语言写界面，要多学一门东西。三者都没有做 Fluent 的令牌映射。
+- **iced 能不能做成 Fluent 的样子**（负责人问过）：能。`spikes/native-ui/iced/src/fluent.rs`（约 230 行）把 `brand.ts` 的品牌色阶、Fluent 的中性色和 4 / 8 px 圆角做成了一个 iced 主题加几个样式函数（卡片、页面层、主要 / 次要按钮、导航项、输入框），`screenshots/spike-iced.png` 是结果。没有 CSS、没有现成的 Fluent 令牌集、没有悬停过渡动画（要自己按时间插值），这一层要自己维护；Mica 之类的窗口材质要在窗口层另外接 winit 和 Windows API，这次没做。
 - **API 的稳定性**：iced 0.14、egui 0.37 和 Slint 1.18 的 API 都与我记忆里的版本不同（iced 的复选框、egui 的 `show_inside` 改名、wgpu 27 与 30 的结构差异、Slint 的 `ColorScheme` 是内建枚举不用导入），都是按源码改过来的。三者的 wgpu 接口都是会变的，升级要预留时间。
 
 倾向：**仍然是 iced，但现在它和 egui 之间的真正分歧是可访问性**。iced 内存少、系统字体不用管、3D 直接画进窗口、默认外观更接近要的层次，输入法验过了；代价是没有可访问性。egui 有可访问性、输入法也验过了，代价是字体要自己找、内存多 50 MB、外观要自己调。**Slint 暂时不选**：转动时的 CPU 高得多且没查清，许可证要负责人同意，体积和编译时间最大；它的优点是有 AccessKit 和声明式的界面描述。如果要认真考虑 Slint，先换 Skia 渲染器重量，并由负责人读完免版税协议。
