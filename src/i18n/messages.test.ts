@@ -47,7 +47,6 @@ describe("translate", () => {
   });
 
   it("falls back to zh-CN for a missing key", () => {
-    // "install" 只在 zh-CN 里
     expect(translate(catalogs, "zh-CN", "en-US", "install", { version: "1.21.1", percent: 17 })).toBe(
       "安装 1.21.1 · 17%",
     );
@@ -67,7 +66,6 @@ describe("translate", () => {
   });
 
   it("falls back to the .other category when a category is absent", () => {
-    // zh-CN 只有一个 other 类别，任何数量都落 other
     expect(translate(catalogs, "zh-CN", "zh-CN", "fileCount", { count: 1 })).toBe("1 个文件");
   });
 });

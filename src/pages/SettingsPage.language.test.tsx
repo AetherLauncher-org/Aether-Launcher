@@ -60,7 +60,6 @@ describe("SettingsPage language selector", () => {
     });
 
     expect(window.localStorage.getItem(localeStorageKey)).toBe("en-US");
-    // 语言行自身的文案也切到了英文
     expect(screen.getByText("Language")).toBeInTheDocument();
   });
 });

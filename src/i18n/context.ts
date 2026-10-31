@@ -12,10 +12,6 @@ export type I18nValue = {
   t: TFunction;
 };
 
-/**
- * 默认值用源语言 zh-CN：不包 `I18nProvider` 也能用 `useT()`（现有组件测试就
- * 直接渲染组件、没包 Provider），此时文案保持中文，和现状一致。
- */
 export const defaultValue: I18nValue = {
   locale: defaultLocale,
   setLocale: () => undefined,

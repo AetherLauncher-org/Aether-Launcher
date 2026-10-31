@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-/**
- * 语言目录一致性检查。以 `locales/zh-CN.json` 为源语言（source of truth），
- * 逐个校验其余语言目录的完整性，供本地和 CI 使用。
- *
- * 检查项：
- *   - 缺失键：源语言有、目标语言没有
- *   - 多余键：目标语言有、源语言没有
- *   - 占位符不一致：同一键两边的 `{name}` 集合不一致
- *   - 复数类别不完整：出现 `<词干>.<类别>` 却没配 `<词干>.other`
- *   - 结构错误：值不是字符串、重复键
- *
- * 用法：`node scripts/check-locales.mjs [localesDir]`（默认 `locales`）。
- * 有问题时退出码为 1，并按语言打印差异；干净时退出码为 0。
- */
 import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -22,7 +8,6 @@ const PLURAL_SUFFIXES = new Set(PLURAL_CATEGORIES);
 
 const SOURCE_LOCALE = "zh-CN";
 
-/** 提取 `{name}` 占位符集合。 */
 function placeholders(template) {
   const names = new Set();
   for (const match of template.matchAll(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g)) {
@@ -31,7 +16,6 @@ function placeholders(template) {
   return names;
 }
 
-/** 把一个 JSON 文本解析成扁平的 `键 -> 字符串` 目录，顺带做结构校验。 */
 function parseCatalog(name, text) {
   const issues = [];
   let data;
@@ -52,7 +36,6 @@ function parseCatalog(name, text) {
       continue;
     }
     if (seen.has(key)) {
-      // JSON.parse 对重复键是后者覆盖前者；这里用逐行扫描兜底。
       issues.push(`${name}: 键 "${key}" 重复出现`);
     }
     seen.add(key);
@@ -61,7 +44,6 @@ function parseCatalog(name, text) {
   return { issues, entries };
 }
 
-/** 逐个文件的行级重复键检查（依赖「一个键一行」的格式约定）。 */
 function duplicateKeys(name, text) {
   const issues = [];
   const counts = new Map();
@@ -79,10 +61,6 @@ function duplicateKeys(name, text) {
   return issues;
 }
 
-/**
- * 纯校验函数（供测试复用）：给定「语言名 -> 目录对象」，返回按语言分组的
- * 问题列表；无问题时返回空数组。
- */
 export function checkCatalogs(catalogs) {
   const languages = Object.keys(catalogs);
   const source = catalogs[SOURCE_LOCALE];
@@ -93,8 +71,6 @@ export function checkCatalogs(catalogs) {
   }
 
   const sourceKeys = new Set(Object.keys(source));
-
-  // 源语言自身的复数完整性
   for (const key of sourceKeys) {
     const suffix = key.slice(key.lastIndexOf(".") + 1);
     if (PLURAL_SUFFIXES.has(suffix) && suffix !== "other") {
@@ -143,7 +119,6 @@ export function checkCatalogs(catalogs) {
   return issues;
 }
 
-/** 从磁盘加载目录，返回 `{ catalogs, issues }`。 */
 function loadFromDir(dir) {
   const catalogs = {};
   const issues = [];
@@ -189,8 +164,6 @@ function main() {
   console.error(`共 ${all.length} 处问题`);
   process.exitCode = 1;
 }
-
-// 作为脚本直接运行时执行 main；被 import（测试）时不执行。
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   main();
 }
