@@ -29,18 +29,26 @@ DriverVersion               : 32.0.16.1088
 
 
 --- round 1 spike-iced animate
-toolkit=iced mode=animate seconds=14.0 frames=769 fps=54.9 interval_ms mean=16.65 p50=16.69 p95=17.46 p99=21.42 max=22.91 over_1.5x_median=0 cpu_percent=13.7 memory_mb start=8 end=168 steady seconds=10.0 frames=599 fps=59.9 cpu_percent=8.3
+toolkit=iced mode=animate seconds=14.0 frames=765 fps=54.6 interval_ms mean=16.66 p50=16.68 p95=17.10 p99=19.70 max=65.04 over_1.5x_median=2 cpu_percent=15.4 memory_mb start=8 end=168 steady seconds=10.0 frames=598 fps=59.8 cpu_percent=9.1
 --- round 1 spike-egui animate
-toolkit=egui mode=animate seconds=14.0 frames=787 fps=56.2 interval_ms mean=16.72 p50=16.69 p95=18.93 p99=21.95 max=53.45 over_1.5x_median=7 cpu_percent=14.1 memory_mb start=9 end=218 steady seconds=10.0 frames=600 fps=60.0 cpu_percent=9.1
+toolkit=egui mode=animate seconds=14.0 frames=776 fps=55.4 interval_ms mean=16.81 p50=16.68 p95=17.72 p99=24.42 max=68.36 over_1.5x_median=8 cpu_percent=14.1 memory_mb start=9 end=217 steady seconds=10.0 frames=596 fps=59.6 cpu_percent=8.3
+--- round 1 spike-slint animate
+toolkit=slint mode=animate seconds=14.0 frames=684 fps=48.9 interval_ms mean=16.98 p50=16.65 p95=17.41 p99=20.04 max=267.91 over_1.5x_median=1 cpu_percent=51.1 memory_mb start=10 end=196 steady seconds=10.0 frames=599 fps=59.9 cpu_percent=45.0
 --- round 1 spike-iced idle
-toolkit=iced mode=idle seconds=14.0 frames=1 fps=0.1 interval_ms mean=0.00 p50=0.00 p95=0.00 p99=0.00 max=0.00 over_1.5x_median=0 cpu_percent=7.1 memory_mb start=8 end=165 steady seconds=10.0 frames=0 fps=0.0 cpu_percent=0.5
+toolkit=iced mode=idle seconds=14.0 frames=1 fps=0.1 interval_ms mean=0.00 p50=0.00 p95=0.00 p99=0.00 max=0.00 over_1.5x_median=0 cpu_percent=8.0 memory_mb start=8 end=164 steady seconds=10.0 frames=0 fps=0.0 cpu_percent=0.3
 --- round 1 spike-egui idle
-toolkit=egui mode=idle seconds=14.0 frames=7 fps=0.5 interval_ms mean=13.79 p50=7.34 p95=52.22 p99=52.22 max=52.22 over_1.5x_median=2 cpu_percent=5.8 memory_mb start=9 end=215 steady seconds=10.0 frames=0 fps=0.0 cpu_percent=0.2
+toolkit=egui mode=idle seconds=14.0 frames=5 fps=0.4 interval_ms mean=22.85 p50=19.50 p95=69.55 p99=69.55 max=69.55 over_1.5x_median=1 cpu_percent=5.2 memory_mb start=9 end=213 steady seconds=10.0 frames=0 fps=0.0 cpu_percent=0.0
+--- round 1 spike-slint idle
+toolkit=slint mode=idle seconds=14.0 frames=2 fps=0.1 interval_ms mean=84.22 p50=84.22 p95=84.22 p99=84.22 max=84.22 over_1.5x_median=0 cpu_percent=12.8 memory_mb start=10 end=142 steady seconds=10.0 frames=0 fps=0.0 cpu_percent=0.0
 --- round 2 spike-iced animate
-toolkit=iced mode=animate seconds=14.0 frames=770 fps=55.0 interval_ms mean=16.63 p50=16.68 p95=17.61 p99=21.53 max=22.53 over_1.5x_median=0 cpu_percent=14.5 memory_mb start=8 end=167 steady seconds=10.0 frames=599 fps=59.9 cpu_percent=8.0
+toolkit=iced mode=animate seconds=14.0 frames=765 fps=54.6 interval_ms mean=16.64 p50=16.69 p95=18.60 p99=24.92 max=28.00 over_1.5x_median=6 cpu_percent=14.2 memory_mb start=8 end=168 steady seconds=10.0 frames=600 fps=60.0 cpu_percent=6.4
 --- round 2 spike-egui animate
-toolkit=egui mode=animate seconds=14.0 frames=787 fps=56.2 interval_ms mean=16.73 p50=16.67 p95=19.05 p99=20.29 max=51.18 over_1.5x_median=4 cpu_percent=13.4 memory_mb start=9 end=218 steady seconds=10.0 frames=599 fps=59.9 cpu_percent=7.8
+toolkit=egui mode=animate seconds=14.0 frames=782 fps=55.9 interval_ms mean=16.72 p50=16.67 p95=18.46 p99=22.00 max=89.25 over_1.5x_median=4 cpu_percent=13.2 memory_mb start=9 end=218 steady seconds=10.0 frames=600 fps=60.0 cpu_percent=7.5
+--- round 2 spike-slint animate
+toolkit=slint mode=animate seconds=14.0 frames=718 fps=51.3 interval_ms mean=16.69 p50=16.62 p95=18.10 p99=22.26 max=73.50 over_1.5x_median=2 cpu_percent=50.8 memory_mb start=10 end=158 steady seconds=10.0 frames=600 fps=60.0 cpu_percent=43.7
 --- round 2 spike-iced idle
-toolkit=iced mode=idle seconds=14.0 frames=1 fps=0.1 interval_ms mean=0.00 p50=0.00 p95=0.00 p99=0.00 max=0.00 over_1.5x_median=0 cpu_percent=7.8 memory_mb start=8 end=165 steady seconds=10.0 frames=0 fps=0.0 cpu_percent=0.5
+toolkit=iced mode=idle seconds=14.0 frames=1 fps=0.1 interval_ms mean=0.00 p50=0.00 p95=0.00 p99=0.00 max=0.00 over_1.5x_median=0 cpu_percent=7.4 memory_mb start=8 end=165 steady seconds=10.0 frames=0 fps=0.0 cpu_percent=0.3
 --- round 2 spike-egui idle
-toolkit=egui mode=idle seconds=14.0 frames=7 fps=0.5 interval_ms mean=13.70 p50=8.80 p95=51.09 p99=51.09 max=51.09 over_1.5x_median=2 cpu_percent=5.4 memory_mb start=9 end=215 steady seconds=10.0 frames=0 fps=0.0 cpu_percent=0.0
+toolkit=egui mode=idle seconds=14.0 frames=71 fps=5.1 interval_ms mean=138.19 p50=16.64 p95=76.85 p99=1576.69 max=6221.02 over_1.5x_median=4 cpu_percent=8.4 memory_mb start=9 end=217 steady seconds=10.0 frames=65 fps=6.5 cpu_percent=2.5
+--- round 2 spike-slint idle
+toolkit=slint mode=idle seconds=14.0 frames=2 fps=0.1 interval_ms mean=84.69 p50=84.69 p95=84.69 p99=84.69 max=84.69 over_1.5x_median=0 cpu_percent=14.1 memory_mb start=10 end=141 steady seconds=10.0 frames=0 fps=0.0 cpu_percent=0.6

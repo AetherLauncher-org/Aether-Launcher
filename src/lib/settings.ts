@@ -111,25 +111,6 @@ export function saveLastPlayedId(id: string): void {
   }
 }
 
-const navCollapsedStorageKey = "aether.navCollapsed";
-
-/** 侧边栏是否收起。默认展开。 */
-export function loadNavCollapsed(): boolean {
-  try {
-    return window.localStorage.getItem(navCollapsedStorageKey) === "1";
-  } catch {
-    return false;
-  }
-}
-
-export function saveNavCollapsed(collapsed: boolean): void {
-  try {
-    window.localStorage.setItem(navCollapsedStorageKey, collapsed ? "1" : "0");
-  } catch {
-    // 存储不可用时只在本次运行内生效
-  }
-}
-
 export const memoryModeStorageKey = "aether.memoryMode";
 
 /**

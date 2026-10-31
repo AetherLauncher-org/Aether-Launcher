@@ -46,14 +46,19 @@ export const mainPages: readonly PageDefinition[] = [
     icon: <ArrowDownload24Regular />,
     activeIcon: <ArrowDownload24Filled />,
   },
-  {
-    id: "accounts",
-    label: "账户",
-    summary: "用哪个身份进入游戏",
-    icon: <Person24Regular />,
-    activeIcon: <Person24Filled />,
-  },
 ];
+
+/**
+ * 账户页不在主页面那一排里：进去的入口是导航栏右边的当前账户（头像和名字），见 `NavPane`。
+ * 页面本身和别的页一样，有标题和说明。
+ */
+export const accountsPage: PageDefinition = {
+  id: "accounts",
+  label: "账户",
+  summary: "用哪个身份进入游戏",
+  icon: <Person24Regular />,
+  activeIcon: <Person24Filled />,
+};
 
 export const settingsPage: PageDefinition = {
   id: "settings",
@@ -63,7 +68,7 @@ export const settingsPage: PageDefinition = {
   activeIcon: <Settings24Filled />,
 };
 
-export const allPages: readonly PageDefinition[] = [...mainPages, settingsPage];
+export const allPages: readonly PageDefinition[] = [...mainPages, accountsPage, settingsPage];
 
 export function findPage(id: PageId): PageDefinition {
   return allPages.find((page) => page.id === id) ?? allPages[0];

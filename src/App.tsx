@@ -8,7 +8,6 @@ import { currentGreeting } from "./lib/greeting";
 import { loadMotionPreference, saveMotionPreference } from "./lib/motion";
 import type { MotionPreference } from "./lib/motion";
 import { detectMica } from "./lib/platform";
-import { loadNavCollapsed, saveNavCollapsed } from "./lib/settings";
 import { useTheme } from "./lib/useTheme";
 import { findPage } from "./navigation";
 import type { PageId } from "./navigation";
@@ -29,7 +28,6 @@ import type { NavigationApi } from "./state/navigation";
 function App() {
   const [application, setApplication] = useState<ApplicationInfo>(defaultApplicationInfo);
   const [pageId, setPageId] = useState<PageId>("home");
-  const [collapsed, setCollapsed] = useState(loadNavCollapsed);
   const [motion, setMotion] = useState<MotionPreference>(loadMotionPreference);
   const [mica, setMica] = useState(false);
   const [greeting] = useState(currentGreeting);
@@ -77,13 +75,6 @@ function App() {
     void setWindowTheme(resolved).catch(() => undefined);
   }, [resolved]);
 
-  const toggleCollapsed = useCallback(() => {
-    setCollapsed((previous) => {
-      saveNavCollapsed(!previous);
-      return !previous;
-    });
-  }, []);
-
   const changeMotion = useCallback((next: MotionPreference) => {
     setMotion(next);
     saveMotionPreference(next);
@@ -106,7 +97,7 @@ function App() {
                 <div className="app-shell">
                   <TitleBar />
                   <div className="app-body">
-                    <NavPane collapsed={collapsed} onToggle={toggleCollapsed} version={application.version} />
+                    <NavPane version={application.version} />
                     <main className="content-layer">
                       <PageTransition pageKey={pageId}>
                         {page.id === "home" ? (

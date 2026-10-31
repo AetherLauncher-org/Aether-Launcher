@@ -1,0 +1,22 @@
+[package]
+name = "spike-slint"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[dependencies]
+native-ui-spike-common = { path = "../common" }
+slint = { version = "1.18", default-features = false, features = [
+  "std",
+  "backend-winit",
+  "renderer-femtovg-wgpu",
+  "unstable-wgpu-30",
+  "accessibility",
+  "compat-1-2",
+] }
+
+[build-dependencies]
+slint-build = "1.18"

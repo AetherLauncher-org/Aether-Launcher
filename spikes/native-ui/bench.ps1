@@ -1,7 +1,7 @@
-# Runs both release spikes in `--bench` mode, twice each for `animate` (spinning cube) and `idle`
-# (still cube), and writes what they print to bench-results.txt next to this script.
+# Runs the three release spikes in `--bench` mode, twice each for `animate` (spinning cube) and
+# `idle` (still cube), and writes what they print to bench-results.txt next to this script.
 #
-#   cargo build --release -p spike-iced -p spike-egui
+#   cargo build --release -p spike-iced -p spike-egui -p spike-slint
 #   powershell -File bench.ps1
 #
 # Each run opens a window for 14 seconds on its own and closes it. Nobody has to click. The
@@ -15,7 +15,7 @@ $gpu = Get-CimInstance Win32_VideoController |
 ($gpu | Format-List | Out-String) | Add-Content $out
 foreach ($round in 1..2) {
   foreach ($mode in 'animate', 'idle') {
-    foreach ($exe in 'spike-iced', 'spike-egui') {
+    foreach ($exe in 'spike-iced', 'spike-egui', 'spike-slint') {
       "--- round $round $exe $mode" | Add-Content $out
       $p = Start-Process -FilePath "$root\$exe.exe" -ArgumentList '--bench', $mode, '14' `
         -RedirectStandardOutput "$env:TEMP\spike-out.txt" -RedirectStandardError "$env:TEMP\spike-err.txt" -PassThru

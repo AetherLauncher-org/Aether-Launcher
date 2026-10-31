@@ -46,12 +46,57 @@ afterEach(() => {
 });
 
 describe("AccountsPage", () => {
-  it("starts with an empty state that offers to add an account", () => {
-    renderAccounts();
+  it("starts with three empty account groups and a way to add each kind", () => {
+    const { container } = renderAccounts();
 
     expect(screen.getByRole("heading", { level: 1, name: "账户" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "还没有账户" })).toBeInTheDocument();
+    for (const group of ["microsoft", "thirdparty", "offline"]) {
+      const section = container.querySelector(`[data-account-group="${group}"]`) as HTMLElement;
+      expect(section).not.toBeNull();
+      expect(within(section).getByText("0 个")).toBeInTheDocument();
+      expect(within(section).getByText(/^还没有/)).toBeInTheDocument();
+    }
     expect(screen.getAllByRole("button", { name: "添加离线账户" }).length).toBeGreaterThan(0);
+  });
+
+  it("puts the header buttons in the order Microsoft, third-party, offline", () => {
+    const { container } = renderAccounts();
+
+    const names = Array.from(container.querySelectorAll(".page-header-action button")).map((button) =>
+      button.textContent?.trim(),
+    );
+
+    expect(names).toEqual(["登录微软账户", "第三方登录", "添加离线账户"]);
+  });
+
+  it("lists the account groups in the same order", () => {
+    renderAccounts();
+
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
+
+    expect(headings).toEqual(["微软账户", "第三方账户", "离线账户"]);
+  });
+
+  it("shows the third-party button but does not let it do anything yet", () => {
+    renderAccounts();
+
+    const button = screen.getByRole("button", { name: "第三方登录" });
+
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(button);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("files a new offline account under the offline group and nowhere else", async () => {
+    const { container } = renderAccounts();
+
+    await addAccount("Steve");
+
+    const offline = container.querySelector('[data-account-group="offline"]') as HTMLElement;
+    const microsoft = container.querySelector('[data-account-group="microsoft"]') as HTMLElement;
+    expect(await within(offline).findByText("Steve")).toBeInTheDocument();
+    expect(within(offline).getByText("1 个")).toBeInTheDocument();
+    expect(within(microsoft).queryByText("Steve")).not.toBeInTheDocument();
   });
 
   it("asks for the username and the UUID format in a dialog instead of a bare input", async () => {
@@ -129,7 +174,9 @@ describe("AccountsPage", () => {
     );
     renderAccounts();
 
-    fireEvent.click(screen.getByRole("button", { name: "使用此账户" }));
+    // 点卡片本身就是使用这个账户，没有单独的「使用」按钮
+    expect(screen.queryByRole("button", { name: "使用此账户" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "使用 Alex" }));
     const alexCard = screen.getByText("Alex").closest("li") as HTMLElement;
     expect(within(alexCard).getByText("当前使用")).toBeInTheDocument();
 
@@ -142,6 +189,43 @@ describe("AccountsPage", () => {
     const steveCard = (await screen.findByText("Steve")).closest("li") as HTMLElement;
     expect(within(steveCard).getByText("当前使用")).toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem(accountBookStorageKey) ?? "{}").activeId).toBe("offline-1");
+  });
+
+  it("marks the current account's card as pressed and leaves the other one unpressed", () => {
+    window.localStorage.setItem(
+      accountBookStorageKey,
+      JSON.stringify({
+        accounts: [
+          { id: "offline-1", kind: "offline", name: "Steve", uuidMode: "standard", uuid: null },
+          { id: "offline-2", kind: "offline", name: "Alex", uuidMode: "standard", uuid: null },
+        ],
+        activeId: "offline-1",
+      }),
+    );
+    renderAccounts();
+
+    expect(screen.getByRole("button", { name: "使用 Steve" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "使用 Alex" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("removes an account without also selecting it (the remove button is not inside the card button)", async () => {
+    window.localStorage.setItem(
+      accountBookStorageKey,
+      JSON.stringify({
+        accounts: [
+          { id: "offline-1", kind: "offline", name: "Steve", uuidMode: "standard", uuid: null },
+          { id: "offline-2", kind: "offline", name: "Alex", uuidMode: "standard", uuid: null },
+        ],
+        activeId: "offline-1",
+      }),
+    );
+    renderAccounts();
+
+    fireEvent.click(screen.getByRole("button", { name: "移除 Alex" }));
+    await screen.findByRole("dialog");
+
+    expect(JSON.parse(window.localStorage.getItem(accountBookStorageKey) ?? "{}").activeId).toBe("offline-1");
+    expect(screen.getByRole("button", { name: "移除 Alex" }).closest(".account-card-main")).toBeNull();
   });
 
   it("says Microsoft sign-in needs the desktop app instead of a button that does nothing", async () => {

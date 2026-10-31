@@ -16,7 +16,6 @@ import {
   saveAccountBook,
   selectAccount,
   signInMicrosoftAccount,
-  summariseAccounts,
   syncMicrosoftAccounts,
   uuidModes,
   validatePlayerName,
@@ -159,11 +158,6 @@ describe("account book operations", () => {
     expect(activeAccount(emptyAccountBook)).toBeNull();
   });
 
-  it("summarises the list", () => {
-    expect(summariseAccounts([])).toBe("还没有账户");
-    expect(summariseAccounts([steve, alex])).toBe("2 个离线账户");
-  });
-
   it("describes every uuid mode", () => {
     for (const mode of uuidModes) {
       expect(describeUuidMode(mode).label.length).toBeGreaterThan(0);
@@ -283,12 +277,6 @@ describe("Microsoft accounts in the book", () => {
     const book = signInMicrosoftAccount(addAccount(emptyAccountBook, account()), microsoft);
 
     expect(syncMicrosoftAccounts(book, []).accounts.map((entry) => entry.kind)).toEqual(["offline"]);
-  });
-
-  it("summarises by kind", () => {
-    expect(summariseAccounts([account()])).toBe("1 个离线账户");
-    expect(summariseAccounts([microsoft])).toBe("1 个微软账户");
-    expect(summariseAccounts([account(), microsoft])).toBe("2 个账户（1 个微软）");
   });
 
   it("round-trips through storage and drops malformed Microsoft entries", () => {

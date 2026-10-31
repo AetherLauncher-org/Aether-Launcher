@@ -50,19 +50,26 @@ describe("Aether Launcher shell", () => {
     expect(screen.queryByText("A", { selector: ".brand-mark" })).not.toBeInTheDocument();
   });
 
+  // [导航里的按钮名, 页面标题, 页面里一定有的一句话]；账户页的入口是右边的当前账户，不是「账户」按钮
   it.each([
-    ["实例", "还没有实例"],
-    ["下载", "浏览器预览无法读取 Mojang 官方版本目录"],
-    ["账户", "还没有账户"],
-  ])("switches to the %s page from the navigation", (label, landmark) => {
+    ["实例", "实例", "还没有实例"],
+    ["下载", "下载", "浏览器预览无法读取 Mojang 官方版本目录"],
+    ["还没有账户", "账户", "还没有微软账户"],
+  ])("switches to the %s page from the navigation", (button, title, landmark) => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: label }));
+    fireEvent.click(screen.getByRole("button", { name: button }));
 
-    expect(screen.getByRole("heading", { level: 1, name: label })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
     expect(screen.getAllByText(new RegExp(landmark)).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: label })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: button })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "主页" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("has no separate accounts button: the current account in the bar is the way in", () => {
+    render(<App />);
+
+    expect(screen.queryByRole("button", { name: "账户" })).not.toBeInTheDocument();
   });
 
   it("returns to the home page", () => {
@@ -96,39 +103,52 @@ describe("Aether Launcher shell", () => {
   });
 });
 
-describe("collapsible navigation", () => {
-  it("collapses and expands, and remembers the choice", () => {
+describe("navigation bar", () => {
+  it("sits above the page, not beside it", () => {
     const { container } = render(<App />);
-    const toggle = screen.getByRole("button", { name: "收起导航" });
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(container.querySelector(".navpane")).not.toHaveClass("collapsed");
+    const bar = container.querySelector("nav.navbar");
+    const content = container.querySelector("main.content-layer");
 
-    fireEvent.click(toggle);
-
-    expect(container.querySelector(".navpane")).toHaveClass("collapsed");
-    expect(screen.getByRole("button", { name: "展开导航" })).toHaveAttribute("aria-expanded", "false");
-    expect(window.localStorage.getItem("aether.navCollapsed")).toBe("1");
-
-    fireEvent.click(screen.getByRole("button", { name: "展开导航" }));
-    expect(container.querySelector(".navpane")).not.toHaveClass("collapsed");
-    expect(window.localStorage.getItem("aether.navCollapsed")).toBe("0");
+    expect(bar).not.toBeNull();
+    expect(content).not.toBeNull();
+    // the bar comes before the page in the same column (the column itself is set in shell.css)
+    expect(bar?.compareDocumentPosition(content as Node) ?? 0).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(bar?.parentElement).toBe(content?.parentElement);
+    expect(bar).toHaveAttribute("aria-label", "主要导航");
   });
 
-  it("keeps every page reachable while collapsed", () => {
+  it("lists the main pages in order, then the account and settings on the right", () => {
+    const { container } = render(<App />);
+
+    const names = Array.from(container.querySelectorAll("nav.navbar .nav-item")).map((item) =>
+      item.getAttribute("aria-label"),
+    );
+
+    expect(names).toEqual(["主页", "实例", "下载", "还没有账户", "设置"]);
+  });
+
+  it("has nothing to collapse any more", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "收起导航" }));
+
+    expect(screen.queryByRole("button", { name: "收起导航" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "展开导航" })).not.toBeInTheDocument();
+  });
+
+  it("keeps every page reachable and marks the current one", () => {
+    render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "下载" }));
 
     expect(screen.getByRole("heading", { level: 1, name: "下载" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "主页" })).not.toHaveAttribute("aria-current");
   });
 
-  it("starts collapsed when it was left collapsed", () => {
-    window.localStorage.setItem("aether.navCollapsed", "1");
+  it("names every item in its title, for when only the icons fit", () => {
+    render(<App />);
 
-    const { container } = render(<App />);
-
-    expect(container.querySelector(".navpane")).toHaveClass("collapsed");
+    expect(screen.getByRole("button", { name: "实例" })).toHaveAttribute("title", "实例");
+    expect(screen.getByRole("button", { name: "设置" })).toHaveAttribute("title", "设置");
   });
 });
 

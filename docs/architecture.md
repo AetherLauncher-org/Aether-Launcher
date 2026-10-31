@@ -56,7 +56,7 @@ src/
 ├── main.tsx          入口
 ├── App.tsx           根：主题、Provider、页面切换
 ├── navigation.tsx    页面清单（id、名称、图标、说明）
-├── shell/            自绘标题栏、可收起的导航栏、Logo
+├── shell/            自绘标题栏、标题栏下面一横排的导航栏、Logo
 ├── state/            应用层状态：导航、账户、实例列表、安装任务、游戏会话
 ├── pages/            主页、实例、下载、账户、设置
 ├── components/       版本总览与详情、安装进度、启动控件、对话框等

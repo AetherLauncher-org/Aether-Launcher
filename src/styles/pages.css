@@ -2,10 +2,22 @@
 
 .page-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 20px;
+}
+
+/* 账户页：微软登录不可用的说明挂在页头下面，和列表隔开 */
+.account-note {
+  margin-bottom: 16px;
+}
+
+/* 某一类账户一个也没有时的那句话 */
+.account-group-empty {
+  display: block;
+  padding: 4px 0 8px;
 }
 
 .page-header-copy {
@@ -62,6 +74,16 @@
 
 .toolbar-actions {
   display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 一排并列的按钮（页头的「导入实例」「安装新版本」、导入对话框里的操作）：按钮之间留 8px，
+   窄了就换行，不挤在一起 */
+.page-actions,
+.import-actions {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -747,9 +769,7 @@
 
 .account-card {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 16px;
+  align-items: stretch;
   border: 1px solid var(--card-stroke);
   border-radius: var(--borderRadiusLarge);
   background: var(--card-bg);
@@ -760,6 +780,32 @@
 
 .account-card:hover {
   background: var(--card-bg-hover);
+}
+
+/* 整张卡片是一个按钮：点一下就用这个账户。删除按钮在它旁边，不嵌在里面 */
+.account-card-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 0;
+  border-radius: var(--borderRadiusLarge);
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-card.active .account-card-main {
+  cursor: default;
+}
+
+.account-card-main:focus-visible {
+  outline: 2px solid var(--colorStrokeFocus2);
+  outline-offset: -4px;
 }
 
 .account-card.active {
@@ -819,6 +865,7 @@
   flex: none;
   align-items: center;
   gap: 4px;
+  padding-right: 12px;
 }
 
 .microsoft-card {
@@ -2140,6 +2187,12 @@
 
 /* 按钮里的字永远一行；放不下时整个按钮换到下一行，而不是把字拆成两行 */
 button.fui-Button {
+  white-space: nowrap;
+}
+
+/* 徽章是一两个字的标签：不压缩、不换行。名字长了该被截断的是名字，不是徽章 */
+.fui-Badge {
+  flex: none;
   white-space: nowrap;
 }
 

@@ -39,7 +39,10 @@ export function AccountAvatar({ name, uuid = null, size = 40 }: AccountAvatarPro
   }, [uuid]);
 
   const skin = uuid !== null && loaded?.uuid === uuid ? loaded.image : null;
-  const pixels = Math.round(size * Math.max(2, typeof window === "undefined" ? 1 : window.devicePixelRatio));
+  // 头的两层各是 8×8 个像素点，外层大 1/8；画布边长取 72 的倍数，两层的每个像素点才都是整数个
+  // 画布像素，边缘才不糊。浏览器再按 `size` 缩到屏幕上。
+  const wanted = size * Math.max(2, typeof window === "undefined" ? 1 : window.devicePixelRatio);
+  const pixels = 72 * Math.max(1, Math.ceil(wanted / 72));
 
   useEffect(() => {
     if (skin !== null && canvas.current !== null) {

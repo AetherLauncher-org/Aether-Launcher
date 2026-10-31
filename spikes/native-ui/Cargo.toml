@@ -3,7 +3,7 @@
 # compile it, and nothing in the launcher depends on it.
 [workspace]
 resolver = "2"
-members = ["common", "iced", "egui"]
+members = ["common", "iced", "egui", "slint"]
 
 [workspace.package]
 version = "0.0.0"

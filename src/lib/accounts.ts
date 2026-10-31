@@ -276,21 +276,6 @@ export function signInMicrosoftAccount(
   return { accounts: [...others, account], activeId: account.id };
 }
 
-/** 列表摘要，例如 `2 个离线账户`、`1 个微软账户`。 */
-export function summariseAccounts(accounts: readonly Account[]): string {
-  if (accounts.length === 0) {
-    return "还没有账户";
-  }
-  const microsoft = accounts.filter((account) => account.kind === "microsoft").length;
-  if (microsoft === 0) {
-    return `${accounts.length} 个离线账户`;
-  }
-  if (microsoft === accounts.length) {
-    return `${accounts.length} 个微软账户`;
-  }
-  return `${accounts.length} 个账户（${microsoft} 个微软）`;
-}
-
 function parseAccount(value: unknown): Account | null {
   if (typeof value !== "object" || value === null) {
     return null;

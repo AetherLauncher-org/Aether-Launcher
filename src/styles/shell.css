@@ -1,4 +1,4 @@
-/* ── 外壳：标题栏 + 导航栏 + 内容层 ─────────────────────────────── */
+/* ── 外壳：标题栏 + 导航栏（在上面一横排）+ 内容层 ─────────────────────────────── */
 
 .app-shell {
   display: flex;
@@ -12,6 +12,7 @@
 .app-body {
   display: flex;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
 }
 
@@ -112,33 +113,25 @@
   background: #b22a1b;
 }
 
-/* 导航栏（NavigationView）：展开 240、收起 52，宽度有过渡，图标位置不动 */
-.navpane {
+/* 导航栏：标题栏下面一横排。左边是主要页面，右边是账户、设置和版本号 */
+.navbar {
   display: flex;
   flex: none;
-  flex-direction: column;
-  width: 240px;
-  padding: 4px 0 8px;
-  overflow: hidden;
-  transition: width var(--durationGentle) var(--curveEasyEase);
-}
-
-.navpane.collapsed {
-  width: 52px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 6px;
 }
 
 .nav-group {
   display: flex;
-  flex-direction: column;
   gap: 2px;
-  margin-top: 6px;
 }
 
 .nav-footer {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 2px;
-  margin-top: auto;
+  margin-left: auto;
 }
 
 .nav-item {
@@ -146,11 +139,9 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 12px;
-  width: calc(100% - 12px);
+  gap: 8px;
   height: 40px;
-  margin: 0 6px;
-  padding: 0 8px;
+  padding: 0 12px;
   border: 0;
   border-radius: var(--borderRadiusMedium);
   color: var(--colorNeutralForeground1);
@@ -175,22 +166,22 @@
   background: var(--colorSubtleBackgroundSelected);
 }
 
-/* 选中指示条：切换时从中心向上下展开 */
+/* 选中指示条：在下边，切换时从中间向两边展开 */
 .nav-item::before {
   position: absolute;
-  top: 50%;
-  left: 0;
-  width: 3px;
-  height: 16px;
+  bottom: 2px;
+  left: 50%;
+  width: 16px;
+  height: 3px;
   border-radius: 2px;
   background: var(--colorBrandForeground1);
   content: "";
-  transform: translateY(-50%) scaleY(0);
+  transform: translateX(-50%) scaleX(0);
   transition: transform var(--durationNormal) var(--curveDecelerateMid);
 }
 
 .nav-item.selected::before {
-  transform: translateY(-50%) scaleY(1);
+  transform: translateX(-50%) scaleX(1);
 }
 
 .nav-icon {
@@ -208,45 +199,60 @@
 .nav-label {
   min-width: 0;
   overflow: hidden;
-  opacity: 1;
   text-overflow: ellipsis;
-  transition: opacity var(--durationNormal) var(--curveEasyEase);
 }
 
-.navpane.collapsed .nav-label {
-  opacity: 0;
+/* 当前账户：头像加两行字，是进账户页的入口。比别的导航项高一点，头像画 32px */
+.nav-account {
+  height: 44px;
+  max-width: 240px;
+  padding: 0 14px 0 8px;
+  gap: 10px;
 }
 
 .nav-account-text {
   display: flex;
+  min-width: 0;
   flex-direction: column;
-  line-height: 1.2;
+  justify-content: center;
+  line-height: 1.25;
 }
 
 .nav-account-kind {
   color: var(--colorNeutralForeground3);
 }
 
+/* 皮肤的头是方的像素画，圆一点点边角就够了，不要把帽子层的角削掉太多 */
+.nav-account .account-avatar.head {
+  border-radius: 4px;
+}
+
 .nav-version {
-  padding: 6px 14px 0;
+  padding: 0 8px;
   color: var(--colorNeutralForeground4);
-  opacity: 1;
   white-space: nowrap;
-  transition: opacity var(--durationNormal) var(--curveEasyEase);
 }
 
-.navpane.collapsed .nav-version {
-  opacity: 0;
+/* 窄窗口：只留图标（名称在 title 里） */
+@media (max-width: 860px) {
+  .nav-label,
+  .nav-version {
+    display: none;
+  }
+
+  .nav-item {
+    padding: 0 8px;
+  }
 }
 
-/* 内容层：圆角、描边的一层，浮在 Mica 之上 */
+/* 内容层：上边两个圆角、描边的一层，浮在 Mica 之上 */
 .content-layer {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   border-top: 1px solid var(--card-stroke);
-  border-left: 1px solid var(--card-stroke);
   border-top-left-radius: var(--borderRadiusXLarge);
+  border-top-right-radius: var(--borderRadiusXLarge);
   background: var(--layer-bg);
 }
 

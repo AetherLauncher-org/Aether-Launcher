@@ -1,0 +1,132 @@
+// The Slint half of the comparison: the same instance list, rename form and cube grid as the
+// iced and egui spikes. See docs/design/native-ui.md.
+
+import { Button, CheckBox, LineEdit, ScrollView, Palette } from "std-widgets.slint";
+
+export struct Row {
+    name: string,
+    detail: string,
+}
+
+export component MainWindow inherits Window {
+    title: "Aether 原生界面对比 · Slint";
+    preferred-width: 1000px;
+    preferred-height: 640px;
+
+    in property <[Row]> rows;
+    in property <string> message;
+    in property <image> cube;
+    in-out property <int> selected: 0;
+    in-out property <string> input;
+    in-out property <bool> animate: true;
+
+    callback select(int);
+    callback rename();
+
+    HorizontalLayout {
+        padding: 12px;
+        spacing: 12px;
+
+        VerticalLayout {
+            width: 300px;
+            spacing: 8px;
+
+            Text {
+                text: "实例";
+                font-size: 20px;
+            }
+
+            ScrollView {
+                VerticalLayout {
+                    spacing: 8px;
+
+                    for row[index] in root.rows: Rectangle {
+                        height: 56px;
+                        border-radius: 6px;
+                        background: index == root.selected ? Palette.accent-background : Palette.alternate-background;
+
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 2px;
+
+                            Text {
+                                text: row.name;
+                                font-size: 16px;
+                                color: index == root.selected ? Palette.accent-foreground : Palette.foreground;
+                            }
+
+                            Text {
+                                text: row.detail;
+                                font-size: 12px;
+                                color: index == root.selected ? Palette.accent-foreground : Palette.foreground;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => {
+                                root.select(index);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: 8px;
+
+            Image {
+                source: root.cube;
+                image-fit: contain;
+                vertical-stretch: 1;
+            }
+
+            Text {
+                text: "改名（输入法测试：试试拼音、五笔、日文、候选窗口位置）";
+                font-size: 14px;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+
+                LineEdit {
+                    text <=> root.input;
+                    placeholder-text: "实例名称";
+                    accepted => {
+                        root.rename();
+                    }
+                }
+
+                Button {
+                    text: "重命名";
+                    clicked => {
+                        root.rename();
+                    }
+                }
+            }
+
+            Text {
+                text: root.message;
+                font-size: 13px;
+            }
+
+            HorizontalLayout {
+                spacing: 16px;
+                alignment: start;
+
+                CheckBox {
+                    text: "动画";
+                    checked <=> root.animate;
+                }
+
+                CheckBox {
+                    text: "深色";
+                    checked: true;
+                    toggled => {
+                        Palette.color-scheme = self.checked ? ColorScheme.dark : ColorScheme.light;
+                    }
+                }
+            }
+        }
+    }
+}

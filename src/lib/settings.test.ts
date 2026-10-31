@@ -3,13 +3,11 @@ import {
   loadLastPlayedId,
   loadMemoryMiB,
   loadMemoryMode,
-  loadNavCollapsed,
   memoryModeStorageKey,
   memoryStorageKey,
   saveLastPlayedId,
   saveMemoryMiB,
   saveMemoryMode,
-  saveNavCollapsed,
 } from "./settings";
 
 describe("memory mode", () => {
@@ -53,13 +51,5 @@ describe("small remembered settings", () => {
     expect(loadLastPlayedId()).toBeNull();
     saveLastPlayedId("abc");
     expect(loadLastPlayedId()).toBe("abc");
-  });
-
-  it("remembers whether the navigation is collapsed", () => {
-    expect(loadNavCollapsed()).toBe(false);
-    saveNavCollapsed(true);
-    expect(loadNavCollapsed()).toBe(true);
-    saveNavCollapsed(false);
-    expect(loadNavCollapsed()).toBe(false);
   });
 });

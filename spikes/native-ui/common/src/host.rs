@@ -4,6 +4,9 @@
 use std::path::PathBuf;
 
 use aether_app::Host;
+use aether_app::host::KnownFolders;
+use aether_app::import::ImportItemEvent;
+use aether_app::install::InstallProgress;
 use aether_app::microsoft::LoginEvent;
 use aether_core::InstanceId;
 
@@ -53,4 +56,29 @@ impl Host for SpikeHost {
     }
 
     fn emit_login(&self, _event: &LoginEvent) {}
+
+    fn emit_install(&self, _progress: &InstallProgress) {}
+
+    fn emit_import_item(&self, _event: &ImportItemEvent) {}
+
+    fn pick_folder(&self, _title: &str) -> Result<Option<PathBuf>, String> {
+        Ok(None)
+    }
+
+    fn pick_file(
+        &self,
+        _filter_name: &str,
+        _extensions: &[&str],
+    ) -> Result<Option<PathBuf>, String> {
+        Ok(None)
+    }
+
+    fn known_folders(&self) -> KnownFolders {
+        KnownFolders {
+            desktop: None,
+            downloads: None,
+            documents: None,
+            home: None,
+        }
+    }
 }
