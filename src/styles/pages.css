@@ -1812,6 +1812,15 @@
   padding: 10px 14px 12px;
 }
 
+/* 「换上」的账户选择 */
+.wear-accounts {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 /* 下载页的内容搜索 */
 .content-browser {
   display: grid;

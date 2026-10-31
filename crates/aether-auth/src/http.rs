@@ -27,6 +27,9 @@ pub struct HttpRequest {
     pub url: String,
     pub headers: Vec<(String, String)>,
     pub body: Option<String>,
+    /// A binary body (a multipart upload), used instead of `body`. Transports send it
+    /// as is.
+    pub bytes: Option<Vec<u8>>,
 }
 
 impl HttpRequest {
@@ -41,6 +44,27 @@ impl HttpRequest {
                 ("accept".to_owned(), "application/json".to_owned()),
             ],
             body: Some(body.into()),
+            bytes: None,
+        }
+    }
+
+    /// A `POST` that ships raw bytes under `content_type`, e.g. a `multipart/form-data`
+    /// upload.
+    #[must_use]
+    pub fn post_bytes(
+        url: impl Into<String>,
+        content_type: impl Into<String>,
+        bytes: Vec<u8>,
+    ) -> Self {
+        Self {
+            method: HttpMethod::Post,
+            url: url.into(),
+            headers: vec![
+                ("content-type".to_owned(), content_type.into()),
+                ("accept".to_owned(), "application/json".to_owned()),
+            ],
+            body: None,
+            bytes: Some(bytes),
         }
     }
 
@@ -58,6 +82,7 @@ impl HttpRequest {
                 ("accept".to_owned(), "application/json".to_owned()),
             ],
             body: Some(body.into()),
+            bytes: None,
         }
     }
 
@@ -69,6 +94,7 @@ impl HttpRequest {
             url: url.into(),
             headers: vec![("accept".to_owned(), "application/json".to_owned())],
             body: None,
+            bytes: None,
         }
     }
 
@@ -102,6 +128,12 @@ impl HttpRequest {
     pub fn body(&self) -> Option<&str> {
         self.body.as_deref()
     }
+
+    /// The binary request body, if any.
+    #[must_use]
+    pub fn body_bytes(&self) -> Option<&[u8]> {
+        self.bytes.as_deref()
+    }
 }
 
 impl fmt::Debug for HttpRequest {
@@ -109,7 +141,12 @@ impl fmt::Debug for HttpRequest {
         let redacted = self
             .body
             .as_ref()
-            .map(|body| format!("<redacted:{} bytes>", body.len()));
+            .map(|body| format!("<redacted:{} bytes>", body.len()))
+            .or_else(|| {
+                self.bytes
+                    .as_ref()
+                    .map(|bytes| format!("<redacted:{} bytes>", bytes.len()))
+            });
         f.debug_struct("HttpRequest")
             .field("method", &self.method)
             .field("url", &self.url)

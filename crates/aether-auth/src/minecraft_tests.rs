@@ -585,3 +585,81 @@ fn transport_faults_surface_as_http_errors() {
         "the request is still recorded for inspection"
     );
 }
+
+// --------------------------------------------------------------------------------------
+// Step 4: skin upload
+// --------------------------------------------------------------------------------------
+
+fn text_of(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+#[test]
+fn skin_upload_is_a_multipart_post_with_the_variant_and_the_picture() {
+    let png = [0x89, b'P', b'N', b'G', 0, 1, 2, 255];
+    let request = super::build_skin_upload_request(&minecraft_token(), true, &png);
+
+    assert_eq!(request.method, HttpMethod::Post);
+    assert_eq!(request.url, super::SKINS_URL);
+    assert_eq!(request.body(), None, "the body is binary");
+    let content_type = request.header("content-type").expect("content type");
+    let boundary = content_type
+        .strip_prefix("multipart/form-data; boundary=")
+        .expect("multipart with a boundary");
+    let body = request.body_bytes().expect("bytes");
+    let text = text_of(body);
+    assert!(text.starts_with(&format!("--{boundary}\r\n")));
+    assert!(text.ends_with(&format!("\r\n--{boundary}--\r\n")));
+    assert!(text.contains("name=\"variant\"\r\n\r\nslim\r\n"));
+    assert!(text.contains("name=\"file\"; filename=\"skin.png\""));
+    assert!(text.contains("Content-Type: image/png"));
+    assert!(body.windows(png.len()).any(|window| window == png));
+    assert_eq!(
+        request.header("authorization"),
+        Some(format!("Bearer {SECRET}").as_str())
+    );
+}
+
+#[test]
+fn skin_upload_names_the_classic_model() {
+    let request = super::build_skin_upload_request(&minecraft_token(), false, b"x");
+    assert!(text_of(request.body_bytes().unwrap()).contains("name=\"variant\"\r\n\r\nclassic\r\n"));
+}
+
+#[test]
+fn skin_upload_boundary_never_occurs_in_the_picture() {
+    let png = b"junk ----AetherSkin00000000 more ----AetherSkin00000001 end";
+    let request = super::build_skin_upload_request(&minecraft_token(), false, png);
+    let boundary = request
+        .header("content-type")
+        .and_then(|value| value.strip_prefix("multipart/form-data; boundary="))
+        .unwrap();
+    assert_eq!(boundary, "----AetherSkin00000002");
+}
+
+#[test]
+fn skin_upload_debug_hides_the_token_and_the_picture() {
+    let request = super::build_skin_upload_request(&minecraft_token(), false, b"picture-bytes");
+    let shown = format!("{request:?}");
+    assert!(!shown.contains(SECRET));
+    assert!(!shown.contains("picture-bytes"));
+    assert!(shown.contains("redacted"));
+}
+
+#[test]
+fn skin_upload_answers_map_to_stable_errors() {
+    assert!(super::parse_skin_upload(200).is_ok());
+    assert!(super::parse_skin_upload(204).is_ok());
+    assert!(matches!(
+        super::parse_skin_upload(401),
+        Err(MinecraftError::Unauthorized)
+    ));
+    assert!(matches!(
+        super::parse_skin_upload(400),
+        Err(MinecraftError::UnexpectedStatus { status: 400 })
+    ));
+    assert!(matches!(
+        super::parse_skin_upload(429),
+        Err(MinecraftError::UnexpectedStatus { status: 429 })
+    ));
+}

@@ -42,6 +42,13 @@ pub async fn set_skin_model(app: tauri::AppHandle, id: String, slim: bool) -> Re
     run(app, move |host| skin_library::set_model(host, &id, slim)).await
 }
 
+/// Makes a library skin the skin of a signed-in Microsoft account. The account's token stays in
+/// the backend.
+#[tauri::command]
+pub async fn wear_skin(app: tauri::AppHandle, id: String, account_id: String) -> Result<(), String> {
+    run(app, move |host| aether_app::skin_wear::wear(host, &id, &account_id)).await
+}
+
 #[tauri::command]
 pub async fn remove_skin(app: tauri::AppHandle, id: String) -> Result<(), String> {
     run(app, move |host| skin_library::remove(host, &id)).await

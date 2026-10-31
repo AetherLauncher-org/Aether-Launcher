@@ -302,6 +302,67 @@ pub fn build_profile_request(token: &MinecraftToken) -> HttpRequest {
 }
 
 // --------------------------------------------------------------------------------------
+// Step 4 (optional): change the skin
+// --------------------------------------------------------------------------------------
+
+/// Changes the skin of the signed-in account.
+pub const SKINS_URL: &str = "https://api.minecraftservices.com/minecraft/profile/skins";
+
+/// Builds the skin upload: a `multipart/form-data` `POST` with the arm model (`variant`,
+/// `classic` or `slim`) and the PNG (`file`), authenticated with the Minecraft access token.
+///
+/// The caller has already checked that `png` is a skin (size, header); this function only
+/// frames it. The boundary is chosen so it does not occur in the picture.
+#[must_use]
+pub fn build_skin_upload_request(token: &MinecraftToken, slim: bool, png: &[u8]) -> HttpRequest {
+    let mut counter = 0_u32;
+    let boundary = loop {
+        let candidate = format!("----AetherSkin{counter:08x}");
+        let needle = candidate.as_bytes();
+        if !png.windows(needle.len()).any(|window| window == needle) {
+            break candidate;
+        }
+        counter += 1;
+    };
+    let variant = if slim { "slim" } else { "classic" };
+    let mut body = Vec::with_capacity(png.len() + 400);
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"variant\"\r\n\r\n{variant}\r\n\
+             --{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"skin.png\"\r\n\
+             Content-Type: image/png\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(png);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    HttpRequest::post_bytes(
+        SKINS_URL,
+        format!("multipart/form-data; boundary={boundary}"),
+        body,
+    )
+    .with_header(
+        "authorization",
+        format!("{BEARER_PREFIX}{}", token.expose()),
+    )
+}
+
+/// Interprets the answer to a skin upload.
+///
+/// # Errors
+///
+/// - `401`/`403` → [`MinecraftError::Unauthorized`];
+/// - any other non-`2xx` status (`400` means the service did not accept the picture,
+///   `429` that it is asking to wait) → [`MinecraftError::UnexpectedStatus`].
+pub fn parse_skin_upload(status: u16) -> Result<(), MinecraftError> {
+    if is_success(status) {
+        Ok(())
+    } else {
+        Err(MinecraftError::from_status(status))
+    }
+}
+
+// --------------------------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------------------------
 

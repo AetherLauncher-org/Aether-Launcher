@@ -36,6 +36,7 @@ declare module "./call" {
     rename_skin: { id: string; name: string };
     set_skin_model: { id: string; slim: boolean };
     remove_skin: { id: string };
+    wear_skin: { id: string; accountId: string };
   }
 
   interface CommandResults {
@@ -46,6 +47,7 @@ declare module "./call" {
     rename_skin: SkinEntry;
     set_skin_model: SkinEntry;
     remove_skin: null;
+    wear_skin: null;
   }
 }
 
@@ -86,6 +88,15 @@ export async function renameSkin(id: string, name: string): Promise<SkinEntry> {
 export async function setSkinModel(id: string, slim: boolean): Promise<SkinEntry> {
   requireDesktop();
   return callCommand("set_skin_model", { id, slim });
+}
+
+/**
+ * 把皮肤库里的一张皮肤换到一个微软账户上。账户的令牌只在后端用，界面只传两个 id；
+ * 失败时抛出一句不含令牌的原因（要重新登录、Mojang 不接受、请稍后等）。
+ */
+export async function wearSkin(id: string, accountId: string): Promise<void> {
+  requireDesktop();
+  await callCommand("wear_skin", { id, accountId });
 }
 
 export async function removeSkin(id: string): Promise<void> {

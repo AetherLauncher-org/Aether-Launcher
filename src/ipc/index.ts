@@ -147,6 +147,7 @@ export {
   removeSkin,
   renameSkin,
   setSkinModel,
+  wearSkin,
 } from "./skinLibrary";
 export type { AddSkinResult, SkinEntry } from "./skinLibrary";
 

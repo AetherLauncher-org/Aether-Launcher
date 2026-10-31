@@ -28,6 +28,7 @@ pub mod modloader;
 pub mod platform;
 pub mod schematics;
 pub mod skin_library;
+pub mod skin_wear;
 pub mod skins;
 pub mod vanilla;
 pub mod world;

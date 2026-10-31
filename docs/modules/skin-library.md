@@ -16,8 +16,13 @@
 
 每张图在保存前和每次读出来时都过 `validate_skin_png`：PNG、64×64 或旧版 64×32、64 KiB 以内，**只看文件头，不解码**。`index.json` 也是不可信的：读的时候限 1 MiB，只留 id 格式对的、不重复的、不超过上限的条目，名字限长清洗，来源不认识的改成 `file`。读写索引用同一把锁串行，写文件走临时文件再改名，不跟随放在目标名上的链接。图片被换成别的东西就不给界面。
 
+## 换上
+
+卡片上的「换上」打开账户选择框，列出已登录的微软账户（离线账户没有皮肤服务，不列出），可多选；只有一个账户时默认选中它，点一次「换上」确认。对选中的每个账户各换一次，一个失败（要重新登录、Mojang 不接受、请稍后再试）不影响其他账户，原因按账户显示。
+
+前端只传两个 id（皮肤、账户），命令是 `wear_skin`。后端 `aether_app::skin_wear::wear`：从皮肤库读出图（再验一次）和模型，用账户的刷新令牌换一个短期 Minecraft 令牌（和启动游戏同一条路径，刷新令牌会轮换并存回系统凭据库），向 `POST api.minecraftservices.com/minecraft/profile/skins` 上传 multipart（`variant`：`classic` 或 `slim`，`file`：PNG）。令牌只进这个请求的 `Authorization` 头，不进返回值、日志和 `Debug` 输出；`aether-auth` 的 `HttpRequest` 新增二进制请求体（`bytes`），`Debug` 里只显示长度。multipart 的分隔串取一个不出现在图里的值。返回给界面的只有中文短句。
+
 ## 没做
 
-- **换上**：卡片上的「换上」按钮现在是灰的并写明原因。换肤要用微软账户的 Minecraft 令牌向 `api.minecraftservices.com/minecraft/profile/skins` 上传（multipart，`variant` 加 PNG），令牌只能在后端里用，而 `aether-auth` 现在只处理文本请求体，要先加二进制上传。有多个微软账户时弹出卡片可多选，对选中的每个账户各换一次；离线账户没有皮肤可换，不列出。
 - 下载页的皮肤来源（上面）。
 - 旧皮肤（64×32）的预览按右边镜像出左边，和游戏里一样；没有 3D 预览。

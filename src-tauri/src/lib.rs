@@ -128,6 +128,7 @@ pub fn run() {
             commands::skin_library::rename_skin,
             commands::skin_library::set_skin_model,
             commands::skin_library::remove_skin,
+            commands::skin_library::wear_skin,
             commands::microsoft::microsoft_login_available,
             commands::microsoft::begin_microsoft_login,
             commands::microsoft::begin_microsoft_browser_login,

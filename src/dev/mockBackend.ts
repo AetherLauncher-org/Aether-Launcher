@@ -743,6 +743,8 @@ async function handle(command: string, args: Args): Promise<unknown> {
       skin.slim = Boolean(args?.slim);
       return { ...skin };
     }
+    case "wear_skin":
+      return null;
     case "remove_skin":
       mockSkins.splice(
         mockSkins.findIndex((item) => item.id === args?.id),

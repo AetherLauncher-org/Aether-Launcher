@@ -157,12 +157,60 @@ describe("skin library", () => {
     expect(calls("remove_skin")[0][1]).toEqual({ id: "a".repeat(64) });
   });
 
-  it("does not pretend it can change a skin on an account yet", async () => {
-    backend();
+  const account = (id: string, displayName: string) => ({ id, displayName, uuid: id.replace(/-/g, ""), xuid: null });
+
+  it("wears a skin on the only Microsoft account without asking which", async () => {
+    backend({ list_microsoft_accounts: () => [account("069a79f4-44e9-4726-a5be-fca90e38aaf5", "Steve")], wear_skin: () => null });
     renderWithState(<SkinLibrary />);
+    fireEvent.click(await screen.findByRole("button", { name: "换上 Hoodie" }));
+    const dialog = await screen.findByRole("dialog");
 
-    const wear = await screen.findByRole("button", { name: "换上 Hoodie" });
+    expect(await within(dialog).findByRole("checkbox", { name: "Steve" })).toBeChecked();
+    fireEvent.click(within(dialog).getByRole("button", { name: "换上" }));
 
-    expect(wear).toHaveAttribute("aria-disabled", "true");
+    await waitFor(() => expect(calls("wear_skin")).toHaveLength(1));
+    expect(calls("wear_skin")[0][1]).toEqual({ id: "a".repeat(64), accountId: "069a79f4-44e9-4726-a5be-fca90e38aaf5" });
+    expect(await screen.findByText("「Hoodie」已换到：Steve。")).toBeInTheDocument();
+  });
+
+  it("lets you pick among several accounts and keeps going when one fails", async () => {
+    backend({
+      list_microsoft_accounts: () => [
+        account("069a79f4-44e9-4726-a5be-fca90e38aaf5", "Steve"),
+        account("11111111-2222-3333-4444-555555555555", "Alex"),
+      ],
+      wear_skin: (args) => {
+        if ((args as { accountId: string }).accountId.startsWith("0")) {
+          throw "Minecraft services refused this account; sign in to it again";
+        }
+        return null;
+      },
+    });
+    renderWithState(<SkinLibrary />);
+    fireEvent.click(await screen.findByRole("button", { name: "换上 Hoodie" }));
+    const dialog = await screen.findByRole("dialog");
+    const steve = await within(dialog).findByRole("checkbox", { name: "Steve" });
+    const alex = within(dialog).getByRole("checkbox", { name: "Alex" });
+
+    expect(steve).not.toBeChecked();
+    expect(within(dialog).getByRole("button", { name: "换上" })).toBeDisabled();
+    fireEvent.click(steve);
+    fireEvent.click(alex);
+    fireEvent.click(within(dialog).getByRole("button", { name: "换上" }));
+
+    await waitFor(() => expect(calls("wear_skin")).toHaveLength(2));
+    expect(await within(dialog).findByText(/Steve：.*sign in/)).toBeInTheDocument();
+    expect(await screen.findByText("「Hoodie」已换到：Alex。")).toBeInTheDocument();
+  });
+
+  it("says to sign in first when there is no Microsoft account", async () => {
+    backend({ list_microsoft_accounts: () => [] });
+    renderWithState(<SkinLibrary />);
+    fireEvent.click(await screen.findByRole("button", { name: "换上 Hoodie" }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(await within(dialog).findByText(/还没有登录微软账户/)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "换上" })).toBeDisabled();
+    expect(calls("wear_skin")).toHaveLength(0);
   });
 });

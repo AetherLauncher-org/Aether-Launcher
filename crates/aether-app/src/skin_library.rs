@@ -160,6 +160,28 @@ pub fn image(host: &dyn Host, id: &str) -> Result<String, String> {
     ))
 }
 
+/// A skin's picture bytes and whether it uses slim arms, checked again as they are read.
+/// Stays in the backend: it is what gets uploaded when the skin is worn.
+pub(crate) fn picture(host: &dyn Host, id: &str) -> Result<(Vec<u8>, bool), String> {
+    if !is_skin_id(id) {
+        return Err("not a skin".to_owned());
+    }
+    let folder = folder(host)?;
+    let slim = {
+        let _guard = INDEX_LOCK.lock().map_err(|_| "the skin library is busy".to_owned())?;
+        load_index(&folder)
+            .skins
+            .iter()
+            .find(|skin| skin.id == id)
+            .map(|skin| skin.slim)
+            .ok_or("no such skin")?
+    };
+    let bytes = read_capped(&picture_path(&folder, id), MAX_SKIN_BYTES as u64)
+        .ok_or("the picture of this skin is missing")?;
+    validate_skin_png(&bytes).map_err(|_| "the picture of this skin is damaged".to_owned())?;
+    Ok((bytes, slim))
+}
+
 // --------------------------------------------------------------------------------------
 // Adding
 // --------------------------------------------------------------------------------------

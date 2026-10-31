@@ -14,7 +14,6 @@ import {
   Spinner,
   Switch,
   Text,
-  Tooltip,
 } from "@fluentui/react-components";
 import { Add20Regular, Delete20Regular, Edit20Regular, Person20Regular } from "@fluentui/react-icons";
 import { useCallback, useState } from "react";
@@ -33,6 +32,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { EmptyState } from "./EmptyState";
 import { ErrorState } from "./PageState";
 import { SkinFigure } from "./SkinFigure";
+import { WearSkinDialog } from "./WearSkinDialog";
 
 const sourceLabels: Record<SkinEntry["source"], string> = {
   file: "文件",
@@ -44,7 +44,7 @@ const sourceLabels: Record<SkinEntry["source"], string> = {
  * 皮肤库：本机保存的皮肤，每张画成正对着看的人。可以从文件（系统对话框选）或玩家名添加，
  * 改名、选纤细或经典手臂、删除。同一张图加两次只有一张。
  *
- * 「换上」还没接到账户上（换肤要用微软账户的令牌，只能在后端里用），按钮先灰着并说明。
+ * 「换上」打开账户选择框（微软账户，可多选）；换肤用的令牌只在后端里用。
  */
 export function SkinLibrary() {
   const load = useCallback(() => listSkins(), []);
@@ -55,6 +55,7 @@ export function SkinLibrary() {
   const [byName, setByName] = useState(false);
   const [renaming, setRenaming] = useState<SkinEntry | null>(null);
   const [removing, setRemoving] = useState<SkinEntry | null>(null);
+  const [wearing, setWearing] = useState<SkinEntry | null>(null);
 
   const skins = data ?? [];
 
@@ -151,11 +152,14 @@ export function SkinLibrary() {
                   />
                 </div>
                 <div className="content-card-actions">
-                  <Tooltip content="换肤要用微软账户登录，这一步还没接上" relationship="description">
-                    <Button size="small" appearance="primary" disabledFocusable aria-label={`换上 ${skin.name}`}>
-                      换上
-                    </Button>
-                  </Tooltip>
+                  <Button
+                    size="small"
+                    appearance="primary"
+                    aria-label={`换上 ${skin.name}`}
+                    onClick={() => setWearing(skin)}
+                  >
+                    换上
+                  </Button>
                   <div className="content-card-buttons">
                     <Button
                       size="small"
@@ -207,6 +211,16 @@ export function SkinLibrary() {
           setRenaming(null);
         }}
       />
+      {wearing ? (
+        <WearSkinDialog
+          key={wearing.id}
+          skin={wearing}
+          onClose={() => setWearing(null)}
+          onWorn={(names) =>
+            setNotice({ intent: "success", text: `「${wearing.name}」已换到：${names.join("、")}。` })
+          }
+        />
+      ) : null}
       <ConfirmDialog
         open={removing !== null}
         title="从皮肤库删除这张皮肤？"

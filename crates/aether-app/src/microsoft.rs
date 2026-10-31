@@ -103,7 +103,10 @@ impl HttpTransport for UreqAuthTransport {
                 for (name, value) in &request.headers {
                     call = call.header(name, value);
                 }
-                call.send(request.body().unwrap_or("")).map_err(failed)?
+                match request.body_bytes() {
+                    Some(bytes) => call.send(bytes).map_err(failed)?,
+                    None => call.send(request.body().unwrap_or("")).map_err(failed)?,
+                }
             }
         };
         let status = response.status().as_u16();
