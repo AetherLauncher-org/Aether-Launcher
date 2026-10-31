@@ -47,6 +47,33 @@ export type ContentItem = {
   isFolder: boolean;
 };
 
+/** Modrinth 认得的一个文件。`name` 是磁盘上的纯文件名，没有路径。 */
+export type IdentifiedContent = {
+  name: string;
+  platform: "modrinth";
+  /** 只给 `openContentProject` 用 */
+  projectSlug: string;
+  title: string;
+  summary: string;
+  version: string;
+  /** `data:` 图片（PNG、JPEG、GIF、WebP）；没有图标时为 null */
+  icon: string | null;
+};
+
+export type ContentLookup = {
+  /** 只含认出来的文件 */
+  items: IdentifiedContent[];
+  /** 没连上平台：显示的是缓存里的（或什么都没有） */
+  unreachable: boolean;
+};
+
+/** 可以到 Modrinth 上识别的内容；存档和投影不在上面。 */
+export type LookupKind = Extract<ContentKind, "mods" | "resourcepacks" | "shaderpacks">;
+
+export function isLookupKind(kind: ContentKind): kind is LookupKind {
+  return kind === "mods" || kind === "resourcepacks" || kind === "shaderpacks";
+}
+
 export type LogEntry = {
   kind: "latest" | "crash";
   name: string;
@@ -68,6 +95,8 @@ declare module "./call" {
     rename_installed_instance: { id: string; name: string };
     delete_installed_instance: { id: string };
     list_instance_content: { id: string; kind: ContentKind };
+    identify_instance_content: { id: string; kind: LookupKind };
+    open_content_project: { slug: string };
     set_instance_mod_enabled: { id: string; name: string; enabled: boolean };
     remove_instance_content: { id: string; kind: ContentKind; name: string };
     list_instance_logs: { id: string };
@@ -80,6 +109,8 @@ declare module "./call" {
     rename_installed_instance: InstanceSummary;
     delete_installed_instance: null;
     list_instance_content: ContentItem[];
+    identify_instance_content: ContentLookup;
+    open_content_project: null;
     set_instance_mod_enabled: null;
     remove_instance_content: null;
     list_instance_logs: LogEntry[];
@@ -116,6 +147,21 @@ export async function deleteInstance(id: string): Promise<void> {
 export async function listInstanceContent(id: string, kind: ContentKind): Promise<ContentItem[]> {
   requireDesktop();
   return callCommand("list_instance_content", { id, kind });
+}
+
+/**
+ * 到 Modrinth 上按文件哈希识别模组、资源包或光影包，得到名称、简介、版本和图标。离开本机的
+ * 只有哈希；结果在后端缓存，没网时用缓存。
+ */
+export async function identifyContent(id: string, kind: LookupKind): Promise<ContentLookup> {
+  requireDesktop();
+  return callCommand("identify_instance_content", { id, kind });
+}
+
+/** 在浏览器里打开项目页。地址由后端用 `projectSlug` 拼，前端给不了别的地址。 */
+export async function openContentProject(slug: string): Promise<void> {
+  requireDesktop();
+  await callCommand("open_content_project", { slug });
 }
 
 /** 开关一个模组（`x.jar` ↔ `x.jar.disabled`）。 */

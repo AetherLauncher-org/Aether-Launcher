@@ -54,6 +54,47 @@ describe("ContentCards", () => {
     expect(onRemove).toHaveBeenCalledWith(world);
   });
 
+  it("replaces the name, cover and facts with the platform's when a file is identified", () => {
+    const found = {
+      name: "sodium.jar",
+      platform: "modrinth" as const,
+      projectSlug: "sodium",
+      title: "Sodium",
+      summary: "Fast rendering",
+      version: "0.6.3",
+      icon: "data:image/png;base64,AAAA",
+    };
+    const onOpenProject = vi.fn();
+    render(
+      <FluentProvider theme={webLightTheme}>
+        <ContentCards
+          kind="mods"
+          items={[jar]}
+          identified={new Map([["sodium.jar", found]])}
+          locked={false}
+          onToggle={vi.fn()}
+          onRemove={vi.fn()}
+          onOpenProject={onOpenProject}
+        />
+      </FluentProvider>,
+    );
+
+    expect(screen.getByText("Sodium")).toBeInTheDocument();
+    expect(screen.getByText("Fast rendering")).toBeInTheDocument();
+    expect(screen.getByText("0.6.3")).toBeInTheDocument();
+    expect(screen.getByText("sodium")).toBeInTheDocument();
+    expect(document.querySelector(".content-cover img")).toHaveAttribute("src", found.icon);
+
+    fireEvent.click(screen.getByRole("button", { name: "在 Modrinth 打开 Sodium" }));
+    expect(onOpenProject).toHaveBeenCalledWith(found);
+  });
+
+  it("shows no platform button for a file that was not identified", () => {
+    show("mods", [jar]);
+    expect(screen.queryByRole("button", { name: /Modrinth/ })).toBeNull();
+    expect(document.querySelector(".content-cover img")).toBeNull();
+  });
+
   it("disables switch and delete while the game runs", () => {
     show("mods", [jar], true);
     expect(screen.getByRole("switch")).toBeDisabled();

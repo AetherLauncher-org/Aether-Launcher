@@ -313,6 +313,20 @@ fn existing_item(game_dir: &Path, kind: ContentKind, name: &str) -> Result<PathB
     Ok(path)
 }
 
+/// The path of one existing regular file in a kind's folder, for reading it. A folder, a link
+/// or a name that is not plain is refused.
+///
+/// # Errors
+///
+/// [`ManageError::InvalidName`], [`ManageError::NotFound`] and [`ManageError::NotAllowed`].
+pub fn content_file(game_dir: &Path, kind: ContentKind, name: &str) -> Result<PathBuf, ManageError> {
+    let path = existing_item(game_dir, kind, name)?;
+    if !fs::symlink_metadata(&path)?.is_file() {
+        return Err(ManageError::NotAllowed);
+    }
+    Ok(path)
+}
+
 /// Switches a mod on or off by renaming `x.jar` to `x.jar.disabled` and back.
 ///
 /// # Errors

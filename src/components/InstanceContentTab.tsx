@@ -1,8 +1,18 @@
-import { Button, MessageBar, MessageBarBody, Spinner, Text } from "@fluentui/react-components";
+import { Button, MessageBar, MessageBarBody, Spinner, Switch, Text } from "@fluentui/react-components";
 import { FolderOpen20Regular } from "@fluentui/react-icons";
-import { useCallback, useState } from "react";
-import { describeCommandError, listInstanceContent, openInstanceFolder, removeContent, setModEnabled } from "../ipc";
-import type { ContentItem, ContentKind } from "../ipc";
+import { useCallback, useMemo, useState } from "react";
+import {
+  describeCommandError,
+  identifyContent,
+  isLookupKind,
+  listInstanceContent,
+  openContentProject,
+  openInstanceFolder,
+  removeContent,
+  setModEnabled,
+} from "../ipc";
+import type { ContentItem, ContentKind, ContentLookup, IdentifiedContent } from "../ipc";
+import { loadContentLookup, saveContentLookup } from "../lib/contentLookup";
 import { contentCopy, describeRemoval } from "../lib/instanceContent";
 import { useQuery } from "../lib/query";
 import { previews } from "../lib/schematic/previewQueue";
@@ -39,6 +49,38 @@ export function InstanceContentTab({ instanceId, kind, locked, onChanged }: Inst
   const [removeError, setRemoveError] = useState<string | null>(null);
 
   const items = data ?? [];
+
+  // 名称、简介和图标来自 Modrinth，在列表出来之后另外取：列表不等网络，识别失败也不影响列表。
+  const lookupKind = isLookupKind(kind) ? kind : null;
+  const [lookupOn, setLookupOn] = useState(loadContentLookup);
+  const loadIdentity = useCallback(
+    (): Promise<ContentLookup> =>
+      lookupKind === null
+        ? Promise.resolve({ items: [], unreachable: false })
+        : identifyContent(instanceId, lookupKind),
+    [instanceId, lookupKind],
+  );
+  const identity = useQuery(loadIdentity, lookupKind !== null && lookupOn && items.length > 0);
+  const identified = useMemo<ReadonlyMap<string, IdentifiedContent> | undefined>(
+    () =>
+      lookupOn && identity.data !== null
+        ? new Map(identity.data.items.map((found) => [found.name, found]))
+        : undefined,
+    [lookupOn, identity.data],
+  );
+  const reloadAll = () => {
+    reload();
+    identity.reload();
+  };
+
+  const openProject = async (found: IdentifiedContent) => {
+    setNotice(null);
+    try {
+      await openContentProject(found.projectSlug);
+    } catch (failure: unknown) {
+      setNotice(describeCommandError(failure));
+    }
+  };
 
   const toggle = async (item: ContentItem, enabled: boolean) => {
     setNotice(null);
@@ -84,12 +126,33 @@ export function InstanceContentTab({ instanceId, kind, locked, onChanged }: Inst
       <div className="toolbar">
         <Text className="muted">{status === "success" ? `共 ${items.length} 项` : " "}</Text>
         <div className="toolbar-actions">
+          {lookupKind !== null ? (
+            <Switch
+              label="联网识别"
+              title="到 Modrinth 按文件的哈希识别名称、简介和图标。只发送哈希，不发送文件名。"
+              checked={lookupOn}
+              onChange={(_, switched) => {
+                setLookupOn(switched.checked);
+                saveContentLookup(switched.checked);
+              }}
+            />
+          ) : null}
           <Button appearance="subtle" icon={<FolderOpen20Regular />} onClick={() => void openFolder()}>
             {copy.openLabel}
           </Button>
-          <RefreshButton label={`刷新${copy.tab}列表`} loading={status === "loading"} onClick={reload} />
+          <RefreshButton label={`刷新${copy.tab}列表`} loading={status === "loading"} onClick={reloadAll} />
         </div>
       </div>
+      {lookupKind !== null && lookupOn && identity.status === "loading" && identity.data === null ? (
+        <Text size={200} className="muted" role="status">
+          正在到 Modrinth 识别…
+        </Text>
+      ) : null}
+      {identity.data?.unreachable && lookupOn ? (
+        <Text size={200} className="muted" role="status">
+          没连上 Modrinth，显示的是上次识别的结果。
+        </Text>
+      ) : null}
 
       {locked ? (
         <MessageBar intent="info" className="page-notice">
@@ -136,7 +199,9 @@ export function InstanceContentTab({ instanceId, kind, locked, onChanged }: Inst
         <ContentCards
           kind={kind}
           items={items}
+          identified={identified}
           locked={locked}
+          onOpenProject={(found) => void openProject(found)}
           onToggle={(item, enabled) => void toggle(item, enabled)}
           onRemove={(item) => {
             setRemoveError(null);

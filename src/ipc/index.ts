@@ -142,8 +142,11 @@ export {
   contentKinds,
   deleteInstance,
   getInstanceDetails,
+  identifyContent,
+  isLookupKind,
   listInstanceContent,
   listInstanceLogs,
+  openContentProject,
   openInstanceFolder,
   readInstanceLog,
   removeContent,
@@ -154,10 +157,13 @@ export type {
   ContentCounts,
   ContentItem,
   ContentKind,
+  ContentLookup,
   FolderTarget,
+  IdentifiedContent,
   InstanceDetails,
   LogContent,
   LogEntry,
+  LookupKind,
 } from "./manage";
 
 // 无边框窗口的控制

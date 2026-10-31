@@ -24,12 +24,14 @@ name = "aether-app"
 version = "0.1.0"
 dependencies = [
  "aether-auth",
+ "aether-content",
  "aether-core",
  "aether-diagnose",
  "aether-schematic",
  "aether-storage",
  "serde",
  "serde_json",
+ "sha1",
  "ureq",
 ]
 
@@ -44,6 +46,15 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 2.0.21",
  "uuid",
+]
+
+[[package]]
+name = "aether-content"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

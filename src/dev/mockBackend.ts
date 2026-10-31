@@ -19,7 +19,7 @@ import type { GameRunStatus } from "../ipc/launch";
 import type { MinecraftCatalogVersion, MinecraftVersionCatalog } from "../ipc/catalog";
 import type { ImportResult, ImportSource, LauncherInstallation } from "../ipc/import";
 import type { JavaRuntimeInfo } from "../ipc/java";
-import type { ContentItem, ContentKind, InstanceDetails, LogContent, LogEntry } from "../ipc/manage";
+import type { ContentItem, ContentKind, ContentLookup, InstanceDetails, LogContent, LogEntry } from "../ipc/manage";
 import type { BrowserLoginInfo, DeviceCodeInfo, LoginEvent, MicrosoftAccount } from "../ipc/accounts";
 import type { SystemMemory } from "../ipc/system";
 import type { ConversionResult, SchematicFormat } from "../ipc/schematics";
@@ -293,6 +293,40 @@ function contentOf(id: string): Record<ContentKind, ContentItem[]> {
   return content;
 }
 
+const mockPlatformInfo: Record<string, { slug: string; title: string; summary: string; version: string }> = {
+  "sodium-fabric-0.6.0.jar": { slug: "sodium", title: "Sodium", summary: "A modern rendering engine and optimization mod for Minecraft.", version: "0.6.0" },
+  "lithium-fabric-0.14.0.jar.disabled": { slug: "lithium", title: "Lithium", summary: "A Fabric mod that optimizes the game server without changing behavior.", version: "0.14.0" },
+  "iris-1.8.0.jar": { slug: "iris", title: "Iris Shaders", summary: "A modern shaders mod for Minecraft compatible with existing OptiFine shader packs.", version: "1.8.0" },
+  "BSL_v8.2.zip": { slug: "bsl-shaders", title: "BSL Shaders", summary: "Highly customizable shaders with realistic water and soft shadows.", version: "8.2" },
+};
+
+function mockIcon(title: string): string {
+  const letter = title.slice(0, 1).toUpperCase();
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#1bd96a"/><text x="32" y="44" font-size="34" font-family="sans-serif" text-anchor="middle" fill="#0b2a18">${letter}</text></svg>`;
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+function mockIdentify(id: string, kind: ContentKind): ContentLookup {
+  const files = contentOf(id)[kind];
+  return {
+    items: files
+      .filter((item) => mockPlatformInfo[item.name] !== undefined)
+      .map((item) => {
+        const info = mockPlatformInfo[item.name];
+        return {
+          name: item.name,
+          platform: "modrinth" as const,
+          projectSlug: info.slug,
+          title: info.title,
+          summary: info.summary,
+          version: info.version,
+          icon: info.slug === "lithium" ? null : mockIcon(info.title),
+        };
+      }),
+    unreachable: false,
+  };
+}
+
 function instanceDetails(id: string): InstanceDetails {
   const instance = instances.find((item) => item.id === id);
   if (instance === undefined) {
@@ -527,6 +561,11 @@ async function handle(command: string, args: Args): Promise<unknown> {
       return null;
     case "list_instance_content":
       return contentOf(String(args?.id))[args?.kind as ContentKind] ?? [];
+    case "identify_instance_content":
+      await sleep(400);
+      return mockIdentify(String(args?.id), args?.kind as ContentKind);
+    case "open_content_project":
+      return null;
     case "set_instance_mod_enabled":
       toggleMod(String(args?.id), String(args?.name), Boolean(args?.enabled));
       return null;

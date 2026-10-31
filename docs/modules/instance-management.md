@@ -25,6 +25,7 @@
 | `rename_installed_instance` | 改显示名，目录名（UUID）不变 |
 | `delete_installed_instance` | 删掉实例自己的目录和它在共享游戏树里解出的 natives；共享的 `versions`、`libraries`、`assets` 不动 |
 | `list_instance_content` | 列出一类内容：名字、大小、是否启用、是不是文件夹 |
+| `identify_instance_content` / `open_content_project` | 模组、资源包、光影包按文件哈希到 Modrinth 认出名称、简介、版本和图标；打开项目页。只发哈希，见 [内容元数据](content-metadata.md) |
 | `set_instance_mod_enabled` | `x.jar` ↔ `x.jar.disabled` |
 | `remove_instance_content` | 删除一项（文件，或世界这样的整个文件夹） |
 | `list_instance_logs` / `read_instance_log` | 最近一次日志和崩溃报告；只读末尾 256 KiB，且已脱敏 |

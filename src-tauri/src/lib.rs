@@ -105,6 +105,8 @@ pub fn run() {
             commands::manage::rename_installed_instance,
             commands::manage::delete_installed_instance,
             commands::manage::list_instance_content,
+            commands::manage::identify_instance_content,
+            commands::manage::open_content_project,
             commands::manage::set_instance_mod_enabled,
             commands::manage::remove_instance_content,
             commands::manage::list_instance_logs,

@@ -47,9 +47,11 @@ The project follows [Semantic Versioning](https://semver.org/) once public relea
 - Editable instance configuration for memory, Java override, JVM arguments, game arguments and window settings
 - `os.version` rules evaluated as regular expressions
 - Instance, library and account pages with Java runtime and memory settings blocks
+- Mods, resource packs, shader packs and worlds are shown as cards; mods, resource packs and shader packs are recognised on Modrinth by file SHA-1 and show the project's name, summary, version and icon (new `aether-content` crate; switch "联网识别" on the content tab, on by default; CurseForge is not implemented, see `docs/modules/content-metadata.md`)
 
 ### Security
 
+- Modrinth lookup sends file hashes only (no file names, paths or instance ids), contacts only `api.modrinth.com` and `cdn.modrinth.com` over HTTPS without redirects, treats every answer as untrusted (size, id, text and host limits; icons are accepted only as PNG, JPEG, GIF or WebP, never SVG) and serves icons to the page as `data:` URLs so the content security policy stays closed to the network
 - Crash analysis runs locally first and displays the redacted payload to the user before anything is sent off the machine
 - Refresh token persistence is opt-in and disabled by default; the store is atomic but not encrypted, and its protection comes from the application data directory's permissions
 - Instance commands accept typed identifiers only, with the storage root directory resolved by the backend rather than supplied by the caller

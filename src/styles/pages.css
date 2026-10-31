@@ -1689,6 +1689,34 @@
   height: 32px;
 }
 
+/* Modrinth 的项目图标：放在封面里，不拉伸，边缘圆角 */
+.content-cover img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: var(--borderRadiusMedium);
+  image-rendering: auto;
+}
+
+.content-card-title {
+  display: grid;
+  min-width: 0;
+}
+
+.content-card-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.content-card-buttons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .content-card-body {
   display: grid;
   gap: 8px;

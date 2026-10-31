@@ -8,12 +8,12 @@ rust-version.workspace = true
 
 [dependencies]
 aether-auth = { path = "../aether-auth" }
+aether-content = { path = "../aether-content" }
 aether-core = { path = "../aether-core" }
 aether-diagnose = { path = "../aether-diagnose" }
 aether-schematic = { path = "../aether-schematic" }
 aether-storage = { path = "../aether-storage" }
 serde.workspace = true
-ureq.workspace = true
-
-[dev-dependencies]
 serde_json.workspace = true
+sha1.workspace = true
+ureq.workspace = true

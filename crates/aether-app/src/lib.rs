@@ -13,6 +13,7 @@
 //! `docs/design/native-ui.md` for why this layer exists.
 
 pub mod host;
+pub mod identify;
 pub mod instances;
 pub mod manage;
 pub mod microsoft;

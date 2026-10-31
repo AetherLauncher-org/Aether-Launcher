@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/aether-app",
   "crates/aether-auth",
+  "crates/aether-content",
   "crates/aether-core",
   "crates/aether-diagnose",
   "crates/aether-download",

@@ -5,6 +5,7 @@
 //! them (no paths from the frontend, nothing changes while the game runs, logs are redacted),
 //! are in `aether_app::manage`.
 
+use aether_app::identify::{self, Lookup};
 use aether_app::instances::InstanceSummary;
 use aether_app::manage::{self, ContentItem, InstanceDetails, LogContent, LogEntry};
 
@@ -41,6 +42,23 @@ pub async fn list_instance_content(
     kind: String,
 ) -> Result<Vec<ContentItem>, String> {
     run(app, move |host| manage::list_content(host, &id, &kind)).await
+}
+
+/// Looks the mods, resource packs or shader packs of an instance up on Modrinth by file hash.
+/// Only hashes leave the machine; the answer is cached, and with no network the cache answers.
+#[tauri::command]
+pub async fn identify_instance_content(
+    app: tauri::AppHandle,
+    id: String,
+    kind: String,
+) -> Result<Lookup, String> {
+    run(app, move |host| identify::identify(host, &id, &kind)).await
+}
+
+/// Opens a project's page on modrinth.com. The address is built from a slug in the backend.
+#[tauri::command]
+pub async fn open_content_project(slug: String) -> Result<(), String> {
+    identify::open_project_page(&slug)
 }
 
 /// Switches a mod on or off (`x.jar` ↔ `x.jar.disabled`).
