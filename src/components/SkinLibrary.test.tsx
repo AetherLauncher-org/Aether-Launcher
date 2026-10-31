@@ -203,6 +203,23 @@ describe("skin library", () => {
     expect(await screen.findByText("「Hoodie」已换到：Alex。")).toBeInTheDocument();
   });
 
+  it("tells an expired sign-in to sign in again instead of showing the internal code", async () => {
+    backend({
+      list_microsoft_accounts: () => [account("069a79f4-44e9-4726-a5be-fca90e38aaf5", "Steve")],
+      wear_skin: () => {
+        throw "microsoft-sign-in-required";
+      },
+    });
+    renderWithState(<SkinLibrary />);
+    fireEvent.click(await screen.findByRole("button", { name: "换上 Hoodie" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByRole("checkbox", { name: "Steve" })).toBeChecked();
+    fireEvent.click(within(dialog).getByRole("button", { name: "换上" }));
+
+    expect(await within(dialog).findByText(/请到「账户」页重新登录/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/microsoft-sign-in-required/)).not.toBeInTheDocument();
+  });
+
   it("says to sign in first when there is no Microsoft account", async () => {
     backend({ list_microsoft_accounts: () => [] });
     renderWithState(<SkinLibrary />);
