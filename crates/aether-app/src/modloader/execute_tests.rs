@@ -174,7 +174,7 @@ fn live_profile_install(
     let transport = KernelHttpTransport::new(UreqKernel::new());
     let cancel = CancellationToken::new();
 
-    aether_app::vanilla::prepare_version(&transport, &game_root, game_version)
+    crate::vanilla::prepare_version(&transport, &game_root, game_version)
         .expect("vanilla metadata");
     let resolved = aether_manifest::load_resolved_version_manifest(&game_root, game_version)
         .expect("resolved manifest");

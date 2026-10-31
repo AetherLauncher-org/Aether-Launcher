@@ -30,6 +30,7 @@ dependencies = [
  "aether-download",
  "aether-launch",
  "aether-manifest",
+ "aether-modloader",
  "aether-runtime",
  "aether-schematic",
  "aether-storage",
@@ -37,6 +38,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "ureq",
+ "zip",
 ]
 
 [[package]]
@@ -80,7 +82,6 @@ dependencies = [
  "aether-download",
  "aether-launch",
  "aether-manifest",
- "aether-modloader",
  "aether-runtime",
  "aether-storage",
  "serde",
@@ -89,8 +90,6 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tracing",
- "ureq",
- "zip",
 ]
 
 [[package]]

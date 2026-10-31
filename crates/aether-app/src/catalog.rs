@@ -11,7 +11,7 @@ use aether_manifest::catalog::{
 const CATALOG_TIMEOUT_SECONDS: u64 = 12;
 
 /// Fetch a bounded catalog using an injectable transport for offline tests.
-// still used by src-tauri's modloader/import until they move
+// still used by src-tauri's import until it moves
 pub fn fetch_catalog(transport: &dyn HttpTransport) -> Result<VersionCatalog, String> {
     let response = transport
         .get(&TransportRequest {

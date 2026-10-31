@@ -20,6 +20,7 @@ pub mod instances;
 pub mod launch;
 pub mod manage;
 pub mod microsoft;
+pub mod modloader;
 pub mod platform;
 pub mod schematics;
 pub mod skins;

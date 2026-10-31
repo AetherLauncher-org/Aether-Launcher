@@ -14,12 +14,12 @@ aether-diagnose = { path = "../aether-diagnose" }
 aether-download = { path = "../aether-download" }
 aether-launch = { path = "../aether-launch" }
 aether-manifest = { path = "../aether-manifest" }
+aether-modloader = { path = "../aether-modloader" }
+aether-runtime = { path = "../aether-runtime" }
 aether-schematic = { path = "../aether-schematic" }
 aether-storage = { path = "../aether-storage" }
 serde.workspace = true
 serde_json.workspace = true
 sha1.workspace = true
 ureq.workspace = true
-
-[dev-dependencies]
-aether-runtime = { path = "../aether-runtime" }
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }

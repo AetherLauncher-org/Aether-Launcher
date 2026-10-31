@@ -58,7 +58,7 @@ pub enum Stage {
 /// （例如 `fabric-loader-0.16.0-1.21.1`），而不是原版版本号。
 impl InstallProgress {
     /// 构造一条模组加载器安装的进度：按步骤计数，没有字节数。
-    pub fn mod_loader(
+    pub(crate) fn mod_loader(
         version: impl Into<String>,
         stage: Stage,
         steps_done: usize,
@@ -92,7 +92,7 @@ pub trait Reporter: Send + Sync {
     fn report(&self, progress: &InstallProgress);
 }
 
-struct HostReporter<'a>(&'a dyn Host);
+pub(crate) struct HostReporter<'a>(pub(crate) &'a dyn Host);
 
 impl Reporter for HostReporter<'_> {
     fn report(&self, progress: &InstallProgress) {
@@ -436,8 +436,7 @@ fn describe_failure(error: &DownloadError) -> String {
 }
 
 /// Fail fast on an unusable instance name, before a long download.
-// `pub` from here to `create_ready_instance`: still used by src-tauri's modloader/import until they move
-pub fn check_instance_name(base: &Path, name: &str) -> Result<(), String> {
+pub(crate) fn check_instance_name(base: &Path, name: &str) -> Result<(), String> {
     validate_instance_name(name).map_err(|error| format!("invalid instance name: {error}"))?;
     fs::create_dir_all(base.join("instances"))
         .map_err(|_| "cannot prepare the instance store".to_owned())?;
@@ -455,6 +454,7 @@ pub fn check_instance_name(base: &Path, name: &str) -> Result<(), String> {
 
 /// Optional inputs to [`install_and_create_with`].
 #[derive(Default, Clone, Copy)]
+// still used by src-tauri's import until it moves
 pub struct InstallOptions<'a> {
     /// A read-only folder laid out like a `.minecraft` whose verified files may
     /// be copied instead of downloaded.
@@ -485,6 +485,7 @@ fn install_and_create(
 }
 
 /// [`install_and_create`] with a seed folder and/or a reused catalog.
+// still used by src-tauri's import until it moves
 pub fn install_and_create_with(
     transport: &dyn HttpTransport,
     base: &Path,
@@ -503,7 +504,7 @@ pub fn install_and_create_with(
 /// and assets of `version` into `base/game`. It creates no instance: a caller that
 /// still has more to install (a mod loader) creates the instance only once all of it
 /// succeeded, so a failure never leaves a half-installed instance behind.
-pub fn install_game_files(
+pub(crate) fn install_game_files(
     transport: &dyn HttpTransport,
     base: &Path,
     version: &str,
@@ -543,7 +544,7 @@ pub fn install_game_files(
 /// Creates the instance for an installed `version` (already verified on disk) and
 /// marks it ready. `version` may be a mod loader's version ID that inherits from a
 /// vanilla one.
-pub fn create_ready_instance(
+pub(crate) fn create_ready_instance(
     base: &Path,
     name: &str,
     version: &str,
@@ -586,7 +587,7 @@ pub fn install_vanilla(
 }
 
 /// Gives the install slot back when the installation ends, however it ends.
-struct ActiveInstall<'a>(&'a InstallState);
+pub(crate) struct ActiveInstall<'a>(pub(crate) &'a InstallState);
 
 impl Drop for ActiveInstall<'_> {
     fn drop(&mut self) {

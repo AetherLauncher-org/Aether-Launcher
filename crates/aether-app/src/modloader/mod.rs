@@ -4,7 +4,6 @@
 //! `maven.minecraftforge.net`、NeoForge 的 `maven.neoforged.net`。不做镜像切换，
 //! 也不接受前端传入的地址。
 
-pub mod commands;
 pub(super) mod execute;
 mod fetch;
 mod profile_install;
@@ -12,6 +11,13 @@ mod profile_install;
 use aether_modloader::transport::MetaSource;
 use aether_modloader::{ModLoaderKind, fabric, forge, neoforge};
 use serde::Serialize;
+
+use crate::Host;
+use crate::install::{ActiveInstall, HostReporter, InstallState};
+use aether_download::transport::KernelHttpTransport;
+use aether_download::transport::http::UreqKernel;
+
+pub use execute::ModLoaderInstallResult;
 
 pub use fetch::HttpMetaFetcher;
 
@@ -192,6 +198,40 @@ pub fn parse_kind(kind: &str) -> Option<ModLoaderKind> {
         "quilt" => Some(ModLoaderKind::Quilt),
         _ => None,
     }
+}
+
+/// 装好一个模组加载器版本（连同它依赖的原版），再为它建实例。
+///
+/// 调用方只给「哪个加载器 / 哪个游戏版本 / 哪个加载器版本 / 实例叫什么」，URL 全部由
+/// 安装计划按官方源拼出来。同一时间只跑一个安装，进度经 `Host::emit_install` 发出。
+pub fn install(
+    host: &dyn Host,
+    state: &InstallState,
+    kind: &str,
+    game_version: &str,
+    loader_version: &str,
+    name: &str,
+) -> Result<ModLoaderInstallResult, String> {
+    let parsed = parse_kind(kind).ok_or_else(|| format!("unknown mod loader: {kind}"))?;
+    let base = host.data_dir()?;
+    let token = state.begin()?;
+    let _active = ActiveInstall(state);
+    std::fs::create_dir_all(&base)
+        .map_err(|_| "cannot prepare application data directory".to_owned())?;
+    let transport = KernelHttpTransport::new(UreqKernel::new());
+    let reporter = HostReporter(host);
+    execute::install_with(
+        &transport,
+        execute::InstallRequest {
+            base: &base,
+            kind: parsed,
+            game_version,
+            loader_version,
+            name,
+        },
+        &token,
+        &reporter,
+    )
 }
 
 #[cfg(test)]

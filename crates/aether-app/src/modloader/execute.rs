@@ -26,11 +26,11 @@ use serde::Serialize;
 use super::HttpMetaFetcher;
 use super::fetch::download_into;
 use super::profile_install::{ClientInstall, ProcessorRunner};
-use crate::commands::instances::InstanceSummary;
-use aether_app::install::{
+use crate::install::{
     InstallOptions, InstallProgress, Reporter, Stage, check_instance_name, create_ready_instance,
     install_game_files,
 };
+use crate::instances::InstanceSummary;
 
 /// 一个加载器版本装好之后返回给前端的结果。
 #[derive(Debug, Clone, Serialize)]
@@ -40,18 +40,6 @@ pub struct ModLoaderInstallResult {
     pub instance: InstanceSummary,
     /// 加载器的版本 id，同时是 `versions/<id>/` 的目录名。
     pub version_id: String,
-}
-
-/// 把加载器安装的进度发到前端，复用原版安装的 `install://progress` 事件。
-pub(super) struct AppReporter {
-    pub app: tauri::AppHandle,
-}
-
-impl Reporter for AppReporter {
-    fn report(&self, progress: &InstallProgress) {
-        use tauri::Emitter;
-        let _ = self.app.emit(aether_app::install::PROGRESS_EVENT, progress);
-    }
 }
 
 /// 一次加载器安装的输入。
