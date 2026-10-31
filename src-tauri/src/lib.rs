@@ -79,7 +79,7 @@ async fn system_memory() -> Option<aether_runtime::memory::SystemMemory> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(commands::launch::LaunchState::default())
+        .manage(aether_app::launch::LaunchState::default())
         .manage(aether_app::install::InstallState::default())
         .manage(aether_app::import::ImportState::default())
         .manage(aether_app::microsoft::MicrosoftLoginState::default())

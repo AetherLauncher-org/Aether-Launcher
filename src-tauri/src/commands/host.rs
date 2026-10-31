@@ -45,6 +45,22 @@ impl Host for TauriHost {
         Ok(Some(path))
     }
 
+    /// 打开文件选择框。用对话框插件，前端不传路径。
+    fn pick_file(
+        &self,
+        filter_name: &str,
+        extensions: &[&str],
+    ) -> Result<Option<std::path::PathBuf>, String> {
+        let picked = self
+            .app
+            .dialog()
+            .file()
+            .add_filter(filter_name, extensions)
+            .blocking_pick_file();
+        // `FilePath` 要么是本地路径要么是 URL；这里只接受本地路径。
+        Ok(picked.and_then(|file| file.into_path().ok()))
+    }
+
     fn known_folders(&self) -> KnownFolders {
         let resolver = self.app.path();
         KnownFolders {
@@ -67,7 +83,7 @@ impl Host for TauriHost {
     }
 
     fn is_instance_running(&self, id: InstanceId) -> Result<bool, String> {
-        super::launch::is_instance_running(&self.app, id)
+        aether_app::launch::is_running(&self.app.state::<aether_app::launch::LaunchState>(), id)
     }
 
     fn emit_login(&self, event: &LoginEvent) {

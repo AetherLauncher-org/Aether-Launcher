@@ -77,7 +77,6 @@ name = "aether-desktop"
 version = "0.1.0"
 dependencies = [
  "aether-app",
- "aether-auth",
  "aether-core",
  "aether-launch",
  "aether-manifest",
@@ -87,7 +86,6 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
- "tracing",
 ]
 
 [[package]]

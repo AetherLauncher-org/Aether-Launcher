@@ -18,6 +18,7 @@ pub mod identify;
 pub mod import;
 pub mod install;
 pub mod instances;
+pub mod java;
 pub mod launch;
 pub mod manage;
 pub mod microsoft;

@@ -337,7 +337,7 @@ fn poll_failure(end: PollEnd) -> Option<LoginFailure> {
 // --------------------------------------------------------------------------------------
 
 /// What the game is started with for a Microsoft account.
-pub struct LaunchCredentials {
+pub(crate) struct LaunchCredentials {
     pub name: String,
     /// The Minecraft profile UUID, 32 lowercase hex digits.
     pub uuid: String,
@@ -403,7 +403,7 @@ pub(super) fn credentials_for_launch(
 }
 
 /// Loads launch credentials with the production transport, vault and clock.
-pub fn launch_credentials_for(
+pub(crate) fn launch_credentials_for(
     host: &dyn Host,
     account_id: &str,
 ) -> Result<LaunchCredentials, String> {

@@ -12,7 +12,7 @@ use aether_modloader::transport::MetaSource;
 use aether_modloader::{ModLoaderKind, fabric, forge, neoforge};
 use serde::Serialize;
 
-use crate::Host;
+use crate::host::Host;
 use crate::install::{ActiveInstall, HostReporter, InstallState};
 use aether_download::transport::KernelHttpTransport;
 use aether_download::transport::http::UreqKernel;

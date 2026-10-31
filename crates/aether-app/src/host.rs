@@ -54,6 +54,13 @@ pub trait Host: Send + Sync {
     /// When the selected folder path is not usable.
     fn pick_folder(&self, title: &str) -> Result<Option<PathBuf>, String>;
 
+    /// Opens a native file picker on a blocking worker thread. Dismissal returns `None`.
+    ///
+    /// # Errors
+    ///
+    /// When the file picker cannot be opened.
+    fn pick_file(&self, filter_name: &str, extensions: &[&str]) -> Result<Option<PathBuf>, String>;
+
     /// Platform folders to search for launcher installations, in the operation's fixed order.
     fn known_folders(&self) -> KnownFolders;
 }

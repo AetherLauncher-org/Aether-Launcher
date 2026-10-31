@@ -41,6 +41,14 @@ impl Host for FakeHost {
         Ok(None)
     }
 
+    fn pick_file(
+        &self,
+        _filter_name: &str,
+        _extensions: &[&str],
+    ) -> Result<Option<PathBuf>, String> {
+        Ok(None)
+    }
+
     fn known_folders(&self) -> crate::host::KnownFolders {
         crate::host::KnownFolders {
             desktop: None,
