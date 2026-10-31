@@ -229,15 +229,38 @@ fn xsts_response_yields_the_token_the_user_hash_and_the_xuid() {
 
     assert_eq!(session.token.expose(), XSTS_TOKEN);
     assert_eq!(session.user_hash, USER_HASH);
-    assert_eq!(session.xuid, XUID);
+    assert_eq!(session.xuid.as_deref(), Some(XUID));
 }
 
 #[test]
-fn xsts_response_without_xid_is_malformed() {
+fn xsts_response_without_xid_is_the_normal_minecraft_answer_and_is_accepted() {
+    // For the Minecraft relying party XSTS answers with the user hash only: no `xid`.
     let body = xbl_body(XSTS_TOKEN, USER_HASH);
 
+    let session = parse_xsts_response(200, &body).expect("the real answer has no xid");
+
+    assert_eq!(session.token.expose(), XSTS_TOKEN);
+    assert_eq!(session.user_hash, USER_HASH);
+    assert_eq!(session.xuid, None);
+}
+
+#[test]
+fn an_empty_xid_counts_as_none_and_a_missing_user_hash_is_still_malformed() {
+    let empty = xsts_body(XSTS_TOKEN, USER_HASH, "");
+    assert_eq!(
+        parse_xsts_response(200, &empty).expect("accepted").xuid,
+        None
+    );
+
+    let no_hash =
+        format!(r#"{{"Token":"{XSTS_TOKEN}","DisplayClaims":{{"xui":[{{"xid":"{XUID}"}}]}}}}"#);
     assert!(matches!(
-        parse_xsts_response(200, &body),
+        parse_xsts_response(200, &no_hash),
+        Err(XboxError::MalformedResponse)
+    ));
+    let no_claims = format!(r#"{{"Token":"{XSTS_TOKEN}"}}"#);
+    assert!(matches!(
+        parse_xsts_response(200, &no_claims),
         Err(XboxError::MalformedResponse)
     ));
 }
@@ -474,7 +497,7 @@ fn the_two_steps_chain_through_a_transport() {
         XBL_TOKEN
     );
     assert_eq!(xbl_session.user_hash, xsts_session.user_hash);
-    assert_eq!(xsts_session.xuid, XUID);
+    assert_eq!(xsts_session.xuid.as_deref(), Some(XUID));
     assert_eq!(xsts_session.token.expose(), XSTS_TOKEN);
 }
 

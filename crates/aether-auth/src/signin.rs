@@ -35,8 +35,9 @@ pub struct MinecraftLogin {
     pub session: MinecraftSession,
     /// The player name and UUID.
     pub profile: MinecraftProfile,
-    /// The Xbox user id from XSTS, stored on the account profile.
-    pub xuid: String,
+    /// The Xbox user id from XSTS, stored on the account profile. XSTS leaves it out for the
+    /// Minecraft relying party, so it is usually `None`.
+    pub xuid: Option<String>,
 }
 
 /// Why a sign-in step failed.

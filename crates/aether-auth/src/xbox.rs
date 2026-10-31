@@ -107,8 +107,9 @@ impl fmt::Display for XblToken {
     }
 }
 
-/// One `DisplayClaims.xui` entry. `uhs` is present on both steps; `xid` (the Xbox user
-/// id) is only guaranteed on the XSTS answer.
+/// One `DisplayClaims.xui` entry. `uhs` (the user hash) is present on both steps. `xid` (the
+/// Xbox user id) is **not** part of the answer for the Minecraft relying party, which is the
+/// one the launcher asks for; it appears only for other relying parties.
 #[derive(Debug, Deserialize)]
 struct XuiClaim {
     uhs: String,
@@ -139,13 +140,14 @@ pub struct XblSession {
     pub user_hash: String,
 }
 
-/// The result of the XSTS step. `xuid` is the account's Xbox user id, which the launcher
-/// stores on the [`crate::AccountProfile`].
+/// The result of the XSTS step. `xuid` is the account's Xbox user id when the answer carries
+/// one, which it does not for the Minecraft relying party; the launcher stores it on the
+/// [`crate::AccountProfile`] only when present.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XstsSession {
     pub token: XstsToken,
     pub user_hash: String,
-    pub xuid: String,
+    pub xuid: Option<String>,
 }
 
 /// Failures reported by the Xbox Live stage.
@@ -302,14 +304,11 @@ pub fn build_xsts_authorize_request(xbl: &XblToken) -> HttpRequest {
 ///   [`XboxError::RegionUnsupported`] or [`XboxError::ChildAccount`];
 /// - a non-`2xx` status carrying an unknown code → [`XboxError::XstsCode`];
 /// - any other non-`2xx` status → [`XboxError::UnexpectedStatus`];
-/// - a body without `Token`, with an empty/absent `DisplayClaims.xui`, or without
-///   `xid` → [`XboxError::MalformedResponse`].
+/// - a body without `Token`, or with an empty/absent `DisplayClaims.xui` or `uhs` →
+///   [`XboxError::MalformedResponse`]. A missing `xid` is not an error.
 pub fn parse_xsts_response(status: u16, body: &str) -> Result<XstsSession, XboxError> {
     let (token, claim) = parse_token_response(status, body)?;
-    let xuid = claim
-        .xid
-        .filter(|xuid| !xuid.is_empty())
-        .ok_or(XboxError::MalformedResponse)?;
+    let xuid = claim.xid.filter(|xuid| !xuid.is_empty());
     Ok(XstsSession {
         token: XstsToken::new(token),
         user_hash: claim.uhs,

@@ -116,7 +116,7 @@ fn the_chain_runs_in_order_and_yields_the_profile() {
         login.profile.undashed_id(),
         "069a79f444e94726a5befca90e38aaf5"
     );
-    assert_eq!(login.xuid, "2535400000000001");
+    assert_eq!(login.xuid.as_deref(), Some("2535400000000001"));
     assert_eq!(login.session.access.expose(), MC_ACCESS);
 }
 

@@ -307,7 +307,7 @@ pub(super) fn finish_login(
         login.profile.name.clone(),
         AccountKind::Microsoft,
     )
-    .with_xuid(Some(login.xuid.clone()));
+    .with_xuid(login.xuid.clone());
     if let Some(refresh) = tokens.refresh.clone() {
         credential = credential.with_refresh(refresh);
     }
@@ -389,7 +389,7 @@ pub(super) fn credentials_for_launch(
         login.profile.name.clone(),
         AccountKind::Microsoft,
     )
-    .with_xuid(Some(login.xuid.clone()));
+    .with_xuid(login.xuid.clone());
     updated = updated.with_refresh(tokens.refresh.clone().unwrap_or(refresh));
     let _ = store.save(&updated);
 
@@ -397,7 +397,8 @@ pub(super) fn credentials_for_launch(
         uuid: login.profile.undashed_id(),
         name: login.profile.name,
         access_token: login.session.access,
-        xuid: login.xuid,
+        // The game gets an empty xuid when XSTS did not send one, as it does offline.
+        xuid: login.xuid.unwrap_or_default(),
     })
 }
 
