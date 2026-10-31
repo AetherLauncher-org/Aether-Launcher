@@ -118,6 +118,7 @@ pub fn run() {
             commands::content::get_content_target,
             commands::content::search_content,
             commands::content::install_content,
+            commands::content::save_content_to_folder,
             commands::schematics::read_instance_schematic,
             commands::schematics::convert_instance_schematic,
             commands::schematics::schematic_conversion_targets,

@@ -65,3 +65,18 @@ pub async fn install_content(
     })
     .await
 }
+
+/// Selects a destination natively; no folder path crosses IPC.
+#[tauri::command]
+pub async fn save_content_to_folder(
+    app: tauri::AppHandle,
+    id: String,
+    project_id: String,
+    project_type: String,
+    with_dependencies: bool,
+) -> Result<Option<content_install::FolderReport>, String> {
+    run(app, move |host| {
+        content_install::save_to_folder(host, &id, &project_id, &project_type, with_dependencies)
+    })
+    .await
+}

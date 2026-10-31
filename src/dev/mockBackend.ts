@@ -756,6 +756,8 @@ async function handle(command: string, args: Args): Promise<unknown> {
     case "search_content":
       await sleep(300);
       return mockSearch(String(args?.text ?? ""), String(args?.projectType));
+    case "save_content_to_folder":
+      return { files: ["mock-1.0.0.jar"], message: "已保存到所选文件夹" };
     case "install_content":
       await sleep(600);
       return { installed: [{ projectId: String(args?.projectId), fileName: "mock-1.0.0.jar", version: "1.0.0" }], skipped: [] };

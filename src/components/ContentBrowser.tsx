@@ -28,6 +28,7 @@ import {
   describeCommandError,
   getContentTarget,
   installContent,
+  saveContentToFolder,
   listInstanceContent,
   openContentProject,
   searchContent,
@@ -76,6 +77,7 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
 
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [report, setReport] = useState<{ title: string; result: InstallReport } | null>(null);
+  const [folderNotice, setFolderNotice] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [picking, setPicking] = useState<SearchHit | null>(null);
 
@@ -125,6 +127,26 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
         withDependencies && type === "mod",
       );
       setReport({ title: hit.title, result });
+    } catch (error: unknown) {
+      setFailure(`${hit.title}：${describeCommandError(error)}`);
+    } finally {
+      setBusy((previous) => {
+        const next = new Set(previous);
+        next.delete(hit.projectId);
+        return next;
+      });
+    }
+  };
+
+  const saveFolder = async (hit: SearchHit) => {
+    if (currentId === null) return;
+    setFailure(null);
+    setFolderNotice(null);
+    setReport(null);
+    setBusy((previous) => new Set(previous).add(hit.projectId));
+    try {
+      const result = await saveContentToFolder(currentId, hit.projectId, type, withDependencies && type === "mod");
+      if (result !== null) setFolderNotice(`${result.message}：${result.files.join("、")}`);
     } catch (error: unknown) {
       setFailure(`${hit.title}：${describeCommandError(error)}`);
     } finally {
@@ -221,6 +243,7 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
           <MessageBarBody>{failure}</MessageBarBody>
         </MessageBar>
       ) : null}
+      {folderNotice ? <MessageBar intent="success" role="status"><MessageBarBody>{folderNotice}</MessageBarBody></MessageBar> : null}
       {report ? (
         <MessageBar intent={report.result.skipped.length > 0 ? "warning" : "success"} className="page-notice" role="status">
           <MessageBarBody>
@@ -305,6 +328,9 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
                       </Text>
                     ) : null}
                     <div className="search-hit-actions">
+                      <Button size="small" disabled={busy.has(hit.projectId) || blocked !== null}
+                        aria-label={`保存 ${hit.title} 到文件夹`}
+                        onClick={() => void saveFolder(hit)}>保存到文件夹…</Button>
                       <Button
                         size="small"
                         appearance="subtle"

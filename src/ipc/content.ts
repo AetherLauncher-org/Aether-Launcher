@@ -138,3 +138,22 @@ export async function installContent(
   requireDesktop();
   return callCommand("install_content", { id, projectId, projectType, world, withDependencies });
 }
+
+export type FolderReport = { files: string[]; message: string };
+
+declare module "./call" {
+  interface CommandArgs {
+    save_content_to_folder: { id: string; projectId: string; projectType: ContentType; withDependencies: boolean };
+  }
+  interface CommandResults {
+    save_content_to_folder: FolderReport | null;
+  }
+}
+
+/** 后端选文件夹；取消时返回 null，路径不经过网页 */
+export async function saveContentToFolder(
+  id: string, projectId: string, projectType: ContentType, withDependencies: boolean,
+): Promise<FolderReport | null> {
+  requireDesktop();
+  return callCommand("save_content_to_folder", { id, projectId, projectType, withDependencies });
+}

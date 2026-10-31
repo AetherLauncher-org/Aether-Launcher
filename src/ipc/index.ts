@@ -219,3 +219,6 @@ export type {
   ModLoaderInstallResult,
   ModLoaderKind,
 } from "./modloader";
+
+export { saveContentToFolder } from "./content";
+export type { FolderReport } from "./content";

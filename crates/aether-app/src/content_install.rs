@@ -496,3 +496,6 @@ pub fn install(
 #[cfg(test)]
 #[path = "content_install_tests.rs"]
 mod tests;
+
+mod folder;
+pub use folder::{FolderReport, save_to_folder, save_to_folder_with};
