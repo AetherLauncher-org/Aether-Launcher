@@ -202,29 +202,21 @@
   text-overflow: ellipsis;
 }
 
-/* 当前账户：头像加两行字，是进账户页的入口。比别的导航项高一点，头像画 32px */
+/* 当前账户：头像加两行字，是进账户页的入口。内容往上提一点，不贴着下边的指示条 */
 .nav-account {
-  height: 44px;
-  max-width: 240px;
-  padding: 0 14px 0 8px;
-  gap: 10px;
+  max-width: 220px;
+  padding-bottom: 8px;
 }
 
 .nav-account-text {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  justify-content: center;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
 .nav-account-kind {
   color: var(--colorNeutralForeground3);
-}
-
-/* 皮肤的头是方的像素画，圆一点点边角就够了，不要把帽子层的角削掉太多 */
-.nav-account .account-avatar.head {
-  border-radius: 4px;
 }
 
 .nav-version {
