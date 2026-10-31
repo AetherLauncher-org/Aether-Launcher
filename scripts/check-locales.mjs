@@ -15,6 +15,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const PLURAL_CATEGORIES = ["zero", "one", "two", "few", "many", "other"];
 const PLURAL_SUFFIXES = new Set(PLURAL_CATEGORIES);
@@ -190,6 +191,6 @@ function main() {
 }
 
 // 作为脚本直接运行时执行 main；被 import（测试）时不执行。
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1].replace(/\\/g, "/")}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   main();
 }

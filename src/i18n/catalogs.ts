@@ -28,5 +28,6 @@ export const localeDisplayNames: Readonly<Record<Locale, string>> = {
   "en-US": "English",
 };
 
-/** 源语言目录里出现的键：`t()` 的键类型约束，打错键名会编译失败。 */
-export type MessageKey = keyof typeof zhCN & string;
+type CatalogKey = keyof typeof zhCN & string;
+type PluralStem<K extends string> = K extends `${infer Stem}.other` ? Stem : never;
+export type MessageKey = CatalogKey | PluralStem<CatalogKey>;

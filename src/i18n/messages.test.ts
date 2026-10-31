@@ -57,6 +57,10 @@ describe("translate", () => {
     expect(translate(catalogs, "zh-CN", "en-US", "nope.missing")).toBe("nope.missing");
   });
 
+  it("interpolates count in a non-plural message", () => {
+    expect(translate({ "zh-CN": { total: "共 {count} 个" } }, "zh-CN", "zh-CN", "total", { count: 3 })).toBe("共 3 个");
+  });
+
   it("uses plural categories via count", () => {
     expect(translate(catalogs, "zh-CN", "en-US", "fileCount", { count: 1 })).toBe("1 file");
     expect(translate(catalogs, "zh-CN", "en-US", "fileCount", { count: 5 })).toBe("5 files");

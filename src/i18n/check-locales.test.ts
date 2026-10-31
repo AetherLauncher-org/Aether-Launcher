@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { checkCatalogs } from "../../scripts/check-locales.mjs";
+import { bundledCatalogs } from "./catalogs";
 
 describe("checkCatalogs", () => {
+  it("accepts the bundled catalogs", () => {
+    expect(checkCatalogs(bundledCatalogs)).toEqual([]);
+  });
   it("reports clean on identical catalogs", () => {
     const issues = checkCatalogs({
       "zh-CN": { "nav.primary": "主要导航", "greet": "你好，{name}" },

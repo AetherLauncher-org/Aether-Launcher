@@ -6,7 +6,6 @@ import { MemorySection } from "../components/MemorySection";
 import { PageHeader } from "../components/PageHeader";
 import { useT } from "../i18n/context";
 import { localeDisplayNames, locales } from "../i18n/catalogs";
-import type { Locale } from "../i18n/catalogs";
 import { isLocale } from "../i18n/locale";
 import { isThemePreference } from "../lib/theme";
 import type { ThemePreference } from "../lib/theme";
@@ -93,7 +92,7 @@ export function SettingsPage({
             value={locale}
             onChange={(_, data) => {
               if (isLocale(data.value)) {
-                setLocale(data.value as Locale);
+                setLocale(data.value);
               }
             }}
           >
