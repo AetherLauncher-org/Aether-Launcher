@@ -56,11 +56,11 @@ export function NavPane({ version }: NavPaneProps) {
             <AccountAvatar
               name={active?.name ?? null}
               uuid={active?.kind === "microsoft" ? active.uuid : null}
-              size={24}
+              size={20}
             />
           </span>
           <span className="nav-label nav-account-text">
-            <Text size={300} weight="semibold" truncate wrap={false}>
+            <Text size={200} weight="semibold" truncate wrap={false}>
               {active?.name ?? "添加账户"}
             </Text>
             <Text size={100} className="nav-account-kind">

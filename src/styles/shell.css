@@ -204,8 +204,14 @@
 
 /* 当前账户：头像加两行字，是进账户页的入口。内容往上提一点，不贴着下边的指示条 */
 .nav-account {
-  max-width: 220px;
-  padding-bottom: 8px;
+  max-width: 200px;
+  padding-bottom: 4px;
+  gap: 6px;
+}
+
+.nav-account .nav-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .nav-account-text {
