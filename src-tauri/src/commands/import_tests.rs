@@ -264,7 +264,7 @@ impl HttpTransport for OfflineTransport {
 struct SilentReporter;
 
 impl Reporter for SilentReporter {
-    fn report(&self, _progress: &super::super::install::InstallProgress) {}
+    fn report(&self, _progress: &aether_app::install::InstallProgress) {}
 }
 
 fn plan_of(ids: &[&str], seed: &Path) -> ImportPlan {

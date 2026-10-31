@@ -34,6 +34,8 @@ impl Host for FakeHost {
     }
 
     fn emit_login(&self, _event: &crate::microsoft::LoginEvent) {}
+
+    fn emit_install(&self, _progress: &crate::install::InstallProgress) {}
 }
 
 impl Drop for FakeHost {
@@ -102,7 +104,9 @@ impl SkinNet for FakeNet {
             return Err("the skin service cannot be reached".to_owned());
         }
         let textures = if self.has_skin {
-            format!(r#"{{"textures":{{"SKIN":{{"url":"http://textures.minecraft.net/texture/{HASH}"}}}}}}"#)
+            format!(
+                r#"{{"textures":{{"SKIN":{{"url":"http://textures.minecraft.net/texture/{HASH}"}}}}}}"#
+            )
         } else {
             r#"{"textures":{}}"#.to_owned()
         };
@@ -179,7 +183,10 @@ fn a_player_without_a_skin_gets_none_and_is_not_asked_about_again_for_a_day() {
     assert_eq!(net.texts.lock().unwrap().len(), 1);
     assert!(net.bytes.lock().unwrap().is_empty());
 
-    assert_eq!(skin_with(&net, &host, UUID, now() + DAY + 60).unwrap(), None);
+    assert_eq!(
+        skin_with(&net, &host, UUID, now() + DAY + 60).unwrap(),
+        None
+    );
     assert_eq!(net.texts.lock().unwrap().len(), 2);
 }
 
@@ -212,7 +219,14 @@ fn a_picture_that_is_not_a_skin_is_not_kept() {
     net.picture = b"<svg xmlns='http://www.w3.org/2000/svg' onload='alert(1)'/>".to_vec();
 
     assert_eq!(skin_with(&net, &host, UUID, now()).unwrap(), None);
-    assert!(!host.dir.join("cache").join("skins").join(format!("{UUID}.png")).exists());
+    assert!(
+        !host
+            .dir
+            .join("cache")
+            .join("skins")
+            .join(format!("{UUID}.png"))
+            .exists()
+    );
 }
 
 #[test]
@@ -220,7 +234,11 @@ fn a_planted_file_in_the_cache_is_not_served() {
     let host = FakeHost::new();
     let mut net = FakeNet::new();
     skin_with(&net, &host, UUID, now()).unwrap();
-    let path = host.dir.join("cache").join("skins").join(format!("{UUID}.png"));
+    let path = host
+        .dir
+        .join("cache")
+        .join("skins")
+        .join(format!("{UUID}.png"));
     fs::write(&path, b"<html>not a picture</html>").unwrap();
     net.online = false;
 
@@ -231,7 +249,13 @@ fn a_planted_file_in_the_cache_is_not_served() {
 fn only_a_player_id_is_accepted() {
     let host = FakeHost::new();
     let net = FakeNet::new();
-    for bad in ["", "../x", "Notch", "069A79F444E94726A5BEFCA90E38AAF5", "069a79f4-44e9-4726-a5be-fca90e38aaf5"] {
+    for bad in [
+        "",
+        "../x",
+        "Notch",
+        "069A79F444E94726A5BEFCA90E38AAF5",
+        "069a79f4-44e9-4726-a5be-fca90e38aaf5",
+    ] {
         assert!(skin_with(&net, &host, bad, now()).is_err(), "{bad}");
     }
     assert_eq!(net.requests(), 0);

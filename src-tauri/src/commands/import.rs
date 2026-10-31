@@ -52,11 +52,12 @@ use serde::Serialize;
 use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
-use super::catalog::fetch_catalog;
-use super::install::{
-    CANCELLED, EventReporter, InstallOptions, InstallState, Reporter, install_and_create_with,
-};
+use super::install::EventReporter;
 use super::instances::InstanceSummary;
+use aether_app::catalog::fetch_catalog;
+use aether_app::install::{
+    CANCELLED, InstallOptions, InstallState, Reporter, install_and_create_with,
+};
 
 /// Event name carrying [`ImportItemEvent`] payloads.
 pub const ITEM_EVENT: &str = "import://item";

@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use aether_app::Host;
+use aether_app::install::{self, InstallProgress};
 use aether_app::microsoft::{LoginEvent, STATUS_EVENT};
 use aether_core::InstanceId;
 use tauri::{Emitter, Manager};
@@ -21,6 +22,10 @@ impl TauriHost {
 }
 
 impl Host for TauriHost {
+    fn emit_install(&self, progress: &InstallProgress) {
+        let _ = self.app.emit(install::PROGRESS_EVENT, progress);
+    }
+
     fn data_dir(&self) -> Result<std::path::PathBuf, String> {
         self.app
             .path()

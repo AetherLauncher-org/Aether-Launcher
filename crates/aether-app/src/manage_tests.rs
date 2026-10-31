@@ -164,6 +164,8 @@ impl Host for FakeHost {
     }
 
     fn emit_login(&self, _event: &crate::microsoft::LoginEvent) {}
+
+    fn emit_install(&self, _progress: &crate::install::InstallProgress) {}
 }
 
 impl Drop for FakeHost {

@@ -167,7 +167,8 @@ fn cache_verified_metadata(
     result
 }
 
-pub(super) fn prepare_version(
+// still used by src-tauri's modloader/import until they move
+pub fn prepare_version(
     transport: &dyn HttpTransport,
     game_root: &Path,
     version: &str,

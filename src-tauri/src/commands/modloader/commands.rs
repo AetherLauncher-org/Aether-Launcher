@@ -51,7 +51,7 @@ pub async fn list_modloader_versions(
 #[tauri::command]
 pub async fn install_modloader_version(
     app: tauri::AppHandle,
-    state: tauri::State<'_, crate::commands::install::InstallState>,
+    state: tauri::State<'_, aether_app::install::InstallState>,
     kind: String,
     game_version: String,
     loader_version: String,

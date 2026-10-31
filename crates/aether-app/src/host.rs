@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use aether_core::InstanceId;
 
+use crate::install::InstallProgress;
 use crate::microsoft::LoginEvent;
 
 /// The outside world, as the operations need it. Errors are plain sentences that are safe to
@@ -29,4 +30,8 @@ pub trait Host: Send + Sync {
     /// sign-in's own thread, so it must not block. Carries an account's identity at most,
     /// never a token.
     fn emit_login(&self, event: &LoginEvent);
+
+    /// Installation progress. Called from a download thread, so it must not block.
+    /// Carries no secrets.
+    fn emit_install(&self, progress: &InstallProgress);
 }

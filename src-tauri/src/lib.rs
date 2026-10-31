@@ -80,7 +80,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(commands::launch::LaunchState::default())
-        .manage(commands::install::InstallState::default())
+        .manage(aether_app::install::InstallState::default())
         .manage(commands::import::ImportState::default())
         .manage(aether_app::microsoft::MicrosoftLoginState::default())
         .invoke_handler(tauri::generate_handler![

@@ -44,6 +44,8 @@ impl Host for FakeHost {
     }
 
     fn emit_login(&self, _event: &crate::microsoft::LoginEvent) {}
+
+    fn emit_install(&self, _progress: &crate::install::InstallProgress) {}
 }
 
 impl Drop for FakeHost {
@@ -87,7 +89,10 @@ impl FakeNet {
 impl ContentNet for FakeNet {
     fn post_json(&self, url: &str, body: &str) -> Result<String, String> {
         assert!(net::is_allowed_url(url), "{url}");
-        self.posts.lock().unwrap().push((url.to_owned(), body.to_owned()));
+        self.posts
+            .lock()
+            .unwrap()
+            .push((url.to_owned(), body.to_owned()));
         if !self.online {
             return Err("the platform cannot be reached".to_owned());
         }
@@ -304,10 +309,16 @@ fn a_planted_oversized_or_fake_icon_file_is_not_served() {
 
     let icon = host.dir.join("cache").join("icons").join("AANobbMI");
     fs::write(&icon, b"not an image").unwrap();
-    assert_eq!(run(&net, &host, &instance, "mods", 1001).items[0].icon, None);
+    assert_eq!(
+        run(&net, &host, &instance, "mods", 1001).items[0].icon,
+        None
+    );
 
     fs::write(&icon, vec![0x89; MAX_ICON_BYTES + 1]).unwrap();
-    assert_eq!(run(&net, &host, &instance, "mods", 1002).items[0].icon, None);
+    assert_eq!(
+        run(&net, &host, &instance, "mods", 1002).items[0].icon,
+        None
+    );
 }
 
 #[test]
@@ -333,7 +344,11 @@ fn folders_and_worlds_and_schematics_are_not_looked_up() {
 
     let packs = run(&net, &host, &instance, "resourcepacks", 1000);
     assert_eq!(
-        packs.items.iter().map(|item| item.name.as_str()).collect::<Vec<_>>(),
+        packs
+            .items
+            .iter()
+            .map(|item| item.name.as_str())
+            .collect::<Vec<_>>(),
         ["Packed.zip"]
     );
     let hashes = net.posts.lock().unwrap()[0].1.clone();

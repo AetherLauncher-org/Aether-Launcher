@@ -26,11 +26,11 @@ use serde::Serialize;
 use super::HttpMetaFetcher;
 use super::fetch::download_into;
 use super::profile_install::{ClientInstall, ProcessorRunner};
-use crate::commands::install::{
+use crate::commands::instances::InstanceSummary;
+use aether_app::install::{
     InstallOptions, InstallProgress, Reporter, Stage, check_instance_name, create_ready_instance,
     install_game_files,
 };
-use crate::commands::instances::InstanceSummary;
 
 /// 一个加载器版本装好之后返回给前端的结果。
 #[derive(Debug, Clone, Serialize)]
@@ -50,9 +50,7 @@ pub(super) struct AppReporter {
 impl Reporter for AppReporter {
     fn report(&self, progress: &InstallProgress) {
         use tauri::Emitter;
-        let _ = self
-            .app
-            .emit(crate::commands::install::PROGRESS_EVENT, progress);
+        let _ = self.app.emit(aether_app::install::PROGRESS_EVENT, progress);
     }
 }
 

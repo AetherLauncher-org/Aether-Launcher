@@ -12,13 +12,17 @@
 //! contents of mods, worlds, logs and schematics are untrusted. See
 //! `docs/design/native-ui.md` for why this layer exists.
 
+pub mod catalog;
 pub mod host;
 pub mod identify;
+pub mod install;
 pub mod instances;
+pub mod launch;
 pub mod manage;
 pub mod microsoft;
 pub mod platform;
 pub mod schematics;
 pub mod skins;
+pub mod vanilla;
 
 pub use host::Host;

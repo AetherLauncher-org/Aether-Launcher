@@ -21,4 +21,3 @@ pub mod manage;
 pub mod microsoft;
 pub mod modloader;
 pub mod schematics;
-pub mod vanilla;
