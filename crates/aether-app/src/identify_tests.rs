@@ -6,7 +6,10 @@ use aether_core::{GameInstance, InstanceId};
 
 use super::*;
 
-const PNG: &[u8] = b"\x89PNG\r\n\x1a\nicon-bytes";
+/// A PNG header declaring 16×16 pixels; the rest is not a picture, nothing here decodes it.
+const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x10\0\0\0\x10icon-bytes";
+/// The same, declaring 65535×65535.
+const HUGE_PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\xFF\xFF\0\0\xFF\xFFicon-bytes";
 const DAY: u64 = 24 * 60 * 60;
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -320,6 +323,54 @@ fn an_icon_that_is_not_an_image_is_not_kept() {
 
     assert_eq!(lookup.items.len(), 1);
     assert_eq!(lookup.items[0].icon, None);
+}
+
+#[test]
+fn an_icon_declaring_a_huge_picture_is_not_kept() {
+    let host = FakeHost::new();
+    let instance = host.instance();
+    host.write(&instance, "mods/a.jar", b"sodium");
+    let mut net = FakeNet::knowing(b"sodium");
+    net.icon = HUGE_PNG.to_vec();
+
+    let lookup = run(&net, &host, &instance, "mods", 1000);
+
+    assert_eq!(lookup.items[0].icon, None);
+    assert!(
+        !host
+            .dir
+            .join("cache")
+            .join("icons")
+            .join("AANobbMI")
+            .exists()
+    );
+}
+
+#[test]
+fn a_link_planted_at_an_icon_name_is_replaced_not_followed() {
+    let host = FakeHost::new();
+    let instance = host.instance();
+    host.write(&instance, "mods/a.jar", b"sodium");
+    let victim = host.dir.join("victim.txt");
+    fs::write(&victim, b"keep me").unwrap();
+    let icons = host.dir.join("cache").join("icons");
+    fs::create_dir_all(&icons).unwrap();
+    // a link to a file that does not exist yet: `exists()` is false for it, and a plain write
+    // would create the victim through the link
+    let missing = host.dir.join("not-yet.txt");
+    #[cfg(unix)]
+    let linked = std::os::unix::fs::symlink(&missing, icons.join("AANobbMI")).is_ok();
+    #[cfg(windows)]
+    let linked = std::os::windows::fs::symlink_file(&missing, icons.join("AANobbMI")).is_ok();
+    let net = FakeNet::knowing(b"sodium");
+
+    run(&net, &host, &instance, "mods", 1000);
+
+    assert_eq!(fs::read(&victim).unwrap(), b"keep me");
+    assert!(
+        !missing.exists() || !linked,
+        "the launcher wrote through the link"
+    );
 }
 
 #[test]

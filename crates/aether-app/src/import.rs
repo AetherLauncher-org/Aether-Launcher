@@ -52,11 +52,11 @@ use serde::Serialize;
 
 use crate::catalog::fetch_catalog;
 use crate::host::{Host, KnownFolders};
-use crate::instances::InstanceSummary;
 use crate::install::{
     ActiveInstall, CANCELLED, HostReporter, InstallOptions, InstallState, Reporter,
     install_and_create_with,
 };
+use crate::instances::InstanceSummary;
 
 /// Event name carrying [`ImportItemEvent`] payloads.
 pub const ITEM_EVENT: &str = "import://item";

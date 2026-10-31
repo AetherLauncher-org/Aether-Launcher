@@ -42,7 +42,11 @@ fn png(width: u32, height: u32) -> Vec<u8> {
 fn base64_is_decoded_with_or_without_padding() {
     for text in ["", "a", "ab", "abc", "abcd", "hello world", "{\"a\":1}"] {
         let encoded = encode(text);
-        assert_eq!(base64_decode(&encoded, 100).unwrap(), text.as_bytes(), "{text}");
+        assert_eq!(
+            base64_decode(&encoded, 100).unwrap(),
+            text.as_bytes(),
+            "{text}"
+        );
         assert_eq!(
             base64_decode(encoded.trim_end_matches('='), 100).unwrap(),
             text.as_bytes()
@@ -62,9 +66,17 @@ fn bad_base64_is_refused() {
 fn only_a_lower_case_uuid_makes_a_profile_url() {
     assert_eq!(
         profile_url(UUID).as_deref(),
-        Some("https://sessionserver.mojang.com/session/minecraft/profile/069a79f444e94726a5befca90e38aaf5")
+        Some(
+            "https://sessionserver.mojang.com/session/minecraft/profile/069a79f444e94726a5befca90e38aaf5"
+        )
     );
-    for bad in ["", "../x", "069A79F444E94726A5BEFCA90E38AAF5", "069a79f4-44e9-4726-a5be-fca90e38aaf5", "069a79f444e94726a5befca90e38aaf"] {
+    for bad in [
+        "",
+        "../x",
+        "069A79F444E94726A5BEFCA90E38AAF5",
+        "069a79f4-44e9-4726-a5be-fca90e38aaf5",
+        "069a79f444e94726a5befca90e38aaf",
+    ] {
         assert_eq!(profile_url(bad), None, "{bad}");
     }
 }
@@ -107,7 +119,10 @@ fn the_skin_address_is_found_in_the_profile() {
 
 #[test]
 fn a_player_without_a_skin_has_none() {
-    assert_eq!(skin_url_from_profile(&profile_with(r#"{"textures":{}}"#)), Ok(None));
+    assert_eq!(
+        skin_url_from_profile(&profile_with(r#"{"textures":{}}"#)),
+        Ok(None)
+    );
     assert_eq!(skin_url_from_profile(&profile_with(r#"{}"#)), Ok(None));
     assert_eq!(
         skin_url_from_profile(&format!(r#"{{"id":"{UUID}","name":"x","properties":[]}}"#)),
@@ -116,9 +131,9 @@ fn a_player_without_a_skin_has_none() {
 }
 
 #[test]
-fn a_skin_on_another_host_is_not_returned() {
+fn a_skin_on_another_host_is_an_odd_answer_not_no_skin() {
     let body = profile_with(r#"{"textures":{"SKIN":{"url":"http://evil.test/texture/abc"}}}"#);
-    assert_eq!(skin_url_from_profile(&body), Ok(None));
+    assert_eq!(skin_url_from_profile(&body), Err(ContentError::Malformed));
 }
 
 #[test]
@@ -143,8 +158,18 @@ fn a_damaged_or_oversized_profile_is_refused() {
 fn a_skin_picture_must_be_a_small_png_of_the_right_size() {
     assert_eq!(validate_skin_png(&png(64, 64)), Ok(()));
     assert_eq!(validate_skin_png(&png(64, 32)), Ok(()));
-    for (width, height) in [(128, 128), (64, 63), (32, 32), (0, 0), (64, 4096), (65_536, 65_536)] {
-        assert_eq!(validate_skin_png(&png(width, height)), Err(ContentError::Malformed));
+    for (width, height) in [
+        (128, 128),
+        (64, 63),
+        (32, 32),
+        (0, 0),
+        (64, 4096),
+        (65_536, 65_536),
+    ] {
+        assert_eq!(
+            validate_skin_png(&png(width, height)),
+            Err(ContentError::Malformed)
+        );
     }
 }
 
@@ -157,8 +182,14 @@ fn a_skin_picture_that_is_not_a_png_is_refused() {
     assert_eq!(validate_skin_png(&jpeg), Err(ContentError::Malformed));
     let mut wrong_chunk = png(64, 64);
     wrong_chunk[12..16].copy_from_slice(b"IDAT");
-    assert_eq!(validate_skin_png(&wrong_chunk), Err(ContentError::Malformed));
+    assert_eq!(
+        validate_skin_png(&wrong_chunk),
+        Err(ContentError::Malformed)
+    );
     let mut big = png(64, 64);
     big.resize(MAX_SKIN_BYTES + 1, 0);
-    assert_eq!(validate_skin_png(&big), Err(ContentError::TooLarge(MAX_SKIN_BYTES)));
+    assert_eq!(
+        validate_skin_png(&big),
+        Err(ContentError::TooLarge(MAX_SKIN_BYTES))
+    );
 }

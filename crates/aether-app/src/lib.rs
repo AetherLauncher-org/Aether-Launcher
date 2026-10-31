@@ -12,6 +12,7 @@
 //! contents of mods, worlds, logs and schematics are untrusted. See
 //! `docs/design/native-ui.md` for why this layer exists.
 
+mod cachefile;
 pub mod catalog;
 pub mod host;
 pub mod identify;

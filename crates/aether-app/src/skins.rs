@@ -104,12 +104,12 @@ fn age_of(path: &Path, now: u64) -> Option<u64> {
 
 /// A kept skin as a `data:` URL, if the file is still a valid skin picture.
 fn kept_skin(path: &Path) -> Option<String> {
-    if fs::metadata(path).ok()?.len() > MAX_SKIN_BYTES as u64 {
-        return None;
-    }
-    let bytes = fs::read(path).ok()?;
+    let bytes = crate::cachefile::read_capped(path, MAX_SKIN_BYTES as u64)?;
     validate_skin_png(&bytes).ok()?;
-    Some(format!("data:image/png;base64,{}", crate::schematics::base64(&bytes)))
+    Some(format!(
+        "data:image/png;base64,{}",
+        crate::schematics::base64(&bytes)
+    ))
 }
 
 fn fetch(net: &dyn SkinNet, uuid: &str) -> Result<Option<Vec<u8>>, String> {
@@ -160,10 +160,7 @@ pub(crate) fn skin_with(
         Ok(Some(bytes)) => {
             let _ = fs::remove_file(&none);
             if fs::create_dir_all(&dir).is_ok() {
-                let temporary = dir.join(format!("{uuid}.png.tmp"));
-                if fs::write(&temporary, &bytes).is_ok() && fs::rename(&temporary, &picture).is_err() {
-                    let _ = fs::remove_file(&temporary);
-                }
+                let _ = crate::cachefile::write_replacing(&picture, &bytes);
             }
             Ok(Some(format!(
                 "data:image/png;base64,{}",
@@ -173,7 +170,7 @@ pub(crate) fn skin_with(
         Ok(None) => {
             let _ = fs::remove_file(&picture);
             if fs::create_dir_all(&dir).is_ok() {
-                let _ = fs::write(&none, b"");
+                let _ = crate::cachefile::write_replacing(&none, b"");
             }
             Ok(None)
         }

@@ -76,8 +76,8 @@ pub fn trusted_texture_url(url: &str) -> Option<String> {
         .or_else(|| url.strip_prefix("http://"))?;
     let (host, path) = rest.split_once('/')?;
     let hash = path.strip_prefix("texture/")?;
-    let hash_ok =
-        (1..=64).contains(&hash.len()) && hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    let hash_ok = (1..=64).contains(&hash.len())
+        && hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
     (host == TEXTURE_HOST && hash_ok).then(|| format!("https://{TEXTURE_HOST}/texture/{hash}"))
 }
 
@@ -109,12 +109,12 @@ struct Skin {
     url: String,
 }
 
-/// The skin's address from a profile answer: `Ok(None)` for a player with no custom skin (or
-/// an address that is not a texture address).
+/// The skin's address from a profile answer: `Ok(None)` for a player with no custom skin.
 ///
 /// # Errors
 ///
-/// [`ContentError::TooLarge`] and [`ContentError::Malformed`].
+/// [`ContentError::TooLarge`] and [`ContentError::Malformed`]; the latter also for a skin whose
+/// address is not a texture address, which is an odd answer and not "no skin".
 pub fn skin_url_from_profile(body: &str) -> Result<Option<String>, ContentError> {
     if body.len() > MAX_PROFILE_BYTES {
         return Err(ContentError::TooLarge(MAX_PROFILE_BYTES));
@@ -127,12 +127,16 @@ pub fn skin_url_from_profile(body: &str) -> Result<Option<String>, ContentError>
     else {
         return Ok(None);
     };
-    let decoded = base64_decode(&property.value, MAX_TEXTURES_BYTES).ok_or(ContentError::Malformed)?;
-    let textures: Textures = serde_json::from_slice(&decoded).map_err(|_| ContentError::Malformed)?;
-    Ok(textures
-        .textures
-        .and_then(|set| set.skin)
-        .and_then(|skin| trusted_texture_url(&skin.url)))
+    let decoded =
+        base64_decode(&property.value, MAX_TEXTURES_BYTES).ok_or(ContentError::Malformed)?;
+    let textures: Textures =
+        serde_json::from_slice(&decoded).map_err(|_| ContentError::Malformed)?;
+    let Some(skin) = textures.textures.and_then(|set| set.skin) else {
+        return Ok(None);
+    };
+    trusted_texture_url(&skin.url)
+        .map(Some)
+        .ok_or(ContentError::Malformed)
 }
 
 /// Checks that `bytes` is a PNG of a skin: small, with the PNG signature, an `IHDR` first and

@@ -97,6 +97,8 @@ fn skin_png() -> Vec<u8> {
 
 struct FakeNet {
     has_skin: bool,
+    /// The profile names a skin on a host that is not the texture host.
+    foreign_skin: bool,
     online: bool,
     picture: Vec<u8>,
     texts: Mutex<Vec<String>>,
@@ -107,6 +109,7 @@ impl FakeNet {
     fn new() -> Self {
         Self {
             has_skin: true,
+            foreign_skin: false,
             online: true,
             picture: skin_png(),
             texts: Mutex::new(Vec::new()),
@@ -126,7 +129,9 @@ impl SkinNet for FakeNet {
         if !self.online {
             return Err("the skin service cannot be reached".to_owned());
         }
-        let textures = if self.has_skin {
+        let textures = if self.foreign_skin {
+            r#"{"textures":{"SKIN":{"url":"http://evil.test/texture/abc"}}}"#.to_owned()
+        } else if self.has_skin {
             format!(
                 r#"{{"textures":{{"SKIN":{{"url":"http://textures.minecraft.net/texture/{HASH}"}}}}}}"#
             )
@@ -211,6 +216,49 @@ fn a_player_without_a_skin_gets_none_and_is_not_asked_about_again_for_a_day() {
         None
     );
     assert_eq!(net.texts.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn an_odd_answer_does_not_throw_away_the_kept_skin_or_mark_the_player_skinless() {
+    let host = FakeHost::new();
+    let mut net = FakeNet::new();
+    let kept = skin_with(&net, &host, UUID, now()).unwrap();
+    assert!(kept.is_some());
+
+    net.foreign_skin = true;
+    let later = skin_with(&net, &host, UUID, now() + DAY + 60).unwrap();
+
+    assert_eq!(later, kept);
+    assert!(
+        !host
+            .dir
+            .join("cache")
+            .join("skins")
+            .join(format!("{UUID}.none"))
+            .exists()
+    );
+}
+
+#[test]
+fn a_link_planted_at_the_no_skin_marker_does_not_truncate_its_target() {
+    let host = FakeHost::new();
+    let mut net = FakeNet::new();
+    net.has_skin = false;
+    let victim = host.dir.join("victim.txt");
+    fs::write(&victim, b"keep me").unwrap();
+    let dir = host.dir.join("cache").join("skins");
+    fs::create_dir_all(&dir).unwrap();
+    let marker = dir.join(format!("{UUID}.none"));
+    #[cfg(unix)]
+    let _ = std::os::unix::fs::symlink(&victim, &marker);
+    #[cfg(windows)]
+    let _ = std::os::windows::fs::symlink_file(&victim, &marker);
+    // an expired marker, so the player is asked about again
+    let later = now() + 2 * DAY;
+
+    skin_with(&net, &host, UUID, later).unwrap();
+
+    assert_eq!(fs::read(&victim).unwrap(), b"keep me");
 }
 
 #[test]

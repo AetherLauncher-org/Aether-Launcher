@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use aether_content::modrinth::{self, MAX_ICON_BYTES, MAX_PER_REQUEST, Project};
-use aether_content::{Platform, image_mime};
+use aether_content::{Platform, image_mime, image_size};
 use aether_storage::manage as store;
 use aether_storage::manage::{ContentKind, game_directory};
 use serde::{Deserialize, Serialize};
@@ -44,6 +44,8 @@ const MAX_FILES: usize = 500;
 const MAX_HASHED_BYTES: u64 = 512 * 1024 * 1024;
 /// Icons fetched per call; the rest come on the next visit.
 const MAX_NEW_ICONS: usize = 60;
+/// Icons wider or taller than this many pixels (by their header) are not kept.
+const MAX_ICON_SIDE: u32 = 1024;
 /// How long a found file is trusted without asking again, in seconds.
 const FOUND_TTL: u64 = 7 * 24 * 60 * 60;
 /// How long a file Modrinth does not know is not asked about again, in seconds.
@@ -115,15 +117,8 @@ struct FileHash {
 
 impl Cache {
     fn load(path: &Path) -> Self {
-        let Ok(metadata) = fs::metadata(path) else {
-            return Self::default();
-        };
-        if metadata.len() > MAX_CACHE_BYTES {
-            return Self::default();
-        }
-        fs::read_to_string(path)
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
+        crate::cachefile::read_capped(path, MAX_CACHE_BYTES)
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default()
     }
 
@@ -136,15 +131,26 @@ impl Cache {
                 .map(|(hash, entry)| (entry.checked, hash.clone()))
                 .collect();
             by_age.sort();
-            for (_, hash) in by_age.into_iter().take(self.entries.len() - MAX_CACHE_ENTRIES) {
+            for (_, hash) in by_age
+                .into_iter()
+                .take(self.entries.len() - MAX_CACHE_ENTRIES)
+            {
                 self.entries.remove(&hash);
             }
         }
-        while self.files.len() > MAX_CACHE_ENTRIES {
-            let Some(key) = self.files.keys().next().cloned() else {
-                break;
-            };
-            self.files.remove(&key);
+        if self.files.len() > MAX_CACHE_ENTRIES {
+            let mut by_age: Vec<(u64, String)> = self
+                .files
+                .iter()
+                .map(|(key, file)| (file.modified, key.clone()))
+                .collect();
+            by_age.sort();
+            for (_, key) in by_age
+                .into_iter()
+                .take(self.files.len() - MAX_CACHE_ENTRIES)
+            {
+                self.files.remove(&key);
+            }
         }
         let Ok(text) = serde_json::to_string(self) else {
             return;
@@ -152,12 +158,8 @@ impl Cache {
         let Some(parent) = path.parent() else {
             return;
         };
-        let temporary = path.with_extension("json.tmp");
-        if fs::create_dir_all(parent).is_ok()
-            && fs::write(&temporary, text).is_ok()
-            && fs::rename(&temporary, path).is_err()
-        {
-            let _ = fs::remove_file(&temporary);
+        if fs::create_dir_all(parent).is_ok() {
+            let _ = crate::cachefile::write_replacing(path, text.as_bytes());
         }
     }
 
@@ -322,24 +324,33 @@ fn fetch_icons(net: &dyn ContentNet, cache_dir: &Path, projects: &[&Project]) {
         let Ok(bytes) = net.get_bytes(url, MAX_ICON_BYTES) else {
             break;
         };
-        if bytes.len() <= MAX_ICON_BYTES
-            && image_mime(&bytes).is_some()
-            && fs::create_dir_all(cache_dir.join("icons")).is_ok()
-        {
-            let _ = fs::write(&path, bytes);
+        if is_small_image(&bytes) && fs::create_dir_all(cache_dir.join("icons")).is_ok() {
+            let _ = crate::cachefile::write_replacing(&path, &bytes);
         }
     }
+}
+
+/// A real image within the icon limits, in bytes and in the pixels its header declares.
+fn is_small_image(bytes: &[u8]) -> bool {
+    bytes.len() <= MAX_ICON_BYTES
+        && image_mime(bytes).is_some()
+        && image_size(bytes).is_some_and(|(width, height)| {
+            (1..=MAX_ICON_SIDE).contains(&width) && (1..=MAX_ICON_SIDE).contains(&height)
+        })
 }
 
 /// The stored icon as a `data:` URL, if there is one and it is still a small real image.
 fn icon_data_url(cache_dir: &Path, project_id: &str) -> Option<String> {
     let path = icon_path(cache_dir, project_id)?;
-    if fs::metadata(&path).ok()?.len() > MAX_ICON_BYTES as u64 {
+    let bytes = crate::cachefile::read_capped(&path, MAX_ICON_BYTES as u64)?;
+    if !is_small_image(&bytes) {
         return None;
     }
-    let bytes = fs::read(path).ok()?;
     let mime = image_mime(&bytes)?;
-    Some(format!("data:{mime};base64,{}", crate::schematics::base64(&bytes)))
+    Some(format!(
+        "data:{mime};base64,{}",
+        crate::schematics::base64(&bytes)
+    ))
 }
 
 // --------------------------------------------------------------------------------------
@@ -365,9 +376,9 @@ pub(crate) fn identify_with(
     now: u64,
 ) -> Result<Lookup, String> {
     let kind = match ContentKind::parse(kind) {
-        Some(kind @ (ContentKind::Mods | ContentKind::ResourcePacks | ContentKind::ShaderPacks)) => {
-            kind
-        }
+        Some(
+            kind @ (ContentKind::Mods | ContentKind::ResourcePacks | ContentKind::ShaderPacks),
+        ) => kind,
         _ => return Err("this kind of content is not looked up".to_owned()),
     };
     let (_, instance) = load(host, id)?;

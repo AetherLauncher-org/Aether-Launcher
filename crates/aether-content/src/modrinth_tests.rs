@@ -48,7 +48,10 @@ fn versions_are_read_by_hash() {
 #[test]
 fn a_version_without_a_number_falls_back_to_its_name() {
     let body = format!(r#"{{"{HASH}":{{"project_id":"AANobbMI","name":"Release 2"}}}}"#);
-    assert_eq!(parse_version_files(&body).unwrap()[HASH].version, "Release 2");
+    assert_eq!(
+        parse_version_files(&body).unwrap()[HASH].version,
+        "Release 2"
+    );
 }
 
 #[test]
