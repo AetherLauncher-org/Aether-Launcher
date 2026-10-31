@@ -3,6 +3,7 @@ import {
   Delete20Regular,
   Globe24Regular,
   Image24Regular,
+  Info16Regular,
   Open16Regular,
   PuzzlePiece24Regular,
   Sparkle24Regular,
@@ -23,6 +24,8 @@ type ContentCardsProps = {
   onToggle: (item: ContentItem, enabled: boolean) => void;
   onRemove: (item: ContentItem) => void;
   onOpenProject?: (found: IdentifiedContent) => void;
+  /** 存档：点「详情」看 level.dat 信息和数据包 */
+  onOpenWorld?: (item: ContentItem) => void;
 };
 
 const icons: Record<ContentCardsProps["kind"], ReactElement> = {
@@ -49,6 +52,7 @@ export function ContentCards({
   onToggle,
   onRemove,
   onOpenProject,
+  onOpenWorld,
 }: ContentCardsProps) {
   const copy = contentCopy[kind];
   return (
@@ -113,6 +117,17 @@ export function ContentCards({
                   <span />
                 )}
                 <div className="content-card-buttons">
+                  {kind === "saves" && onOpenWorld ? (
+                    <Button
+                      size="small"
+                      appearance="subtle"
+                      icon={<Info16Regular />}
+                      aria-label={`查看 ${fileLabel} 的详情`}
+                      onClick={() => onOpenWorld(item)}
+                    >
+                      详情
+                    </Button>
+                  ) : null}
                   {found && onOpenProject ? (
                     <Button
                       size="small"

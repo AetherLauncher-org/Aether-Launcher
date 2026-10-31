@@ -143,14 +143,17 @@ export {
   contentKinds,
   deleteInstance,
   getInstanceDetails,
+  getWorldDetails,
   identifyContent,
   isLookupKind,
   listInstanceContent,
   listInstanceLogs,
   openContentProject,
   openInstanceFolder,
+  openWorldFolder,
   readInstanceLog,
   removeContent,
+  removeWorldDatapack,
   renameInstance,
   setModEnabled,
 } from "./manage";
@@ -159,12 +162,15 @@ export type {
   ContentItem,
   ContentKind,
   ContentLookup,
+  DatapackInfo,
   FolderTarget,
   IdentifiedContent,
   InstanceDetails,
   LogContent,
   LogEntry,
   LookupKind,
+  PackState,
+  WorldDetails,
 } from "./manage";
 
 // 无边框窗口的控制

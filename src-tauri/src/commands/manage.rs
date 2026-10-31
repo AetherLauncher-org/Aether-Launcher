@@ -8,6 +8,7 @@
 use aether_app::identify::{self, Lookup};
 use aether_app::instances::InstanceSummary;
 use aether_app::manage::{self, ContentItem, InstanceDetails, LogContent, LogEntry};
+use aether_app::world::{self, WorldDetails};
 
 use super::host::run;
 
@@ -106,6 +107,37 @@ pub async fn read_instance_log(
     name: Option<String>,
 ) -> Result<LogContent, String> {
     run(app, move |host| manage::read_log(host, &id, &kind, name)).await
+}
+
+/// What one world of an instance holds: its `level.dat` facts and its data packs.
+#[tauri::command]
+pub async fn get_world_details(
+    app: tauri::AppHandle,
+    id: String,
+    world: String,
+) -> Result<WorldDetails, String> {
+    run(app, move |host| world::world_details(host, &id, &world)).await
+}
+
+/// Deletes one data pack of a world. A running instance cannot be changed.
+#[tauri::command]
+pub async fn remove_world_datapack(
+    app: tauri::AppHandle,
+    id: String,
+    world: String,
+    name: String,
+) -> Result<(), String> {
+    run(app, move |host| world::remove_datapack(host, &id, &world, &name)).await
+}
+
+/// Opens a world's folder in the file manager.
+#[tauri::command]
+pub async fn open_world_folder(
+    app: tauri::AppHandle,
+    id: String,
+    world: String,
+) -> Result<(), String> {
+    run(app, move |host| world::open_world_folder(host, &id, &world)).await
 }
 
 /// Opens one of the instance's folders in the file manager.

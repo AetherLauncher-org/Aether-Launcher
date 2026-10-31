@@ -30,7 +30,17 @@
 | `remove_instance_content` | 删除一项（文件，或世界这样的整个文件夹） |
 | `list_instance_logs` / `read_instance_log` | 最近一次日志和崩溃报告；只读末尾 256 KiB，且已脱敏 |
 | `open_instance_folder` | 在文件管理器里打开某个标签对应的文件夹，不存在就先建 |
+| `get_world_details` / `remove_world_datapack` / `open_world_folder` | 一个世界的详情和数据包，见下面「世界」 |
 | `read_instance_schematic` / `convert_instance_schematic` / `schematic_conversion_targets` | 投影的 3D 预览、转换和转换对话框的选项，见 [投影原理图](schematics.md) |
+
+## 世界
+
+存档卡片上的「详情」打开一个对话框（`aether_app::world`，字段 camelCase，没有路径）：
+
+- **基本信息**读 `level.dat`（gzip 的 NBT，不可信输入：压缩后 4 MiB、解压后 96 MiB、深度 64、值 400 万的上限，见 `aether_schematic::nbt`）：世界名、游戏版本、`DataVersion`、模式、难度、极限、上次游玩、体积，以及 `icon.png`（64 KiB 以内、文件头声明不超过 512 像素的 PNG）。名字都限长并去掉控制字符。`level.dat` 读不了不是错误：其余信息照常给，`unreadable` 说明原因。
+- **数据包**列 `datapacks/` 里的压缩包和文件夹：名字、大小、`pack.mcmeta` 里的描述（字符串或文本组件，取纯文本，300 字符）和 `pack_format`。压缩包只按名字读 `pack.mcmeta` 这一个条目（64 KiB、条目数 10 万以内），**不解压到磁盘**；链接、奇怪的名字、不是压缩包也不是文件夹的项都跳过；最多 500 个。启用状态按 `level.dat` 的 `DataPacks.Enabled` / `Disabled` 里的 `file/<名字>` 判断，不在里面（还没进游戏加载过）或 `level.dat` 读不了就是「未知」。
+- **动作**：删除一个数据包（游戏运行中拒绝，链接拒绝）、打开世界文件夹（先确认真的在实例里）。世界和数据包都只用纯文件名指定。
+- **没做**：启用／停用数据包要改 `level.dat`，游戏关着才安全，留到以后。
 
 ## 日志的处理
 

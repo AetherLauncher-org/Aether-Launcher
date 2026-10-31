@@ -19,7 +19,16 @@ import type { GameRunStatus } from "../ipc/launch";
 import type { MinecraftCatalogVersion, MinecraftVersionCatalog } from "../ipc/catalog";
 import type { ImportResult, ImportSource, LauncherInstallation } from "../ipc/import";
 import type { JavaRuntimeInfo } from "../ipc/java";
-import type { ContentItem, ContentKind, ContentLookup, InstanceDetails, LogContent, LogEntry } from "../ipc/manage";
+import type {
+  ContentItem,
+  ContentKind,
+  ContentLookup,
+  DatapackInfo,
+  InstanceDetails,
+  LogContent,
+  LogEntry,
+  WorldDetails,
+} from "../ipc/manage";
 import type { BrowserLoginInfo, DeviceCodeInfo, LoginEvent, MicrosoftAccount } from "../ipc/accounts";
 import type { SystemMemory } from "../ipc/system";
 import type { ConversionResult, SchematicFormat } from "../ipc/schematics";
@@ -276,6 +285,31 @@ function seedContent(): Record<ContentKind, ContentItem[]> {
       file("Pixel Heart.litematic", 377),
       file("Checker Platform 16.litematic", 399),
     ],
+  };
+}
+
+const mockDatapacks: DatapackInfo[] = [
+  { name: "Better Trading.zip", isFolder: false, sizeBytes: 48_000, description: "Villagers trade more fairly", packFormat: 48, state: "enabled" },
+  { name: "我的数据包", isFolder: true, sizeBytes: 3_400, description: "自己写的几个函数", packFormat: 41, state: "enabled" },
+  { name: "Old Recipes.zip", isFolder: false, sizeBytes: 9_100, description: null, packFormat: 26, state: "disabled" },
+  { name: "Just Downloaded.zip", isFolder: false, sizeBytes: 120_000, description: "Not loaded by the game yet", packFormat: 48, state: "unknown" },
+];
+
+function mockWorld(name: string): WorldDetails {
+  return {
+    name,
+    levelName: name,
+    gameVersion: "1.21.1",
+    dataVersion: 3955,
+    gameMode: "survival",
+    hardcore: false,
+    difficulty: "normal",
+    lastPlayed: 1_761_900_000,
+    sizeBytes: 84_000_000,
+    icon: null,
+    datapacks: [...mockDatapacks],
+    datapacksTruncated: false,
+    unreadable: null,
   };
 }
 
@@ -616,6 +650,19 @@ async function handle(command: string, args: Args): Promise<unknown> {
       return mockLog(String(args?.kind));
     case "open_instance_folder":
       contentOf(String(args?.id));
+      return null;
+    case "get_world_details":
+      contentOf(String(args?.id));
+      return mockWorld(String(args?.world));
+    case "remove_world_datapack": {
+      const pack = mockDatapacks.findIndex((item) => item.name === args?.name);
+      if (pack < 0) {
+        throw "no such data pack";
+      }
+      mockDatapacks.splice(pack, 1);
+      return null;
+    }
+    case "open_world_folder":
       return null;
     case "read_instance_schematic": {
       const content = contentOf(String(args?.id));

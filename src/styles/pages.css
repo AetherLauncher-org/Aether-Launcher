@@ -1771,6 +1771,93 @@
   gap: 2px;
 }
 
+/* 世界详情对话框 */
+.world-dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-width: none;
+}
+
+.world-head {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.world-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  overflow: hidden;
+  color: var(--colorNeutralForeground3);
+  background: var(--colorNeutralBackground3);
+  border-radius: var(--borderRadiusMedium);
+}
+
+.world-icon img {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.world-facts {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+}
+
+.world-fact,
+.world-facts > :is(dt, dd) {
+  margin: 0;
+}
+
+.world-facts dt {
+  font-size: var(--fontSizeBase200);
+  color: var(--colorNeutralForeground3);
+}
+
+.world-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.world-section {
+  margin: 8px 0 0;
+}
+
+.datapack-list {
+  display: grid;
+  gap: 6px;
+  max-height: 280px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.datapack-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--colorNeutralForeground1) 4%, transparent);
+  border-radius: var(--borderRadiusMedium);
+}
+
+.datapack-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.datapack-description {
+  overflow-wrap: anywhere;
+}
+
 .content-card-body {
   display: grid;
   gap: 8px;

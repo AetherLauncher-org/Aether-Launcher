@@ -28,5 +28,6 @@ pub mod platform;
 pub mod schematics;
 pub mod skins;
 pub mod vanilla;
+pub mod world;
 
 pub use host::Host;

@@ -89,8 +89,45 @@ export type LogContent = {
   truncated: boolean;
 };
 
+/** 数据包在世界里是否启用，由 `level.dat` 判断；列表里没有它，或 `level.dat` 读不了，就是 unknown。 */
+export type PackState = "enabled" | "disabled" | "unknown";
+
+export type DatapackInfo = {
+  /** 磁盘上的纯文件名 */
+  name: string;
+  isFolder: boolean;
+  sizeBytes: number;
+  description: string | null;
+  packFormat: number | null;
+  state: PackState;
+};
+
+/** 一个世界的详情。没有路径；`levelName` 等来自 `level.dat`（不可信输入，后端已限长、清洗）。 */
+export type WorldDetails = {
+  /** 文件夹名 */
+  name: string;
+  levelName: string | null;
+  gameVersion: string | null;
+  dataVersion: number | null;
+  gameMode: "survival" | "creative" | "adventure" | "spectator" | null;
+  hardcore: boolean | null;
+  difficulty: "peaceful" | "easy" | "normal" | "hard" | null;
+  /** 自 Unix 纪元起的秒数 */
+  lastPlayed: number | null;
+  sizeBytes: number;
+  /** `data:image/png;base64,…`；没有图标时为 null */
+  icon: string | null;
+  datapacks: DatapackInfo[];
+  datapacksTruncated: boolean;
+  /** `level.dat` 没读成的原因；读成了为 null */
+  unreadable: string | null;
+};
+
 declare module "./call" {
   interface CommandArgs {
+    get_world_details: { id: string; world: string };
+    remove_world_datapack: { id: string; world: string; name: string };
+    open_world_folder: { id: string; world: string };
     instance_details: { id: string };
     rename_installed_instance: { id: string; name: string };
     delete_installed_instance: { id: string };
@@ -105,6 +142,9 @@ declare module "./call" {
   }
 
   interface CommandResults {
+    get_world_details: WorldDetails;
+    remove_world_datapack: null;
+    open_world_folder: null;
     instance_details: InstanceDetails;
     rename_installed_instance: InstanceSummary;
     delete_installed_instance: null;
@@ -188,6 +228,23 @@ export async function readInstanceLog(id: string, entry: LogEntry): Promise<LogC
     kind: entry.kind,
     name: entry.kind === "crash" ? entry.name : null,
   });
+}
+
+/** 一个世界的 `level.dat` 信息和数据包列表。`world` 是 `saves/` 里的纯文件夹名。 */
+export async function getWorldDetails(id: string, world: string): Promise<WorldDetails> {
+  requireDesktop();
+  return callCommand("get_world_details", { id, world });
+}
+
+/** 删除世界里的一个数据包；运行中的实例改不了。 */
+export async function removeWorldDatapack(id: string, world: string, name: string): Promise<void> {
+  requireDesktop();
+  await callCommand("remove_world_datapack", { id, world, name });
+}
+
+export async function openWorldFolder(id: string, world: string): Promise<void> {
+  requireDesktop();
+  await callCommand("open_world_folder", { id, world });
 }
 
 export async function openInstanceFolder(id: string, target: FolderTarget): Promise<void> {

@@ -22,6 +22,7 @@ import { EmptyState } from "./EmptyState";
 import { ErrorState } from "./PageState";
 import { RefreshButton } from "./RefreshButton";
 import { SchematicCards } from "./SchematicCards";
+import { WorldDialog } from "./WorldDialog";
 
 type InstanceContentTabProps = {
   instanceId: string;
@@ -45,6 +46,7 @@ export function InstanceContentTab({ instanceId, kind, locked, onChanged }: Inst
 
   const [notice, setNotice] = useState<string | null>(null);
   const [removing, setRemoving] = useState<ContentItem | null>(null);
+  const [world, setWorld] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
@@ -202,6 +204,7 @@ export function InstanceContentTab({ instanceId, kind, locked, onChanged }: Inst
           identified={identified}
           locked={locked}
           onOpenProject={(found) => void openProject(found)}
+          onOpenWorld={(item) => setWorld(item.name)}
           onToggle={(item, enabled) => void toggle(item, enabled)}
           onRemove={(item) => {
             setRemoveError(null);
@@ -209,6 +212,16 @@ export function InstanceContentTab({ instanceId, kind, locked, onChanged }: Inst
           }}
         />
       )}
+
+      {kind === "saves" ? (
+        <WorldDialog
+          instanceId={instanceId}
+          world={world}
+          locked={locked}
+          onClose={() => setWorld(null)}
+          onChanged={onChanged}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={removing !== null}
