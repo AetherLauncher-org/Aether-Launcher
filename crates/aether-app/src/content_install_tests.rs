@@ -480,3 +480,55 @@ fn the_dtos_use_camel_case_and_carry_no_path_or_address() {
     assert_eq!(value["skipped"][0]["projectId"], "P7dR8mSH");
     assert!(!value.to_string().contains("http"));
 }
+
+#[test]
+fn controlled_download_cancels_between_chunks_and_cleans_up() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    struct Control {
+        cancelled: AtomicBool,
+        updates: Mutex<Vec<u64>>,
+    }
+    impl InstallControl for Control {
+        fn is_cancelled(&self) -> bool { self.cancelled.load(Ordering::SeqCst) }
+        fn progress(&self, done: u64, _total: u64) {
+            let mut updates = self.updates.lock().unwrap();
+            updates.push(done);
+            if updates.len() == 2 {
+                self.cancelled.store(true, Ordering::SeqCst);
+            }
+        }
+    }
+    let host = FakeHost::new();
+    let instance = host.instance(FABRIC);
+    let bytes = vec![42; 192 * 1024];
+    let net = FakeNet::new().project("AANobbMI", "example.jar", &bytes, "\"fabric\"", &[]);
+    let control = Control { cancelled: AtomicBool::new(false), updates: Mutex::new(Vec::new()) };
+    let (error, kept) = install_with_control(&net, &host, &instance.id.to_string(), "AANobbMI", "mod", None, false, &control).unwrap_err();
+    assert_eq!(error, "cancelled");
+    assert!(kept.is_empty());
+    assert!(mods(&host, &instance).is_empty());
+    assert_eq!(*control.updates.lock().unwrap(), vec![65536, 131072]);
+}
+
+#[test]
+fn controlled_install_reports_verified_files_kept_on_cancellation() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    struct Control(AtomicBool);
+    impl InstallControl for Control {
+        fn is_cancelled(&self) -> bool { self.0.load(Ordering::SeqCst) }
+        fn progress(&self, done: u64, _total: u64) {
+            if done >= 65536 { self.0.store(true, Ordering::SeqCst); }
+        }
+    }
+    let host = FakeHost::new();
+    let instance = host.instance(FABRIC);
+    let bytes = vec![42; 128 * 1024];
+    let net = FakeNet::new()
+        .project("AANobbMI", "main.jar", b"ok", "\"fabric\"", &["BBBBBBBB"])
+        .project("BBBBBBBB", "dependency.jar", &bytes, "\"fabric\"", &[]);
+    let (error, kept) = install_with_control(&net, &host, &instance.id.to_string(), "AANobbMI", "mod", None, true, &Control(AtomicBool::new(false))).unwrap_err();
+    assert_eq!(error, "cancelled");
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].file_name, "main.jar");
+    assert_eq!(mods(&host, &instance), vec!["main.jar"]);
+}
