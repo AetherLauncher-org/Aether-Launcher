@@ -1,20 +1,13 @@
-import {
-  Badge,
-  Button,
-  MessageBar,
-  MessageBarBody,
-  Spinner,
-  Switch,
-  Text,
-} from "@fluentui/react-components";
-import { Delete20Regular, FolderOpen20Regular } from "@fluentui/react-icons";
+import { Button, MessageBar, MessageBarBody, Spinner, Text } from "@fluentui/react-components";
+import { FolderOpen20Regular } from "@fluentui/react-icons";
 import { useCallback, useState } from "react";
 import { describeCommandError, listInstanceContent, openInstanceFolder, removeContent, setModEnabled } from "../ipc";
 import type { ContentItem, ContentKind } from "../ipc";
-import { contentCopy, describeRemoval, displayName, formatBytes } from "../lib/instanceContent";
+import { contentCopy, describeRemoval } from "../lib/instanceContent";
 import { useQuery } from "../lib/query";
 import { previews } from "../lib/schematic/previewQueue";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { ContentCards } from "./ContentCards";
 import { EmptyState } from "./EmptyState";
 import { ErrorState } from "./PageState";
 import { RefreshButton } from "./RefreshButton";
@@ -140,45 +133,16 @@ export function InstanceContentTab({ instanceId, kind, locked, onChanged }: Inst
           }}
         />
       ) : (
-        <ul className="content-list">
-          {items.map((item) => (
-            <li className="content-row" key={item.name}>
-              <div className="content-name">
-                <Text weight="semibold" truncate wrap={false} title={item.name}>
-                  {displayName(kind, item)}
-                </Text>
-                {kind === "mods" && !item.enabled ? (
-                  <Badge appearance="tint" color="subtle">
-                    已关闭
-                  </Badge>
-                ) : null}
-              </div>
-              <Text size={200} className="muted content-size">
-                {formatBytes(item.sizeBytes)}
-              </Text>
-              <div className="content-actions">
-                {kind === "mods" ? (
-                  <Switch
-                    aria-label={`启用 ${displayName(kind, item)}`}
-                    checked={item.enabled}
-                    disabled={locked}
-                    onChange={(_, data) => void toggle(item, data.checked)}
-                  />
-                ) : null}
-                <Button
-                  appearance="subtle"
-                  icon={<Delete20Regular />}
-                  aria-label={`删除 ${displayName(kind, item)}`}
-                  disabled={locked}
-                  onClick={() => {
-                    setRemoveError(null);
-                    setRemoving(item);
-                  }}
-                />
-              </div>
-            </li>
-          ))}
-        </ul>
+        <ContentCards
+          kind={kind}
+          items={items}
+          locked={locked}
+          onToggle={(item, enabled) => void toggle(item, enabled)}
+          onRemove={(item) => {
+            setRemoveError(null);
+            setRemoving(item);
+          }}
+        />
       )}
 
       <ConfirmDialog

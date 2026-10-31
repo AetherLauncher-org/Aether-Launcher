@@ -120,3 +120,11 @@ export function describeRemoval(kind: ContentKind, item: ContentItem): string {
   }
   return `「${name}」会从实例里删除，无法恢复。`;
 }
+
+/** 这一项是什么形态：存档和解开的包是文件夹，其余是压缩包或 jar。 */
+export function describeShape(kind: ContentKind, item: Pick<ContentItem, "isFolder">): string {
+  if (item.isFolder) {
+    return kind === "saves" ? "世界" : "文件夹";
+  }
+  return kind === "mods" ? "JAR" : "压缩包";
+}

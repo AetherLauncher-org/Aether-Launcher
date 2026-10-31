@@ -1651,43 +1651,63 @@
   gap: 8px;
 }
 
-.content-list {
+/* 模组、资源包、光影、存档：卡片，和投影同一套网格与描边 */
+.content-grid {
   display: grid;
-  gap: 2px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.content-row {
+.content-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 10px;
-  border-radius: var(--borderRadiusMedium);
+  overflow: hidden;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--borderRadiusLarge);
+  background: var(--card-bg);
 }
 
-.content-row:hover {
-  background: var(--colorNeutralBackground1Hover);
+.content-card[data-off="true"] .content-cover,
+.content-card[data-off="true"] .content-card-body > :first-child {
+  opacity: 0.55;
 }
 
-.content-name {
-  display: flex;
-  align-items: center;
+/* 封面：颜色由名字算出，同一个名字永远是同一个颜色 */
+.content-cover {
+  display: grid;
+  place-items: center;
+  height: 72px;
+  border-bottom: 1px solid var(--card-stroke);
+  background: hsl(var(--cover-hue, 210) 45% 42% / 0.22);
+  color: hsl(var(--cover-hue, 210) 55% 55%);
+}
+
+.content-cover svg {
+  width: 32px;
+  height: 32px;
+}
+
+.content-card-body {
+  display: grid;
   gap: 8px;
   min-width: 0;
+  padding: 12px 14px 10px;
 }
 
-.content-size {
-  min-width: 64px;
-  text-align: right;
+.content-card-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
 }
 
-.content-actions {
+.content-card-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: space-between;
+  gap: 6px;
 }
 
 .log-select {
