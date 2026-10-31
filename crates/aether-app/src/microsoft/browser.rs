@@ -22,6 +22,7 @@
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
 use std::path::Path;
+use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -122,20 +123,20 @@ pub(super) fn wait_for_code(
         }
         let Some(query) = read_head(&mut stream).and_then(|head| callback_query(&head, port))
         else {
-            respond(&mut stream, "404 Not Found", NOT_FOUND_PAGE);
+            respond(&mut stream, "404 Not Found", &NOT_FOUND_PAGE);
             continue;
         };
         match parse_callback_query(&query, state) {
             Ok(code) => {
-                respond(&mut stream, "200 OK", SUCCESS_PAGE);
+                respond(&mut stream, "200 OK", &SUCCESS_PAGE);
                 return Ok(code);
             }
             // Not ours: someone else's redirect. Refuse it and keep waiting for the real one.
             Err(CallbackError::StateMismatch | CallbackError::Malformed) => {
-                respond(&mut stream, "400 Bad Request", NOT_FOUND_PAGE);
+                respond(&mut stream, "400 Bad Request", &NOT_FOUND_PAGE);
             }
             Err(error) => {
-                respond(&mut stream, "200 OK", FAILURE_PAGE);
+                respond(&mut stream, "200 OK", &FAILURE_PAGE);
                 return Err(BrowserEnd::Callback(error));
             }
         }
@@ -162,16 +163,75 @@ fn read_head(stream: &mut TcpStream) -> Option<String> {
     Some(String::from_utf8_lossy(&head).into_owned())
 }
 
-const NOT_FOUND_PAGE: &str =
-    "<!doctype html><meta charset=\"utf-8\"><title>Aether Launcher</title><p>Not found.";
-const SUCCESS_PAGE: &str = "<!doctype html><meta charset=\"utf-8\"><title>Aether Launcher</title>\
-<style>body{font:16px system-ui,sans-serif;margin:3rem auto;max-width:32rem;padding:0 1rem}</style>\
-<h1>Signed in</h1><p>You can close this tab and return to Aether Launcher.</p>\
-<p>已登录。可以关闭这个标签页，回到 Aether Launcher。</p>";
-const FAILURE_PAGE: &str = "<!doctype html><meta charset=\"utf-8\"><title>Aether Launcher</title>\
-<style>body{font:16px system-ui,sans-serif;margin:3rem auto;max-width:32rem;padding:0 1rem}</style>\
-<h1>Sign-in did not finish</h1><p>Return to Aether Launcher to see why and to try again.</p>\
-<p>登录没有完成。回到 Aether Launcher 查看原因并重试。</p>";
+/// The Aether mark (original artwork, the same as the website's logo), inlined: the page may
+/// not load anything.
+const LOGO: &str = r##"<svg class="mark" viewBox="0 0 512 512" role="img" aria-label="Aether Launcher"><defs><linearGradient id="t" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#8CF7E6"/><stop offset="1" stop-color="#58C7FF"/></linearGradient><linearGradient id="l" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2FC0DC"/><stop offset="1" stop-color="#3B78FF"/></linearGradient><linearGradient id="r" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4C66FF"/><stop offset="1" stop-color="#7B3FFF"/></linearGradient><mask id="s" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><path d="M256 260 L91.5 165 M256 260 L420.5 165 M256 260 L256 450" stroke="#000" stroke-width="9" fill="none"/></mask></defs><g mask="url(#s)" stroke-linejoin="round" stroke-width="18"><polygon points="256,70 420.5,165 256,260 91.5,165" fill="url(#t)" stroke="url(#t)"/><polygon points="91.5,165 256,260 256,450 91.5,355" fill="url(#l)" stroke="url(#l)"/><polygon points="420.5,165 420.5,355 256,450 256,260" fill="url(#r)" stroke="url(#r)"/></g></svg>"##;
+
+/// Styles that follow the launcher's look: Fluent-style neutral surfaces, a blue accent, the
+/// same corner radius, light and dark by the system setting.
+const STYLE: &str = r#"<style>
+:root{color-scheme:light dark;--bg:#f5f7fb;--card:#fff;--text:#1b1f27;--muted:#576175;--stroke:#dfe4ee;--accent:#0f6cbd;--shadow:0 8px 28px rgb(15 23 42/.10)}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1322;--card:#1a2033;--text:#f1f4fb;--muted:#a6b0c5;--stroke:#2c3553;--accent:#6cb4ff;--shadow:0 8px 28px rgb(0 0 0/.45)}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:var(--bg);color:var(--text);font:16px/1.55 "Segoe UI Variable","Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+main{width:min(460px,100%);padding:32px;background:var(--card);border:1px solid var(--stroke);border-radius:12px;box-shadow:var(--shadow)}
+.mark{display:block;width:44px;height:44px;margin:0 0 20px}
+h1{margin:0 0 6px;font-size:22px;line-height:1.3;font-weight:600}
+.sub{margin:0 0 16px;font-size:13px;color:var(--muted)}
+p{margin:0 0 8px;color:var(--muted)}
+p:last-child{margin-bottom:0}
+.note{margin-top:16px;padding-top:14px;border-top:1px solid var(--stroke);font-size:13px}
+</style>"#;
+
+/// One page of this module: a card with the logo, a heading and two short paragraphs, in
+/// Chinese and in English. Nothing loads from outside and no script runs.
+fn page(heading_zh: &str, heading_en: &str, zh: &str, en: &str, note: &str) -> String {
+    let note = if note.is_empty() {
+        String::new()
+    } else {
+        format!("<p class=\"note\">{note}</p>")
+    };
+    format!(
+        "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">\
+         <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
+         <title>Aether Launcher</title>{STYLE}</head><body><main>{LOGO}\
+         <h1>{heading_zh}</h1><div class=\"sub\">{heading_en}</div>\
+         <p>{zh}</p><p lang=\"en\">{en}</p>{note}</main></body></html>"
+    )
+}
+
+/// What the launcher shows next is the real result: this page only knows the browser's part
+/// went through. It must not say "signed in" while the launcher still has the Xbox and Minecraft
+/// steps to do.
+static SUCCESS_PAGE: LazyLock<String> = LazyLock::new(|| {
+    page(
+        "回到 Aether Launcher",
+        "Back to Aether Launcher",
+        "登录信息已经交给启动器，现在可以关闭这个标签页。",
+        "Your sign-in was handed to the launcher. You can close this tab.",
+        "登录是否成功，以启动器里显示的为准。 · The launcher shows whether it worked.",
+    )
+});
+
+static FAILURE_PAGE: LazyLock<String> = LazyLock::new(|| {
+    page(
+        "登录没有完成",
+        "Sign-in did not finish",
+        "回到 Aether Launcher 查看原因，并重试。",
+        "Return to Aether Launcher to see why, and to try again.",
+        "",
+    )
+});
+
+static NOT_FOUND_PAGE: LazyLock<String> = LazyLock::new(|| {
+    page(
+        "没有这个页面",
+        "Not found",
+        "这里只用来接收微软登录的结果。",
+        "This address only receives the Microsoft sign-in.",
+        "",
+    )
+});
 
 /// Answers a request and closes the connection. The page loads nothing and the headers keep
 /// the address (which carries the code) from being cached or sent anywhere.

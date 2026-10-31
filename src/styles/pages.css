@@ -2069,3 +2069,25 @@
   align-items: center;
   gap: 4px;
 }
+
+/* ---- 登录对话框：错误信息要折行，按钮文字不折行 ------------------------------------------ */
+
+.login-error,
+.login-error .fui-MessageBarBody {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.login-detail {
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+/* 按钮里的字永远一行；放不下时整个按钮换到下一行，而不是把字拆成两行 */
+button.fui-Button {
+  white-space: nowrap;
+}
+
+.fui-DialogActions {
+  flex-wrap: wrap;
+}

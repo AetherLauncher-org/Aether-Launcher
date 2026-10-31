@@ -18,6 +18,7 @@ import {
   beginMicrosoftLogin,
   cancelMicrosoftLogin,
   describeCommandError,
+  describeLoginDetail,
   describeLoginFailure,
   describeMicrosoftError,
   listenLoginStatus,
@@ -39,7 +40,7 @@ type Phase =
   | { kind: "waiting"; code: DeviceCodeInfo }
   | { kind: "waiting-browser"; expiresInSecs: number }
   | { kind: "done"; account: MicrosoftAccount }
-  | { kind: "failed"; message: string };
+  | { kind: "failed"; message: string; detail: string | null };
 
 /**
  * 微软账户登录对话框。登录方式取自设置里的选择：
@@ -88,7 +89,13 @@ export function MicrosoftLoginDialog({ open, onOpenChange, onSignedIn }: Microso
             setPhase({ kind: "done", account: event.account });
             onSignedInRef.current(event.account);
           } else if (event.state === "failed") {
-            setPhase({ kind: "failed", message: describeLoginFailure(event.failure) });
+            // 失败了，之前「已复制…」之类的提示就过时了
+            setNotice(null);
+            setPhase({
+              kind: "failed",
+              message: describeLoginFailure(event.failure),
+              detail: describeLoginDetail(event.failure),
+            });
           }
         });
         if (chosen === "browser") {
@@ -104,9 +111,11 @@ export function MicrosoftLoginDialog({ open, onOpenChange, onSignedIn }: Microso
         }
       } catch (failure: unknown) {
         if (active) {
+          setNotice(null);
           setPhase({
             kind: "failed",
             message: describeMicrosoftError(describeCommandError(failure)),
+            detail: null,
           });
         }
       }
@@ -247,9 +256,15 @@ export function MicrosoftLoginDialog({ open, onOpenChange, onSignedIn }: Microso
             ) : null}
 
             {phase.kind === "failed" ? (
-              <MessageBar intent="error" role="alert">
+              <MessageBar intent="error" role="alert" className="login-error">
                 <MessageBarBody>{phase.message}</MessageBarBody>
               </MessageBar>
+            ) : null}
+
+            {phase.kind === "failed" && phase.detail !== null ? (
+              <Text size={200} className="muted mono login-detail">
+                详情：{phase.detail}
+              </Text>
             ) : null}
 
             {notice ? (

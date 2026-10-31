@@ -141,6 +141,48 @@ describe("Microsoft sign-in on the accounts page", () => {
     expect(within(dialog).getByRole("button", { name: "重试" })).toBeInTheDocument();
   });
 
+  it("shows the real reason under the friendly sentence, without the old developer note", async () => {
+    routeInvoke(vi.mocked(invoke), backend());
+    renderPage();
+    const dialog = await startLogin();
+    await within(dialog).findByText("ABCD1234");
+
+    emit({ state: "failed", failure: { reason: "service", message: "Minecraft services rejected the token" } });
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "微软或 Mojang 的登录服务拒绝了这次登录，请稍后重试。",
+    );
+    expect(within(dialog).getByRole("alert")).not.toHaveTextContent("开发者注意");
+    expect(within(dialog).getByText("详情：Minecraft services rejected the token")).toBeInTheDocument();
+  });
+
+  it("gives no detail line for a reason that already says everything", async () => {
+    routeInvoke(vi.mocked(invoke), backend());
+    renderPage();
+    const dialog = await startLogin();
+    await within(dialog).findByText("ABCD1234");
+
+    emit({ state: "failed", failure: { reason: "child-account", message: "this is a child account" } });
+
+    await within(dialog).findByRole("alert");
+    expect(within(dialog).queryByText(/详情：/)).not.toBeInTheDocument();
+  });
+
+  it("drops a stale 'copied' notice once the attempt fails", async () => {
+    routeInvoke(vi.mocked(invoke), backend());
+    Object.assign(navigator, { clipboard: { writeText: vi.fn(async () => undefined) } });
+    renderPage();
+    const dialog = await startLogin();
+    await within(dialog).findByText("ABCD1234");
+    fireEvent.click(within(dialog).getByRole("button", { name: "复制登录码" }));
+    expect(await within(dialog).findByText("已复制登录码")).toBeInTheDocument();
+
+    emit({ state: "failed", failure: { reason: "service", message: "x" } });
+
+    await within(dialog).findByRole("alert");
+    expect(within(dialog).queryByText("已复制登录码")).not.toBeInTheDocument();
+  });
+
   it("asks for a new code when retrying", async () => {
     routeInvoke(vi.mocked(invoke), backend());
     renderPage();

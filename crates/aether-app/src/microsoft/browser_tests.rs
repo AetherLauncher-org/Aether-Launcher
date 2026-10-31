@@ -306,3 +306,52 @@ fn ending_the_wait_maps_to_the_events_the_dialog_knows() {
         "service"
     );
 }
+
+#[test]
+fn the_result_page_does_not_claim_a_sign_in_that_is_not_finished() {
+    // The browser part went through; the Xbox and Minecraft steps are still ahead, so the page
+    // must send the user back to the launcher for the real result.
+    for text in [
+        SUCCESS_PAGE.as_str(),
+        FAILURE_PAGE.as_str(),
+        NOT_FOUND_PAGE.as_str(),
+    ] {
+        assert!(!text.contains("Signed in"), "{text}");
+        assert!(!text.contains("已登录"), "{text}");
+    }
+    assert!(SUCCESS_PAGE.contains("The launcher shows whether it worked"));
+    assert!(SUCCESS_PAGE.contains("以启动器里显示的为准"));
+}
+
+#[test]
+fn the_pages_are_self_contained_and_follow_the_system_theme() {
+    for text in [
+        SUCCESS_PAGE.as_str(),
+        FAILURE_PAGE.as_str(),
+        NOT_FOUND_PAGE.as_str(),
+    ] {
+        // Nothing is loaded from outside or run: the response's CSP allows only inline style.
+        assert!(!text.contains("<script"), "{text}");
+        assert!(
+            !text.contains("http://") && !text.contains("https://"),
+            "{text}"
+        );
+        assert!(!text.contains("<link") && !text.contains("<img"), "{text}");
+        assert!(text.contains("prefers-color-scheme:dark"));
+        assert!(text.contains("<meta name=\"viewport\""));
+        assert!(text.contains("aria-label=\"Aether Launcher\""));
+        assert!(text.starts_with("<!doctype html>"));
+    }
+}
+
+#[test]
+fn every_page_says_it_in_both_languages() {
+    assert!(
+        SUCCESS_PAGE.contains("回到 Aether Launcher")
+            && SUCCESS_PAGE.contains("Back to Aether Launcher")
+    );
+    assert!(
+        FAILURE_PAGE.contains("登录没有完成") && FAILURE_PAGE.contains("Sign-in did not finish")
+    );
+    assert!(NOT_FOUND_PAGE.contains("没有这个页面") && NOT_FOUND_PAGE.contains("Not found"));
+}

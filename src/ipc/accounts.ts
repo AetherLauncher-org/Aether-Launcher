@@ -177,8 +177,7 @@ const failureText: Record<LoginFailureReason, string> = {
   expired: "这次登录已过期，请重新开始。",
   denied: "你在浏览器里拒绝了这次登录。",
   network: "连接不上微软的登录服务，请检查网络后重试。",
-  service:
-    "微软或 Mojang 的登录服务拒绝了这次登录，请稍后重试。开发者注意：应用 ID 需要先通过 Mojang 的审核，见 docs/modules/microsoft-login.md。",
+  service: "微软或 Mojang 的登录服务拒绝了这次登录，请稍后重试。",
   storage: "账户已验证，但无法保存到系统凭据库。请检查系统的凭据管理是否可用。",
   "no-xbox-profile":
     "这个微软账户还没有 Xbox 档案。先到 xbox.com 登录一次创建档案，再回来登录。",
@@ -189,6 +188,17 @@ const failureText: Record<LoginFailureReason, string> = {
     "这个微软账户没有购买 Minecraft: Java 版。可以先用离线账户，或换一个账户登录。",
   "no-profile": "这个账户还没有 Minecraft 玩家名。先在官方启动器里创建一个。",
 };
+
+/**
+ * 失败时额外显示的一行详情：后端的英文说明，里面写着是哪一步、什么状态码（例如
+ * 「Minecraft services rejected the token」）。后端保证它不含令牌、响应体和完整网址。
+ * 只有「服务拒绝」和「网络」这两类需要，别的分类本身已经说清楚了。
+ */
+export function describeLoginDetail(failure: LoginFailure): string | null {
+  return (failure.reason === "service" || failure.reason === "network") && failure.message.length > 0
+    ? failure.message
+    : null;
+}
 
 /** 把登录失败翻译成可以直接显示的一句话；不认识的分类显示后端的英文。 */
 export function describeLoginFailure(failure: LoginFailure): string {

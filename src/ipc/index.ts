@@ -103,6 +103,7 @@ export {
   beginMicrosoftBrowserLogin,
   beginMicrosoftLogin,
   cancelMicrosoftLogin,
+  describeLoginDetail,
   describeLoginFailure,
   describeMicrosoftError,
   isMicrosoftLoginAvailable,
