@@ -5,7 +5,7 @@
 //! or addresses come from the page, a file is checked against the hashes Modrinth lists, and
 //! an existing file is never overwritten.
 
-use aether_app::content_install::{self, InstallReport, SearchResult, Target};
+use aether_app::content_install::{self, InstallReport, SearchRequest, SearchResult, Target};
 
 use super::host::run;
 
@@ -15,9 +15,10 @@ pub async fn get_content_target(app: tauri::AppHandle, id: String) -> Result<Tar
     run(app, move |host| content_install::content_target(host, &id)).await
 }
 
-/// One page of Modrinth search results.
+/// One page of Modrinth search results, with icons.
 #[tauri::command]
 pub async fn search_content(
+    app: tauri::AppHandle,
     text: String,
     project_type: String,
     game_version: Option<String>,
@@ -25,18 +26,20 @@ pub async fn search_content(
     sort: String,
     offset: u32,
 ) -> Result<SearchResult, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    run(app, move |host| {
         content_install::search_modrinth(
-            &text,
-            &project_type,
-            game_version.as_deref(),
-            loader.as_deref(),
-            &sort,
-            offset,
+            host,
+            &SearchRequest {
+                text: &text,
+                project_type: &project_type,
+                game_version: game_version.as_deref(),
+                loader: loader.as_deref(),
+                sort: &sort,
+                offset,
+            },
         )
     })
     .await
-    .map_err(|_| "the search was interrupted".to_owned())?
 }
 
 /// Installs the newest suitable version of a Modrinth project into an instance (or, for a data

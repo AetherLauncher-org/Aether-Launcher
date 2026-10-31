@@ -149,7 +149,7 @@ impl ContentNet for FakeNet {
 
     fn get_bytes(&self, url: &str, _limit: usize) -> Result<Vec<u8>, String> {
         self.note(url);
-        Err("not used".to_owned())
+        self.files.get(url).cloned().ok_or_else(|| "the platform answered 404".to_owned())
     }
 
     fn get_stream(&self, url: &str, limit: u64) -> Result<Box<dyn Read + Send>, String> {
@@ -420,16 +420,46 @@ fn search_asks_for_the_type_and_drops_the_loader_where_it_does_not_apply() {
         "description":"Fast","author":"jelly","downloads":5,"project_type":"mod"}]}"#
         .to_owned();
 
-    let result = search(&net, "sodium", "mod", Some("1.21.1"), Some("fabric"), "downloads", 0).unwrap();
+    let result = search(&net, &FakeHost::new(), &SearchRequest { text: "sodium", project_type: "mod", game_version: Some("1.21.1"), loader: Some("fabric"), sort: "downloads", offset: 0 }).unwrap();
     assert_eq!(result.hits[0].title, "Sodium");
     assert_eq!(result.total, 1);
     assert!(net.asked.lock().unwrap()[0].contains("categories%3Afabric"));
 
-    search(&net, "faithful", "resourcepack", Some("1.21.1"), Some("fabric"), "relevance", 0).unwrap();
+    search(&net, &FakeHost::new(), &SearchRequest { text: "faithful", project_type: "resourcepack", game_version: Some("1.21.1"), loader: Some("fabric"), sort: "relevance", offset: 0 }).unwrap();
     assert!(!net.asked.lock().unwrap()[1].contains("categories"));
 
-    assert!(search(&net, "x", "plugin", None, None, "downloads", 0).is_err());
-    assert!(search(&net, "x", "mod", None, None, "popular", 0).is_err());
+    assert!(search(&net, &FakeHost::new(), &SearchRequest { text: "x", project_type: "plugin", game_version: None, loader: None, sort: "downloads", offset: 0 }).is_err());
+    assert!(search(&net, &FakeHost::new(), &SearchRequest { text: "x", project_type: "mod", game_version: None, loader: None, sort: "popular", offset: 0 }).is_err());
+}
+
+#[test]
+fn search_results_come_with_their_icons_and_a_missing_icon_is_not_an_error() {
+    let host = FakeHost::new();
+    let mut net = FakeNet::new();
+    net.search_answer = r#"{"total_hits":2,"hits":[
+        {"project_id":"AANobbMI","title":"Sodium","project_type":"mod","icon_url":"https://cdn.modrinth.com/data/AANobbMI/icon.png",
+         "display_categories":["optimization","fabric"],"categories":["optimization","fabric"],"versions":["1.20.1","1.21.1"]},
+        {"project_id":"P7dR8mSH","title":"Lithium","project_type":"mod","icon_url":"https://cdn.modrinth.com/data/P7dR8mSH/icon.png"}
+    ]}"#
+        .to_owned();
+    // a 16x16 PNG header for the first; nothing for the second (the CDN answers 404)
+    let mut icon = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x10\0\0\0\x10".to_vec();
+    icon.extend_from_slice(b"pixels");
+    net.files.insert("https://cdn.modrinth.com/data/AANobbMI/icon.png".to_owned(), icon);
+
+    let result = search(&net, &host, &SearchRequest { text: "", project_type: "mod", game_version: None, loader: None, sort: "downloads", offset: 0 }).unwrap();
+
+    assert!(result.hits[0].icon.as_deref().is_some_and(|icon| icon.starts_with("data:image/png;base64,")));
+    assert_eq!(result.hits[0].loaders, ["fabric"]);
+    assert_eq!(result.hits[0].categories, ["optimization"]);
+    assert_eq!(result.hits[0].newest_version.as_deref(), Some("1.21.1"));
+    assert_eq!(result.hits[1].icon, None);
+
+    // the second search finds the first icon in the cache: it is not fetched again
+    let before = net.asked.lock().unwrap().iter().filter(|url| url.contains("AANobbMI/icon")).count();
+    search(&net, &host, &SearchRequest { text: "", project_type: "mod", game_version: None, loader: None, sort: "downloads", offset: 0 }).unwrap();
+    let after = net.asked.lock().unwrap().iter().filter(|url| url.contains("AANobbMI/icon")).count();
+    assert_eq!(before, after);
 }
 
 #[test]

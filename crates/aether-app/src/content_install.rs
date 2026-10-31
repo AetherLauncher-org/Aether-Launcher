@@ -11,7 +11,7 @@
 //! The mirror is not a trust root: the hash comes from the platform's own API answer, over
 //! HTTPS, and a file that arrives with another hash is refused.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -26,7 +26,7 @@ use sha1::{Digest as _, Sha1};
 use sha2::Sha512;
 
 use crate::host::Host;
-use crate::identify::{ContentNet, UreqNet};
+use crate::identify::{ContentNet, UreqNet, icons_for};
 use crate::instances::load;
 use crate::world::world_folder;
 
@@ -120,12 +120,26 @@ pub struct SearchHit {
     pub summary: String,
     pub author: String,
     pub downloads: u64,
+    pub follows: u64,
     /// `mod`, `resourcepack`, `shader`, `datapack` or `modpack`.
     pub project_type: String,
+    /// Mod loaders the project supports.
+    pub loaders: Vec<String>,
+    /// Category tags.
+    pub categories: Vec<String>,
+    pub oldest_version: Option<String>,
+    pub newest_version: Option<String>,
+    /// `required`, `optional`, `unsupported` or `unknown`.
+    pub client_side: &'static str,
+    pub server_side: &'static str,
+    /// ISO 8601; when the project was last changed.
+    pub updated: String,
+    /// `data:` image of the project's icon, when it has one and it is a small real picture.
+    pub icon: Option<String>,
 }
 
-impl From<Hit> for SearchHit {
-    fn from(hit: Hit) -> Self {
+impl SearchHit {
+    fn new(hit: Hit, icon: Option<String>) -> Self {
         Self {
             project_id: hit.project_id,
             slug: hit.slug,
@@ -133,7 +147,16 @@ impl From<Hit> for SearchHit {
             summary: hit.summary,
             author: hit.author,
             downloads: hit.downloads,
+            follows: hit.follows,
             project_type: hit.project_type,
+            loaders: hit.loaders,
+            categories: hit.categories,
+            oldest_version: hit.oldest_version,
+            newest_version: hit.newest_version,
+            client_side: hit.client_side,
+            server_side: hit.server_side,
+            updated: hit.updated,
+            icon,
         }
     }
 }
@@ -145,38 +168,66 @@ pub struct SearchResult {
     pub total: u64,
 }
 
-/// One page of Modrinth search results. Icons are not fetched here (they would be a request
-/// each); the page shows a title and a summary.
+/// What to search for. All of it is checked before it becomes part of a request.
+#[derive(Debug, Clone, Copy)]
+pub struct SearchRequest<'a> {
+    pub text: &'a str,
+    /// `mod`, `datapack`, `resourcepack`, `shader` or `modpack`.
+    pub project_type: &'a str,
+    pub game_version: Option<&'a str>,
+    /// A mod loader; only used for mods and modpacks.
+    pub loader: Option<&'a str>,
+    /// `relevance`, `downloads`, `newest` or `updated`.
+    pub sort: &'a str,
+    pub offset: u32,
+}
+
+/// One page of Modrinth search results, with the projects' icons (taken from the icon cache,
+/// the missing ones fetched a few at a time from Modrinth's CDN).
 ///
 /// # Errors
 ///
 /// For a type, sort, game version or loader that is not one, or a platform that cannot be
-/// reached or answers something unusable.
+/// reached or answers something unusable. A project whose icon cannot be had is still listed.
 pub fn search(
     net: &dyn ContentNet,
-    text: &str,
-    project_type: &str,
-    game_version: Option<&str>,
-    loader: Option<&str>,
-    sort: &str,
-    offset: u32,
+    host: &dyn Host,
+    request: &SearchRequest<'_>,
 ) -> Result<SearchResult, String> {
-    let project_type = ProjectType::parse(project_type).ok_or("unknown content type")?;
-    let sort = Sort::parse(sort).ok_or("unknown sort order")?;
+    let project_type = ProjectType::parse(request.project_type).ok_or("unknown content type")?;
+    let sort = Sort::parse(request.sort).ok_or("unknown sort order")?;
     let url = browse::search_url(&SearchQuery {
-        text,
+        text: request.text,
         project_type,
-        game_version,
+        game_version: request.game_version,
         // a loader only narrows mods and modpacks
-        loader: loader.filter(|_| matches!(project_type, ProjectType::Mod | ProjectType::ModPack)),
+        loader: request
+            .loader
+            .filter(|_| matches!(project_type, ProjectType::Mod | ProjectType::ModPack)),
         sort,
-        offset,
+        offset: request.offset,
         limit: 20,
     })
     .map_err(|error| error.to_string())?;
     let page = browse::parse_search(&net.get_text(&url)?).map_err(|error| error.to_string())?;
+    let wanted: Vec<(&str, &str)> = page
+        .hits
+        .iter()
+        .filter_map(|hit| hit.icon_url.as_deref().map(|icon| (hit.project_id.as_str(), icon)))
+        .collect();
+    let icons = match host.data_dir() {
+        Ok(data) => icons_for(net, &data.join("cache"), &wanted),
+        Err(_) => BTreeMap::new(),
+    };
     Ok(SearchResult {
-        hits: page.hits.into_iter().map(SearchHit::from).collect(),
+        hits: page
+            .hits
+            .into_iter()
+            .map(|hit| {
+                let icon = icons.get(&hit.project_id).cloned();
+                SearchHit::new(hit, icon)
+            })
+            .collect(),
         total: page.total,
     })
 }
@@ -186,15 +237,8 @@ pub fn search(
 /// # Errors
 ///
 /// As [`search`].
-pub fn search_modrinth(
-    text: &str,
-    project_type: &str,
-    game_version: Option<&str>,
-    loader: Option<&str>,
-    sort: &str,
-    offset: u32,
-) -> Result<SearchResult, String> {
-    search(&UreqNet, text, project_type, game_version, loader, sort, offset)
+pub fn search_modrinth(host: &dyn Host, request: &SearchRequest<'_>) -> Result<SearchResult, String> {
+    search(&UreqNet, host, request)
 }
 
 // --------------------------------------------------------------------------------------

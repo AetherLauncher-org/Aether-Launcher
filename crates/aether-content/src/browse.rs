@@ -163,8 +163,21 @@ pub struct Hit {
     pub summary: String,
     pub author: String,
     pub downloads: u64,
+    pub follows: u64,
     pub icon_url: Option<String>,
     pub project_type: String,
+    /// Mod loaders the project supports (a subset of [`LOADERS`]).
+    pub loaders: Vec<String>,
+    /// Category tags (`optimization`, `adventure`, …), without the loaders; at most 6.
+    pub categories: Vec<String>,
+    /// The oldest and newest game version the project lists.
+    pub oldest_version: Option<String>,
+    pub newest_version: Option<String>,
+    /// `required`, `optional`, `unsupported` or `unknown`.
+    pub client_side: &'static str,
+    pub server_side: &'static str,
+    /// When the project was last changed (ISO 8601, as Modrinth writes it).
+    pub updated: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -181,8 +194,27 @@ struct RawHit {
     description: Option<String>,
     author: Option<String>,
     downloads: Option<u64>,
+    follows: Option<u64>,
     icon_url: Option<String>,
     project_type: String,
+    #[serde(default)]
+    display_categories: Vec<String>,
+    #[serde(default)]
+    categories: Vec<String>,
+    #[serde(default)]
+    versions: Vec<String>,
+    client_side: Option<String>,
+    server_side: Option<String>,
+    date_modified: Option<String>,
+}
+
+fn side(value: Option<&str>) -> &'static str {
+    match value {
+        Some("required") => "required",
+        Some("optional") => "optional",
+        Some("unsupported") => "unsupported",
+        _ => "unknown",
+    }
 }
 
 #[derive(Deserialize)]
@@ -216,6 +248,35 @@ pub fn parse_search(body: &str) -> Result<SearchPage, ContentError> {
                 .slug
                 .filter(|slug| is_slug(slug))
                 .unwrap_or_else(|| hit.project_id.clone());
+            let tag_ok = |tag: &String| is_slug(tag) && tag.len() <= 32;
+            // Modrinth lists loaders among the categories; show them apart from the tags
+            let loaders: Vec<String> = LOADERS
+                .iter()
+                .filter(|loader| {
+                    hit.categories.iter().chain(&hit.display_categories).any(|tag| tag == *loader)
+                })
+                .map(|loader| (*loader).to_owned())
+                .collect();
+            let mut categories: Vec<String> = Vec::new();
+            for tag in hit
+                .display_categories
+                .iter()
+                .chain(&hit.categories)
+                .filter(|tag| tag_ok(tag) && !LOADERS.contains(&tag.as_str()))
+            {
+                if !categories.contains(tag) {
+                    categories.push(tag.clone());
+                }
+                if categories.len() == 6 {
+                    break;
+                }
+            }
+            let versions: Vec<&String> = hit
+                .versions
+                .iter()
+                .take(MAX_LIST * 4)
+                .filter(|version| is_game_version(version))
+                .collect();
             Some(Hit {
                 project_id: hit.project_id,
                 slug,
@@ -223,8 +284,16 @@ pub fn parse_search(body: &str) -> Result<SearchPage, ContentError> {
                 summary: clean_text(hit.description.as_deref().unwrap_or(""), 300),
                 author: clean_text(hit.author.as_deref().unwrap_or(""), 40),
                 downloads: hit.downloads.unwrap_or(0),
+                follows: hit.follows.unwrap_or(0),
                 icon_url: hit.icon_url.as_deref().and_then(trusted_icon_url),
                 project_type: hit.project_type,
+                loaders,
+                categories,
+                oldest_version: versions.first().map(|version| (*version).clone()),
+                newest_version: versions.last().map(|version| (*version).clone()),
+                client_side: side(hit.client_side.as_deref()),
+                server_side: side(hit.server_side.as_deref()),
+                updated: clean_text(hit.date_modified.as_deref().unwrap_or(""), 40),
             })
         })
         .collect();

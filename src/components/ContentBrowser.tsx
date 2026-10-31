@@ -16,7 +16,13 @@ import {
   Switch,
   Text,
 } from "@fluentui/react-components";
-import { ArrowDownload20Regular, Open16Regular } from "@fluentui/react-icons";
+import {
+  ArrowDownload16Regular,
+  ArrowDownload20Regular,
+  Box24Regular,
+  Heart16Regular,
+  Open16Regular,
+} from "@fluentui/react-icons";
 import { useCallback, useState } from "react";
 import {
   describeCommandError,
@@ -29,9 +35,14 @@ import {
 import type { ContentType, InstallReport, SearchHit, SearchSort } from "../ipc";
 import {
   cannotInstallReason,
+  categoryLabel,
   contentTypeLabels,
+  describeSide,
   describeTarget,
+  describeVersionRange,
   formatDownloads,
+  formatUpdated,
+  loaderLabels,
   searchSorts,
   sortLabels,
 } from "../lib/contentBrowse";
@@ -232,41 +243,90 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
       ) : (
         <>
           <ul className="search-results">
-            {hits.map((hit) => (
-              <li className="search-hit" key={hit.projectId}>
-                <div className="search-hit-main">
-                  <Text weight="semibold" truncate wrap={false}>
-                    {hit.title}
-                  </Text>
-                  <Text size={200} className="muted">
-                    {hit.author ? `${hit.author} · ` : ""}
-                    {formatDownloads(hit.downloads)} 次下载
-                  </Text>
-                  <Text size={200} className="muted content-card-summary">
-                    {hit.summary}
-                  </Text>
-                </div>
-                <div className="search-hit-actions">
-                  <Button
-                    size="small"
-                    appearance="subtle"
-                    icon={<Open16Regular />}
-                    aria-label={`在 Modrinth 打开 ${hit.title}`}
-                    onClick={() => void openPage(hit)}
-                  />
-                  <Button
-                    size="small"
-                    appearance="primary"
-                    icon={busy.has(hit.projectId) ? <Spinner size="tiny" /> : <ArrowDownload20Regular />}
-                    aria-label={`安装 ${hit.title}`}
-                    disabled={blocked !== null || busy.has(hit.projectId)}
-                    onClick={() => (type === "datapack" ? setPicking(hit) : void install(hit, null))}
-                  >
-                    安装
-                  </Button>
-                </div>
-              </li>
-            ))}
+            {hits.map((hit) => {
+              const range = describeVersionRange(hit.oldestVersion, hit.newestVersion);
+              const sides = [describeSide("客户端", hit.clientSide), describeSide("服务端", hit.serverSide)].filter(
+                (text): text is string => text !== null,
+              );
+              return (
+                <li className="search-hit" key={hit.projectId}>
+                  <div className="search-hit-icon" aria-hidden="true">
+                    {hit.icon ? <img src={hit.icon} alt="" draggable={false} /> : <Box24Regular />}
+                  </div>
+                  <div className="search-hit-main">
+                    <div className="search-hit-title">
+                      <Text weight="semibold" size={400} truncate wrap={false}>
+                        {hit.title}
+                      </Text>
+                      {hit.author ? (
+                        <Text size={200} className="muted" truncate wrap={false}>
+                          作者 {hit.author}
+                        </Text>
+                      ) : null}
+                    </div>
+                    <Text size={200} className="search-hit-summary">
+                      {hit.summary}
+                    </Text>
+                    <div className="search-hit-tags">
+                      {hit.loaders.map((loader) => (
+                        <Badge key={loader} appearance="tint" color="brand">
+                          {loaderLabels[loader] ?? loader}
+                        </Badge>
+                      ))}
+                      {hit.categories.map((tag) => (
+                        <Badge key={tag} appearance="tint" color="informative">
+                          {categoryLabel(tag)}
+                        </Badge>
+                      ))}
+                      {sides.map((text) => (
+                        <Badge key={text} appearance="outline" color="subtle">
+                          {text}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="search-hit-side">
+                    <div className="search-hit-stats">
+                      <Text size={200} className="muted">
+                        <ArrowDownload16Regular aria-hidden="true" /> {formatDownloads(hit.downloads)}
+                      </Text>
+                      <Text size={200} className="muted">
+                        <Heart16Regular aria-hidden="true" /> {formatDownloads(hit.follows)}
+                      </Text>
+                    </div>
+                    {range ? (
+                      <Text size={200} className="muted">
+                        {range}
+                      </Text>
+                    ) : null}
+                    {formatUpdated(hit.updated) ? (
+                      <Text size={200} className="muted">
+                        更新于 {formatUpdated(hit.updated)}
+                      </Text>
+                    ) : null}
+                    <div className="search-hit-actions">
+                      <Button
+                        size="small"
+                        appearance="subtle"
+                        icon={<Open16Regular />}
+                        aria-label={`在 Modrinth 打开 ${hit.title}`}
+                        onClick={() => void openPage(hit)}
+                      />
+                      <Button
+                        size="small"
+                        appearance="primary"
+                        icon={busy.has(hit.projectId) ? <Spinner size="tiny" /> : <ArrowDownload20Regular />}
+                        aria-label={`安装 ${hit.title}`}
+                        disabled={blocked !== null || busy.has(hit.projectId)}
+                        onClick={() => (type === "datapack" ? setPicking(hit) : void install(hit, null))}
+                      >
+                        安装
+                      </Button>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
           <div className="toolbar">
             <Text className="muted">

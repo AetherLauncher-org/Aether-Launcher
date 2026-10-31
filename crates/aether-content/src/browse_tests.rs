@@ -99,6 +99,39 @@ fn search_hits_are_cleaned_and_unknown_ones_dropped() {
 }
 
 #[test]
+fn a_hit_carries_loaders_tags_versions_and_sides_apart() {
+    let body = r#"{"total_hits": 1, "hits": [
+        {"project_id":"AANobbMI","slug":"sodium","title":"Sodium","description":"Fast","author":"jelly",
+         "downloads":99,"follows":7,"project_type":"mod",
+         "display_categories":["optimization","fabric","quilt"],
+         "categories":["optimization","fabric","quilt","utility","bad tag!","x/y"],
+         "versions":["1.16.5","1.20.1","1.21.1","not a version!"],
+         "client_side":"required","server_side":"weird","date_modified":"2026-10-30T10:00:00Z"}
+    ]}"#;
+
+    let hit = &parse_search(body).unwrap().hits[0];
+
+    assert_eq!(hit.loaders, ["fabric", "quilt"]);
+    assert_eq!(hit.categories, ["optimization", "utility"]);
+    assert_eq!(hit.follows, 7);
+    assert_eq!(hit.oldest_version.as_deref(), Some("1.16.5"));
+    assert_eq!(hit.newest_version.as_deref(), Some("1.21.1"));
+    assert_eq!((hit.client_side, hit.server_side), ("required", "unknown"));
+    assert_eq!(hit.updated, "2026-10-30T10:00:00Z");
+}
+
+#[test]
+fn a_hit_with_no_tags_or_versions_is_still_a_hit() {
+    let page = parse_search(r#"{"hits":[{"project_id":"AANobbMI","title":"Sodium","project_type":"mod"}]}"#).unwrap();
+
+    let hit = &page.hits[0];
+    assert!(hit.loaders.is_empty() && hit.categories.is_empty());
+    assert_eq!((hit.oldest_version.clone(), hit.newest_version.clone()), (None, None));
+    assert_eq!(hit.client_side, "unknown");
+    assert_eq!(hit.follows, 0);
+}
+
+#[test]
 fn a_search_answer_that_is_not_the_documented_shape_is_refused() {
     assert_eq!(parse_search("nope"), Err(ContentError::Malformed));
     assert_eq!(parse_search("[]"), Err(ContentError::Malformed));

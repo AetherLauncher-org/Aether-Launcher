@@ -8,7 +8,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// What lookup needs from the network. A trait so tests can answer without one.
-pub trait ContentNet {
+pub trait ContentNet: Sync {
     /// `POST` a JSON body, return the answer's text.
     fn post_json(&self, url: &str, body: &str) -> Result<String, String>;
     /// `GET`, return the answer's text.

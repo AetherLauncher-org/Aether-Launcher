@@ -34,8 +34,25 @@ export type SearchHit = {
   summary: string;
   author: string;
   downloads: number;
+  follows: number;
   projectType: string;
+  /** 支持的加载器：fabric / forge / neoforge / quilt 的子集 */
+  loaders: string[];
+  /** 分类标签（optimization、adventure…），不含加载器，最多 6 个 */
+  categories: string[];
+  /** 项目列出的最旧和最新的游戏版本 */
+  oldestVersion: string | null;
+  newestVersion: string | null;
+  clientSide: Side;
+  serverSide: Side;
+  /** ISO 8601，最近一次更新 */
+  updated: string;
+  /** 项目图标（后端取来的 `data:` 图片）；没有或取不到为 null */
+  icon: string | null;
 };
+
+/** 在客户端／服务端是否需要。 */
+export type Side = "required" | "optional" | "unsupported" | "unknown";
 
 export type SearchResult = {
   hits: SearchHit[];

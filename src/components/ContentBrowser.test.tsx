@@ -17,7 +17,16 @@ const hit = (over: Record<string, unknown> = {}) => ({
   summary: "A fast renderer",
   author: "jellysquid3",
   downloads: 12_000_000,
+  follows: 31_000,
   projectType: "mod",
+  loaders: ["fabric", "quilt"],
+  categories: ["optimization", "weird-new-tag"],
+  oldestVersion: "1.16.5",
+  newestVersion: "1.21.1",
+  clientSide: "required",
+  serverSide: "unsupported",
+  updated: "2026-10-30T10:00:00Z",
+  icon: "data:image/png;base64,iVBORw0KGgo=",
   ...over,
 });
 
@@ -71,6 +80,35 @@ describe("content browser", () => {
       sort: "downloads",
       offset: 0,
     });
+  });
+
+  it("shows each result as a card with its icon, loaders, tags, versions and numbers", async () => {
+    backend();
+    renderWithState(<ContentBrowser type="mod" />);
+
+    const card = (await screen.findByText("Sodium")).closest("li") as HTMLElement;
+
+    expect(within(card).getByText("作者 jellysquid3")).toBeInTheDocument();
+    expect(within(card).getByText("Fabric")).toBeInTheDocument();
+    expect(within(card).getByText("Quilt")).toBeInTheDocument();
+    // known tags are translated, unknown ones shown as they are
+    expect(within(card).getByText("优化")).toBeInTheDocument();
+    expect(within(card).getByText("weird-new-tag")).toBeInTheDocument();
+    // only what is needed is said: a side that is unsupported is not a tag
+    expect(within(card).getByText("客户端必需")).toBeInTheDocument();
+    expect(within(card).queryByText(/服务端/)).not.toBeInTheDocument();
+    expect(within(card).getByText("1.16.5 – 1.21.1")).toBeInTheDocument();
+    expect(within(card).getByText(/更新于 2026-10-30/)).toBeInTheDocument();
+    expect(card.querySelector("img")).toHaveAttribute("src", "data:image/png;base64,iVBORw0KGgo=");
+  });
+
+  it("shows a placeholder when a project has no icon", async () => {
+    backend({ search_content: () => ({ hits: [hit({ icon: null })], total: 1 }) });
+    renderWithState(<ContentBrowser type="mod" />);
+
+    const card = (await screen.findByText("Sodium")).closest("li") as HTMLElement;
+
+    expect(card.querySelector("img")).toBeNull();
   });
 
   it("can search without the instance's filters", async () => {

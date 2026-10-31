@@ -330,6 +330,46 @@ fn fetch_icons(net: &dyn ContentNet, cache_dir: &Path, projects: &[&Project]) {
     }
 }
 
+/// Fetches one icon into the cache when it is not there yet. Failures are silent: a project
+/// without a picture shows a placeholder.
+fn fetch_icon(net: &dyn ContentNet, cache_dir: &Path, project_id: &str, url: &str) {
+    let Some(path) = icon_path(cache_dir, project_id) else {
+        return;
+    };
+    let Ok(bytes) = net.get_bytes(url, MAX_ICON_BYTES) else {
+        return;
+    };
+    if is_small_image(&bytes) && fs::create_dir_all(cache_dir.join("icons")).is_ok() {
+        let _ = crate::cachefile::write_replacing(&path, &bytes);
+    }
+}
+
+/// The icons of search results as `data:` URLs, keyed by project id. Icons already in the
+/// cache are used; up to [`MAX_NEW_ICONS`] missing ones are fetched, a few at a time, so a page
+/// of results does not wait for twenty requests one after another.
+pub(crate) fn icons_for(
+    net: &dyn ContentNet,
+    cache_dir: &Path,
+    wanted: &[(&str, &str)],
+) -> BTreeMap<String, String> {
+    let missing: Vec<&(&str, &str)> = wanted
+        .iter()
+        .filter(|(id, _)| icon_path(cache_dir, id).is_some_and(|path| !path.exists()))
+        .take(MAX_NEW_ICONS)
+        .collect();
+    for batch in missing.chunks(6) {
+        std::thread::scope(|scope| {
+            for (id, url) in batch.iter().copied() {
+                scope.spawn(move || fetch_icon(net, cache_dir, id, url));
+            }
+        });
+    }
+    wanted
+        .iter()
+        .filter_map(|(id, _)| icon_data_url(cache_dir, id).map(|url| ((*id).to_owned(), url)))
+        .collect()
+}
+
 /// A real image within the icon limits, in bytes and in the pixels its header declares.
 fn is_small_image(bytes: &[u8]) -> bool {
     bytes.len() <= MAX_ICON_BYTES

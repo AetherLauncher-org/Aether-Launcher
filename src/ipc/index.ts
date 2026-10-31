@@ -160,6 +160,7 @@ export type {
   SearchHit,
   SearchResult,
   SearchSort,
+  Side,
   SkippedProject,
 } from "./content";
 

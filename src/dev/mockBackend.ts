@@ -337,7 +337,16 @@ function mockSearch(text: string, projectType: string): SearchResult {
       summary: `${title}：假数据里的一段简介，只在开发预览里出现。`,
       author: "someone",
       downloads: 1_200_000 - index * 150_000,
+      follows: 8_400 - index * 900,
       projectType,
+      loaders: projectType === "mod" ? ["fabric", "quilt"] : [],
+      categories: projectType === "mod" ? ["optimization", "utility"] : ["vanilla"],
+      oldestVersion: "1.16.5",
+      newestVersion: "1.21.1",
+      clientSide: "required" as const,
+      serverSide: "optional" as const,
+      updated: "2026-10-30T10:00:00Z",
+      icon: mockSkinImage,
     }));
   return { hits, total: hits.length };
 }
