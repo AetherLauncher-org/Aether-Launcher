@@ -14,14 +14,11 @@ import {
   Select,
   Spinner,
   Switch,
-  Tab,
-  TabList,
   Text,
 } from "@fluentui/react-components";
 import { ArrowDownload20Regular, Open16Regular } from "@fluentui/react-icons";
 import { useCallback, useState } from "react";
 import {
-  contentTypes,
   describeCommandError,
   getContentTarget,
   installContent,
@@ -51,10 +48,14 @@ const PAGE = 20;
  * 搜索默认按所选实例的游戏版本和加载器筛。装之前不选文件：后端取最新的合适版本，按 Modrinth
  * 给的哈希校验，已有同名文件不覆盖。这里只传实例 id、项目 id、内容类型和世界文件夹名。
  */
-export function ContentBrowser() {
+type ContentBrowserProps = {
+  /** 搜索哪一类：由下载页顶上的标签决定 */
+  type: ContentType;
+};
+
+export function ContentBrowser({ type }: ContentBrowserProps) {
   const { instances } = useInstances();
   const [instanceId, setInstanceId] = useState<string | null>(null);
-  const [type, setType] = useState<ContentType>("mod");
   const [draft, setDraft] = useState("");
   const [text, setText] = useState("");
   const [sort, setSort] = useState<SearchSort>("downloads");
@@ -91,7 +92,6 @@ export function ContentBrowser() {
     setOffset(0);
   };
   const chooseInstance = refine(setInstanceId);
-  const chooseType = refine(setType);
   const chooseSort = refine(setSort);
   const chooseFilter = refine(setFilterByInstance);
   const submit = refine(setText);
@@ -172,18 +172,6 @@ export function ContentBrowser() {
           </Select>
         </div>
       </div>
-
-      <TabList
-        selectedValue={type}
-        onTabSelect={(_, data) => chooseType(data.value as ContentType)}
-        aria-label="内容类型"
-      >
-        {contentTypes.map((value) => (
-          <Tab key={value} value={value}>
-            {contentTypeLabels[value]}
-          </Tab>
-        ))}
-      </TabList>
 
       <div className="toolbar">
         <SearchBox

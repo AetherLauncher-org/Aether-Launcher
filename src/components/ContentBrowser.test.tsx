@@ -59,7 +59,7 @@ afterEach(() => {
 describe("content browser", () => {
   it("searches for mods narrowed to the instance's game version and loader", async () => {
     backend();
-    renderWithState(<ContentBrowser />);
+    renderWithState(<ContentBrowser type="mod" />);
 
     expect(await screen.findByText("Sodium")).toBeInTheDocument();
     expect(await screen.findByText("1.21.1 · Fabric")).toBeInTheDocument();
@@ -75,7 +75,7 @@ describe("content browser", () => {
 
   it("can search without the instance's filters", async () => {
     backend();
-    renderWithState(<ContentBrowser />);
+    renderWithState(<ContentBrowser type="mod" />);
     await screen.findByText("Sodium");
 
     fireEvent.click(screen.getByRole("switch", { name: "只看适合这个实例的" }));
@@ -87,7 +87,7 @@ describe("content browser", () => {
 
   it("searches for the typed words when asked, not on every key", async () => {
     backend();
-    renderWithState(<ContentBrowser />);
+    renderWithState(<ContentBrowser type="mod" />);
     await screen.findByText("Sodium");
     const before = calls("search_content").length;
 
@@ -98,25 +98,22 @@ describe("content browser", () => {
     await waitFor(() => expect(lastArgs("search_content")).toMatchObject({ text: "lithium" }));
   });
 
-  it("changes what is searched with the type tabs, and drops the loader for non-mods", async () => {
+  it("drops the loader for types it does not apply to", async () => {
     backend();
-    renderWithState(<ContentBrowser />);
+    renderWithState(<ContentBrowser type="resourcepack" />);
+
     await screen.findByText("Sodium");
 
-    fireEvent.click(screen.getByRole("tab", { name: "资源包" }));
-
-    await waitFor(() =>
-      expect(lastArgs("search_content")).toMatchObject({
-        projectType: "resourcepack",
-        loader: null,
-        gameVersion: "1.21.1",
-      }),
-    );
+    expect(lastArgs("search_content")).toMatchObject({
+      projectType: "resourcepack",
+      loader: null,
+      gameVersion: "1.21.1",
+    });
   });
 
   it("installs by instance id and project id only, and says what was installed", async () => {
     backend();
-    renderWithState(<ContentBrowser />);
+    renderWithState(<ContentBrowser type="mod" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "安装 Sodium" }));
 
@@ -138,7 +135,7 @@ describe("content browser", () => {
         skipped: [{ projectId: "P7dR8mSH", reason: "no version of this project fits Minecraft 1.21.1" }],
       }),
     });
-    renderWithState(<ContentBrowser />);
+    renderWithState(<ContentBrowser type="mod" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "安装 Sodium" }));
 
@@ -151,7 +148,7 @@ describe("content browser", () => {
         throw "stop the game before installing content";
       },
     });
-    renderWithState(<ContentBrowser />);
+    renderWithState(<ContentBrowser type="mod" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "安装 Sodium" }));
 
@@ -163,7 +160,7 @@ describe("content browser", () => {
       { get_content_target: () => ({ gameVersion: "1.21.1", loader: null }) },
       [{ ...survival, version: "1.21.1" }],
     );
-    renderWithState(<ContentBrowser />);
+    renderWithState(<ContentBrowser type="mod" />);
 
     expect(await screen.findByText(/没有模组加载器/)).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "安装 Sodium" })).toBeDisabled();
@@ -171,8 +168,7 @@ describe("content browser", () => {
 
   it("installs a data pack into every world that was ticked", async () => {
     backend({ search_content: () => ({ hits: [hit({ title: "Tweaks", projectId: "DDDDDDDD", projectType: "datapack" })], total: 1 }) });
-    renderWithState(<ContentBrowser />);
-    fireEvent.click(await screen.findByRole("tab", { name: "数据包" }));
+    renderWithState(<ContentBrowser type="datapack" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "安装 Tweaks" }));
     const picker = await screen.findByRole("dialog");
@@ -192,7 +188,7 @@ describe("content browser", () => {
 
   it("opens the project page by its slug", async () => {
     backend();
-    renderWithState(<ContentBrowser />);
+    renderWithState(<ContentBrowser type="mod" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "在 Modrinth 打开 Sodium" }));
 
@@ -201,7 +197,7 @@ describe("content browser", () => {
 
   it("asks for an instance first when there is none", async () => {
     backend({}, []);
-    renderWithState(<ContentBrowser />);
+    renderWithState(<ContentBrowser type="mod" />);
 
     expect(await screen.findByText("先有一个实例")).toBeInTheDocument();
     expect(calls("search_content")).toHaveLength(0);

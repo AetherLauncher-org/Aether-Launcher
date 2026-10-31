@@ -5,12 +5,17 @@ import { PageHeader } from "../components/PageHeader";
 import { DesktopOnlyNotice, ErrorState } from "../components/PageState";
 import { VersionBrowser } from "../components/VersionBrowser";
 import { VersionDetail } from "../components/VersionDetail";
-import type { MinecraftCatalogVersion } from "../ipc";
+import { contentTypes } from "../ipc";
+import type { ContentType, MinecraftCatalogVersion } from "../ipc";
+import { contentTypeLabels } from "../lib/contentBrowse";
 import { loadCatalog } from "../lib/catalogCache";
 import { useQuery } from "../lib/query";
 import type { PageDefinition } from "../navigation";
 import { useInstall } from "../state/install";
 import { useInstances } from "../state/instances";
+
+/** 顶上的标签：Minecraft 本体，然后是各类内容。 */
+type DownloadTab = "versions" | ContentType;
 
 type DownloadPageProps = {
   page: PageDefinition;
@@ -25,7 +30,7 @@ export function DownloadPage({ page }: DownloadPageProps) {
   const { job } = useInstall();
   // undefined：用户还没选，进行中的安装会自动打开；null：用户明确回到了列表
   const [chosen, setChosen] = useState<MinecraftCatalogVersion | null | undefined>(undefined);
-  const [tab, setTab] = useState<"versions" | "content">("versions");
+  const [tab, setTab] = useState<DownloadTab>("versions");
   const force = useRef(false);
 
   const load = useCallback(() => {
@@ -74,17 +79,17 @@ export function DownloadPage({ page }: DownloadPageProps) {
     <>
       <PageHeader title={page.label} description={page.summary} />
 
-      <TabList
-        selectedValue={tab}
-        onTabSelect={(_, data) => setTab(data.value as "versions" | "content")}
-        aria-label="下载什么"
-      >
-        <Tab value="versions">游戏版本</Tab>
-        <Tab value="content">模组与资源</Tab>
+      <TabList selectedValue={tab} onTabSelect={(_, data) => setTab(data.value as DownloadTab)} aria-label="下载什么">
+        <Tab value="versions">Minecraft 本体</Tab>
+        {contentTypes.map((type) => (
+          <Tab key={type} value={type}>
+            {contentTypeLabels[type]}
+          </Tab>
+        ))}
       </TabList>
 
-      {tab === "content" ? (
-        <ContentBrowser />
+      {tab !== "versions" ? (
+        <ContentBrowser type={tab} />
       ) : status === "error" && error ? (
         <ErrorState title="读取版本目录失败" message={error} onRetry={refresh} retryLabel="重新读取" />
       ) : catalog === null ? (
