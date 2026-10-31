@@ -39,6 +39,32 @@ pub fn open_in_file_manager(folder: &Path) -> Result<(), String> {
         .map_err(|_| "cannot open the file manager".to_owned())
 }
 
+/// Hands `uri` to the platform's default-browser opener. The URL is one argument, never
+/// interpreted by a shell.
+///
+/// # Errors
+///
+/// When the browser cannot be started.
+pub fn open_in_browser(uri: &str) -> Result<(), String> {
+    let mut command = if cfg!(target_os = "windows") {
+        let mut command = std::process::Command::new("rundll32");
+        command.args(["url.dll,FileProtocolHandler", uri]);
+        command
+    } else if cfg!(target_os = "macos") {
+        let mut command = std::process::Command::new("open");
+        command.arg(uri);
+        command
+    } else {
+        let mut command = std::process::Command::new("xdg-open");
+        command.arg(uri);
+        command
+    };
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|_| "cannot open the default browser".to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -160,7 +160,10 @@ pub async fn start_installed_instance(
         let mut vars = BTreeMap::new();
         match account_id {
             Some(account) => {
-                let credentials = super::microsoft::launch_credentials_for(&app, &account)?;
+                let credentials = aether_app::microsoft::launch_credentials_for(
+                    &super::host::TauriHost::new(app.clone()),
+                    &account,
+                )?;
                 vars.insert("auth_player_name".to_owned(), credentials.name);
                 vars.insert("auth_uuid".to_owned(), credentials.uuid);
                 vars.insert(

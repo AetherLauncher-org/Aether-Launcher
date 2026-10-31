@@ -6,7 +6,7 @@ import { isTauri } from "./index";
 /**
  * 微软账户登录的 IPC。
  *
- * 命令定义在 `src-tauri/src/commands/microsoft.rs`。登录是设备码流程：
+ * 命令定义在 `src-tauri/src/commands/microsoft.rs`（只做参数转换），登录流程在 `crates/aether-app/src/microsoft.rs`。登录是设备码流程：
  * 有两种登录方式，用户在设置里选：设备码（`beginMicrosoftLogin()` 返回一个短码，用户在
  * 浏览器里输入）和浏览器授权（`beginMicrosoftBrowserLogin()`，后端自己打开登录页，
  * 授权码 + PKCE，浏览器跳回本机回环地址）。之后后端在后台走完 Xbox 与 Minecraft 的

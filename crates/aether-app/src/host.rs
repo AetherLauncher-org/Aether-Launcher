@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use aether_core::InstanceId;
 
+use crate::microsoft::LoginEvent;
+
 /// The outside world, as the operations need it. Errors are plain sentences that are safe to
 /// show: no paths, no secrets.
 pub trait Host: Send + Sync {
@@ -22,4 +24,9 @@ pub trait Host: Send + Sync {
     ///
     /// When the process registry cannot be read.
     fn is_instance_running(&self, id: InstanceId) -> Result<bool, String>;
+
+    /// A step of a Microsoft sign-in (waiting, signed in, failed, cancelled). Called from the
+    /// sign-in's own thread, so it must not block. Carries an account's identity at most,
+    /// never a token.
+    fn emit_login(&self, event: &LoginEvent);
 }

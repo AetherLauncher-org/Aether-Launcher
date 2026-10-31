@@ -162,6 +162,8 @@ impl Host for FakeHost {
     fn is_instance_running(&self, id: InstanceId) -> Result<bool, String> {
         Ok(self.running.lock().unwrap().contains(&id))
     }
+
+    fn emit_login(&self, _event: &crate::microsoft::LoginEvent) {}
 }
 
 impl Drop for FakeHost {

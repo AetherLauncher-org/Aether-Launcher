@@ -23,12 +23,14 @@ dependencies = [
 name = "aether-app"
 version = "0.1.0"
 dependencies = [
+ "aether-auth",
  "aether-core",
  "aether-diagnose",
  "aether-schematic",
  "aether-storage",
  "serde",
  "serde_json",
+ "ureq",
 ]
 
 [[package]]

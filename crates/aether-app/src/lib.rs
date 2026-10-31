@@ -15,6 +15,7 @@
 pub mod host;
 pub mod instances;
 pub mod manage;
+pub mod microsoft;
 pub mod platform;
 pub mod schematics;
 

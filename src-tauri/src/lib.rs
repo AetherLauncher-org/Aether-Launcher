@@ -82,7 +82,7 @@ pub fn run() {
         .manage(commands::launch::LaunchState::default())
         .manage(commands::install::InstallState::default())
         .manage(commands::import::ImportState::default())
-        .manage(commands::microsoft::MicrosoftLoginState::default())
+        .manage(aether_app::microsoft::MicrosoftLoginState::default())
         .invoke_handler(tauri::generate_handler![
             application_info,
             list_java_runtimes,
