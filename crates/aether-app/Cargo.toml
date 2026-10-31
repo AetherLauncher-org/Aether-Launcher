@@ -21,5 +21,6 @@ aether-storage = { path = "../aether-storage" }
 serde.workspace = true
 serde_json.workspace = true
 sha1.workspace = true
+sha2.workspace = true
 ureq.workspace = true
 zip = { version = "9.0.5", default-features = false, features = ["deflate"] }

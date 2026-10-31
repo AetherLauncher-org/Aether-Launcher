@@ -5,6 +5,7 @@ use std::time::Duration;
 use aether_content::modrinth::{API_BASE, ICON_HOST, MAX_BODY_BYTES};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// What lookup needs from the network. A trait so tests can answer without one.
 pub trait ContentNet {
@@ -14,6 +15,11 @@ pub trait ContentNet {
     fn get_text(&self, url: &str) -> Result<String, String>;
     /// `GET`, return at most `limit` bytes; more than that is an error.
     fn get_bytes(&self, url: &str, limit: usize) -> Result<Vec<u8>, String>;
+    /// `GET`, a reader over at most `limit` bytes of the body, for files too big to hold in
+    /// memory. The reader fails once the limit is crossed. Only the production net does this.
+    fn get_stream(&self, _url: &str, _limit: u64) -> Result<Box<dyn std::io::Read + Send>, String> {
+        Err("streaming is not available".to_owned())
+    }
 }
 
 /// `true` for the two places lookup may talk to: the API and the icon CDN, over HTTPS.
@@ -108,5 +114,24 @@ impl ContentNet for UreqNet {
             .limit(limit as u64)
             .read_to_vec()
             .map_err(|error| failed(&error))
+    }
+
+    fn get_stream(&self, url: &str, limit: u64) -> Result<Box<dyn std::io::Read + Send>, String> {
+        check(url)?;
+        let response = Self::agent()
+            .get(url)
+            // a file download may take longer than a lookup; the size is bounded instead
+            .config()
+            .timeout_global(Some(DOWNLOAD_TIMEOUT))
+            .build()
+            .call()
+            .map_err(|error| failed(&error))?;
+        Ok(Box::new(
+            response
+                .into_body()
+                .into_with_config()
+                .limit(limit)
+                .reader(),
+        ))
     }
 }

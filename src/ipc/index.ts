@@ -138,6 +138,19 @@ export type {
   SchematicView,
 } from "./schematics";
 
+// 内容下载：搜索 Modrinth、装进实例或世界
+export { contentTypes, getContentTarget, installContent, searchContent } from "./content";
+export type {
+  ContentTarget,
+  ContentType,
+  InstallReport,
+  InstalledFile,
+  SearchHit,
+  SearchResult,
+  SearchSort,
+  SkippedProject,
+} from "./content";
+
 // 实例管理：详情、改名、删除、内容文件夹、日志、打开文件夹
 export {
   contentKinds,

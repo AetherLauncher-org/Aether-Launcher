@@ -19,6 +19,7 @@
 //! Only Modrinth is implemented. CurseForge needs an API key that must not ship in the
 //! client; see `docs/modules/content-metadata.md`.
 
+pub mod browse;
 pub mod modrinth;
 pub mod skin;
 

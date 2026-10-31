@@ -1771,6 +1771,44 @@
   gap: 2px;
 }
 
+/* 下载页的内容搜索 */
+.content-browser {
+  display: grid;
+  gap: 12px;
+}
+
+.search-results {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search-hit {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--colorNeutralForeground1) 4%, transparent);
+  border: 1px solid var(--colorNeutralStroke2);
+  border-radius: var(--borderRadiusLarge);
+}
+
+.search-hit-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.search-hit-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  align-items: center;
+}
+
 /* 世界详情对话框 */
 .world-dialog {
   width: min(640px, calc(100vw - 32px));

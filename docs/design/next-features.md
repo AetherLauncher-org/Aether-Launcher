@@ -9,7 +9,7 @@
 | 1 | 导航栏改到页面顶部，不在左边 | 已做（见 [ui-shell.md](ui-shell.md)） | — |
 | 2 | 原生界面：iced / egui / Slint 三个候选都做对比 | iced、egui 做完且输入法通过；Slint 在做 | — |
 | 3 | 世界可管理：能查看数据包等 | 已做（见 [instance-management.md](../modules/instance-management.md)）；启用／停用数据包没做 | — |
-| 4 | 下载页能从 Modrinth 和 CurseForge 下载模组、数据包、资源包、光影等，装进实例（或实例的世界）或选定文件夹 | 设计中，先做 Modrinth | 内容元数据（已有）；CurseForge 的 key（待定） |
+| 4 | 下载页能从 Modrinth 和 CurseForge 下载模组、数据包、资源包、光影等，装进实例（或实例的世界）或选定文件夹 | Modrinth → 实例 / 世界已做（见 [content-metadata.md](../modules/content-metadata.md)）；选定文件夹、进度、CurseForge 没做 | CurseForge 的 key（待定） |
 | 5 | 皮肤库：选皮肤、加皮肤；换皮肤时有多个正版账户就弹卡片多选；下载页能从 NameMC / Skindex 等下皮肤，存进皮肤库或选定文件夹 | 在调研来源和接口 | 微软登录（已有）；换肤接口（调研中） |
 | 6 | 第三方账户登录，像 LittleSkin | 在调研协议 | authlib-injector（官方下载，带校验和） |
 | 7 | i18n | 方案见下，待做 | — |

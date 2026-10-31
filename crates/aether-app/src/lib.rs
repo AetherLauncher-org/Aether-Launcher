@@ -14,6 +14,7 @@
 
 mod cachefile;
 pub mod catalog;
+pub mod content_install;
 pub mod host;
 pub mod identify;
 pub mod import;

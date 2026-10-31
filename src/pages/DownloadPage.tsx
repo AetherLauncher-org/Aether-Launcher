@@ -1,5 +1,6 @@
-import { Spinner } from "@fluentui/react-components";
+import { Spinner, Tab, TabList } from "@fluentui/react-components";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { ContentBrowser } from "../components/ContentBrowser";
 import { PageHeader } from "../components/PageHeader";
 import { DesktopOnlyNotice, ErrorState } from "../components/PageState";
 import { VersionBrowser } from "../components/VersionBrowser";
@@ -24,6 +25,7 @@ export function DownloadPage({ page }: DownloadPageProps) {
   const { job } = useInstall();
   // undefined：用户还没选，进行中的安装会自动打开；null：用户明确回到了列表
   const [chosen, setChosen] = useState<MinecraftCatalogVersion | null | undefined>(undefined);
+  const [tab, setTab] = useState<"versions" | "content">("versions");
   const force = useRef(false);
 
   const load = useCallback(() => {
@@ -72,7 +74,18 @@ export function DownloadPage({ page }: DownloadPageProps) {
     <>
       <PageHeader title={page.label} description={page.summary} />
 
-      {status === "error" && error ? (
+      <TabList
+        selectedValue={tab}
+        onTabSelect={(_, data) => setTab(data.value as "versions" | "content")}
+        aria-label="下载什么"
+      >
+        <Tab value="versions">游戏版本</Tab>
+        <Tab value="content">模组与资源</Tab>
+      </TabList>
+
+      {tab === "content" ? (
+        <ContentBrowser />
+      ) : status === "error" && error ? (
         <ErrorState title="读取版本目录失败" message={error} onRetry={refresh} retryLabel="重新读取" />
       ) : catalog === null ? (
         <div className="loading-block" role="status">

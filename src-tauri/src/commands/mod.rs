@@ -6,6 +6,7 @@
 //! arbitrary file system location. The backend owns those roots.
 
 pub mod catalog;
+pub mod content;
 mod host;
 pub mod import;
 pub mod install;

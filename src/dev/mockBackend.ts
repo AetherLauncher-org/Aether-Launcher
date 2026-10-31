@@ -30,6 +30,7 @@ import type {
   WorldDetails,
 } from "../ipc/manage";
 import type { BrowserLoginInfo, DeviceCodeInfo, LoginEvent, MicrosoftAccount } from "../ipc/accounts";
+import type { SearchResult } from "../ipc/content";
 import type { SystemMemory } from "../ipc/system";
 import type { ConversionResult, SchematicFormat } from "../ipc/schematics";
 import { mockConversionTargets, mockSchematicView } from "./mockSchematics";
@@ -286,6 +287,27 @@ function seedContent(): Record<ContentKind, ContentItem[]> {
       file("Checker Platform 16.litematic", 399),
     ],
   };
+}
+
+function mockSearch(text: string, projectType: string): SearchResult {
+  const titles: Record<string, string[]> = {
+    mod: ["Sodium", "Lithium", "Iris Shaders", "Fabric API"],
+    datapack: ["Better Trading", "Vanilla Tweaks"],
+    resourcepack: ["Faithful 32x", "Bare Bones"],
+    shader: ["Complementary", "BSL"],
+  };
+  const hits = (titles[projectType] ?? [])
+    .filter((title) => title.toLowerCase().includes(text.toLowerCase()))
+    .map((title, index) => ({
+      projectId: `MOCK${projectType}${index}`.slice(0, 16),
+      slug: title.toLowerCase().replace(/\s+/g, "-"),
+      title,
+      summary: `${title}：假数据里的一段简介，只在开发预览里出现。`,
+      author: "someone",
+      downloads: 1_200_000 - index * 150_000,
+      projectType,
+    }));
+  return { hits, total: hits.length };
 }
 
 const mockDatapacks: DatapackInfo[] = [
@@ -651,6 +673,14 @@ async function handle(command: string, args: Args): Promise<unknown> {
     case "open_instance_folder":
       contentOf(String(args?.id));
       return null;
+    case "get_content_target":
+      return { gameVersion: "1.21.1", loader: "fabric" };
+    case "search_content":
+      await sleep(300);
+      return mockSearch(String(args?.text ?? ""), String(args?.projectType));
+    case "install_content":
+      await sleep(600);
+      return { installed: [{ projectId: String(args?.projectId), fileName: "mock-1.0.0.jar", version: "1.0.0" }], skipped: [] };
     case "get_world_details":
       contentOf(String(args?.id));
       return mockWorld(String(args?.world));

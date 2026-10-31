@@ -92,7 +92,7 @@ fn refuse_while_running(host: &dyn Host, instance: &GameInstance, what: &str) ->
 
 /// The folder of a world: a plain name that is a real folder (not a link) in `saves/` and has a
 /// `level.dat`.
-fn world_folder(game: &Path, world: &str) -> Result<PathBuf, String> {
+pub(crate) fn world_folder(game: &Path, world: &str) -> Result<PathBuf, String> {
     if !is_plain_name(world) {
         return Err("not a world name".to_owned());
     }
