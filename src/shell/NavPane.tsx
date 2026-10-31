@@ -55,7 +55,11 @@ export function NavPane({ collapsed, onToggle, version }: NavPaneProps) {
       onClick={() => navigate("accounts")}
     >
       <span className="nav-icon" aria-hidden="true">
-        <AccountAvatar name={active?.name ?? null} size={24} />
+        <AccountAvatar
+          name={active?.name ?? null}
+          uuid={active?.kind === "microsoft" ? active.uuid : null}
+          size={24}
+        />
       </span>
       <span className="nav-label nav-account-text">
         <Text size={300} weight="semibold" truncate wrap={false}>

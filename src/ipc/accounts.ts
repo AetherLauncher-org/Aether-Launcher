@@ -78,6 +78,7 @@ declare module "./call" {
     open_microsoft_verification_page: void;
     list_microsoft_accounts: void;
     remove_microsoft_account: { id: string };
+    account_skin: { uuid: string };
   }
 
   interface CommandResults {
@@ -88,6 +89,7 @@ declare module "./call" {
     open_microsoft_verification_page: null;
     list_microsoft_accounts: MicrosoftAccount[];
     remove_microsoft_account: null;
+    account_skin: string | null;
   }
 }
 
@@ -150,6 +152,22 @@ export async function listMicrosoftAccounts(): Promise<MicrosoftAccount[] | null
   }
   try {
     return await callCommand("list_microsoft_accounts");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 玩家皮肤的 PNG（`data:` URL），用来画账户头像。后端只从 Mojang 的皮肤服务取，验过是
+ * 64×64 或 64×32 的 PNG；没有自定义皮肤、取不到、或在浏览器预览里，得到 null。不涉及令牌：
+ * 玩家 UUID 是公开的。
+ */
+export async function getAccountSkin(uuid: string): Promise<string | null> {
+  if (!isTauri()) {
+    return null;
+  }
+  try {
+    return await callCommand("account_skin", { uuid });
   } catch {
     return null;
   }

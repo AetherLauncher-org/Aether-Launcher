@@ -115,7 +115,11 @@ export function AccountsPage({ page }: AccountsPageProps) {
                   className={`account-card${isActive ? " active" : ""}`}
                   style={{ "--i": index } as CSSProperties}
                 >
-                  <AccountAvatar name={account.name} size={48} />
+                  <AccountAvatar
+                    name={account.name}
+                    uuid={account.kind === "microsoft" ? account.uuid : null}
+                    size={48}
+                  />
                   <div className="account-card-body">
                     <div className="account-card-title">
                       <Text weight="semibold" size={400} truncate wrap={false}>

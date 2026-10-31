@@ -49,8 +49,11 @@ The project follows [Semantic Versioning](https://semver.org/) once public relea
 - Instance, library and account pages with Java runtime and memory settings blocks
 - Mods, resource packs, shader packs and worlds are shown as cards; mods, resource packs and shader packs are recognised on Modrinth by file SHA-1 and show the project's name, summary, version and icon (new `aether-content` crate; switch "联网识别" on the content tab, on by default; CurseForge is not implemented, see `docs/modules/content-metadata.md`)
 
+- Microsoft accounts show the player's skin as a 3D head with the hat layer (isometric, drawn on a canvas) instead of an initial; the skin comes from Mojang's public session server and `textures.minecraft.net`, and the avatar falls back to the initial when there is no skin or no network
+
 ### Security
 
+- Skin lookup contacts only `sessionserver.mojang.com` and `textures.minecraft.net` over HTTPS without redirects and keeps nothing that is not a PNG of 64×64 or 64×32 pixels under 64 KiB; no token is involved
 - Modrinth lookup sends file hashes only (no file names, paths or instance ids), contacts only `api.modrinth.com` and `cdn.modrinth.com` over HTTPS without redirects, treats every answer as untrusted (size, id, text and host limits; icons are accepted only as PNG, JPEG, GIF or WebP, never SVG) and serves icons to the page as `data:` URLs so the content security policy stays closed to the network
 - Crash analysis runs locally first and displays the redacted payload to the user before anything is sent off the machine
 - Refresh token persistence is opt-in and disabled by default; the store is atomic but not encrypted, and its protection comes from the application data directory's permissions

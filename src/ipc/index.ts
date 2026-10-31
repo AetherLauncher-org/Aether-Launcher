@@ -106,6 +106,7 @@ export {
   describeLoginDetail,
   describeLoginFailure,
   describeMicrosoftError,
+  getAccountSkin,
   isMicrosoftLoginAvailable,
   listenLoginStatus,
   listMicrosoftAccounts,

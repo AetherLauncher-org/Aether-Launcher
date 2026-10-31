@@ -66,6 +66,13 @@ pub async fn list_microsoft_accounts(
     run(app, |host| microsoft::accounts(host)).await
 }
 
+/// A player's skin as a `data:` PNG URL for the account avatar, or `None` when there is no
+/// custom skin or it cannot be had. `uuid` is the 32-digit player id; no token is involved.
+#[tauri::command]
+pub async fn account_skin(app: tauri::AppHandle, uuid: String) -> Result<Option<String>, String> {
+    run(app, move |host| aether_app::skins::skin_for(host, &uuid)).await
+}
+
 /// Signs an account out: deletes its refresh token from the vault and its metadata.
 #[tauri::command]
 pub async fn remove_microsoft_account(app: tauri::AppHandle, id: String) -> Result<(), String> {

@@ -121,6 +121,7 @@ pub fn run() {
             commands::microsoft::cancel_microsoft_login,
             commands::microsoft::open_microsoft_verification_page,
             commands::microsoft::list_microsoft_accounts,
+            commands::microsoft::account_skin,
             commands::microsoft::remove_microsoft_account,
         ])
         .run(tauri::generate_context!())

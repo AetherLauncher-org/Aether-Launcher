@@ -46,6 +46,16 @@ Modrinth 认不出的文件（自己改过的、别处下载的）照旧显示�
 - Modrinth 按 IP 限速（文档写的是每分钟 300 次）。一次识别是 1 次 POST、每 100 个项目 1 次 GET，加图标，远低于限额；被限速（429）时按「没连上」处理，缓存继续用。
 - 只有 Modrinth。CurseForge 没做，见下。
 
+## 玩家皮肤（账户头像）
+
+微软账户的头像画的是玩家皮肤的 3D 头（里层的头加外层的帽子层），不再是名字首字母。
+
+- 后端 `account_skin(uuid)`：`GET https://sessionserver.mojang.com/session/minecraft/profile/<uuid>`（公开，不需要令牌，玩家 UUID 本来就是公开的）→ 解 `textures` 属性（base64 的 JSON）→ 取 `SKIN.url` → 从 `textures.minecraft.net` 下载 PNG。
+- 同样的边界（`aether_content::skin`、`aether_app::skins`）：只连这两个地址，HTTPS、不跟随重定向；皮肤地址必须正好是 `textures.minecraft.net/texture/<十六进制>`（Mojang 给的 `http` 形式会改成 `https`）；两层 JSON 都有大小上限；图片最大 64 KiB，必须是 PNG，文件头里的尺寸必须是 64×64 或旧版的 64×32，**不解码就先看文件头**。给界面的是 `data:` URL。
+- 缓存在 `<数据目录>/cache/skins/<uuid>.png`，一天；没有自定义皮肤的玩家记一个 `.none` 标记，也是一天；没网时旧皮肤照用。每次读出来再验一遍，被改过的文件不会送给界面。
+- 取不到、没有皮肤、离线账户、这台机器没有 2D 画布：一律退回字母头像，不报错。
+- 画法在前端 `src/lib/skinHead.ts`：头的顶面、正面、侧面（外层同样三个面，大 1/8）各用一个仿射变换贴到斜 45° 的立方体上，侧面加暗；不用 WebGL，不依赖任何库。
+
 ## 待定
 
 这些是设计问题，不是实现细节，由维护者定：

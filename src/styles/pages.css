@@ -782,6 +782,13 @@
   line-height: 1;
 }
 
+/* 皮肤的 3D 头：不要圆形底，头自己的轮廓就是头像 */
+.account-avatar.head {
+  display: block;
+  border-radius: 0;
+  background: none;
+}
+
 .account-avatar.empty {
   color: var(--colorNeutralForeground3);
   background: var(--card-bg-hover);

@@ -13,10 +13,14 @@
 //! script). Nothing in an answer is executed, and no answer changes what is trusted: the
 //! hash that was asked for is the identity, the platform only adds a label.
 //!
+//! [`skin`] does the same for a player's skin (Mojang's public session server), which the
+//! account avatar is drawn from.
+//!
 //! Only Modrinth is implemented. CurseForge needs an API key that must not ship in the
 //! client; see `docs/modules/content-metadata.md`.
 
 pub mod modrinth;
+pub mod skin;
 
 use serde::Serialize;
 

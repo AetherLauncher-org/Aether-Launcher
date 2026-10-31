@@ -300,6 +300,40 @@ const mockPlatformInfo: Record<string, { slug: string; title: string; summary: s
   "BSL_v8.2.zip": { slug: "bsl-shaders", title: "BSL Shaders", summary: "Highly customizable shaders with realistic water and soft shadows.", version: "8.2" },
 };
 
+/** 一张画出来的 64×64 皮肤（只有头），给浏览器预览里的账户头像用。没有画布时没有皮肤。 */
+function mockSkin(): string | null {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const context = canvas.getContext("2d");
+  if (context === null) {
+    return null;
+  }
+  const rect = (x: number, y: number, w: number, h: number, colour: string) => {
+    context.fillStyle = colour;
+    context.fillRect(x, y, w, h);
+  };
+  // 里层的头：六个面都是肤色，顶面和正面的上两行是头发，侧面的上半是头发
+  rect(0, 0, 32, 16, "#c58c6b");
+  rect(8, 0, 8, 8, "#3b2a1a");
+  rect(8, 8, 8, 2, "#3b2a1a");
+  rect(0, 8, 8, 4, "#3b2a1a");
+  rect(16, 8, 8, 4, "#3b2a1a");
+  rect(24, 8, 8, 6, "#3b2a1a");
+  rect(9, 12, 2, 1, "#ffffff");
+  rect(13, 12, 2, 1, "#ffffff");
+  rect(10, 12, 1, 1, "#4a4ae0");
+  rect(13, 12, 1, 1, "#4a4ae0");
+  rect(11, 15, 2, 1, "#8a4a3a");
+  // 外层（帽子）：一条绿色的帽檐和侧面的一圈，其余透明
+  rect(40, 8, 8, 2, "#1bd96a");
+  rect(32, 8, 8, 2, "#1bd96a");
+  rect(48, 8, 8, 2, "#1bd96a");
+  rect(56, 8, 8, 2, "#1bd96a");
+  rect(40, 0, 8, 8, "#1bd96a");
+  return canvas.toDataURL("image/png");
+}
+
 function mockIcon(title: string): string {
   const letter = title.slice(0, 1).toUpperCase();
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#1bd96a"/><text x="32" y="44" font-size="34" font-family="sans-serif" text-anchor="middle" fill="#0b2a18">${letter}</text></svg>`;
@@ -546,6 +580,8 @@ async function handle(command: string, args: Args): Promise<unknown> {
       return null;
     case "list_microsoft_accounts":
       return accounts();
+    case "account_skin":
+      return mockSkin();
     case "remove_microsoft_account":
       writeJson(
         accountsKey,

@@ -19,5 +19,6 @@ pub mod manage;
 pub mod microsoft;
 pub mod platform;
 pub mod schematics;
+pub mod skins;
 
 pub use host::Host;
