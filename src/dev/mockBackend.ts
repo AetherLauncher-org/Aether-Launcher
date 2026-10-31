@@ -31,6 +31,7 @@ import type {
 } from "../ipc/manage";
 import type { BrowserLoginInfo, DeviceCodeInfo, LoginEvent, MicrosoftAccount } from "../ipc/accounts";
 import type { SearchResult } from "../ipc/content";
+import type { SkinEntry } from "../ipc/skinLibrary";
 import type { SystemMemory } from "../ipc/system";
 import type { ConversionResult, SchematicFormat } from "../ipc/schematics";
 import { mockConversionTargets, mockSchematicView } from "./mockSchematics";
@@ -288,6 +289,37 @@ function seedContent(): Record<ContentKind, ContentItem[]> {
     ],
   };
 }
+
+const mockSkins: SkinEntry[] = [
+  { id: "a".repeat(64), name: "Aether hoodie", slim: false, source: "file", added: 1_761_900_000 },
+  { id: "b".repeat(64), name: "Notch", slim: false, source: "player", added: 1_761_800_000 },
+];
+
+/** 一张 64×64 的纯色假皮肤，开发预览里所有皮肤都用它。 */
+const mockSkinImage = (() => {
+  if (typeof document === "undefined") {
+    return "data:image/png;base64,";
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const context = canvas.getContext("2d");
+  if (context === null) {
+    return "data:image/png;base64,";
+  }
+  context.fillStyle = "#e4b697";
+  context.fillRect(8, 8, 8, 8);
+  context.fillStyle = "#1b2342";
+  context.fillRect(8, 8, 8, 2);
+  context.fillStyle = "#2f6fed";
+  context.fillRect(20, 20, 8, 12);
+  context.fillRect(44, 20, 4, 12);
+  context.fillRect(36, 52, 4, 12);
+  context.fillStyle = "#232b45";
+  context.fillRect(4, 20, 4, 12);
+  context.fillRect(20, 52, 4, 12);
+  return canvas.toDataURL("image/png");
+})();
 
 function mockSearch(text: string, projectType: string): SearchResult {
   const titles: Record<string, string[]> = {
@@ -672,6 +704,41 @@ async function handle(command: string, args: Args): Promise<unknown> {
       return mockLog(String(args?.kind));
     case "open_instance_folder":
       contentOf(String(args?.id));
+      return null;
+    case "list_skins":
+      return mockSkins.map((skin) => ({ ...skin }));
+    case "skin_library_image":
+      return mockSkinImage;
+    case "add_skin_from_file":
+      return null;
+    case "add_skin_from_player": {
+      await sleep(400);
+      const name = String(args?.name);
+      const entry = { id: `${mockSkins.length + 1}`.padStart(64, "a"), name, slim: false, source: "player" as const, added: Math.floor(Date.now() / 1000) };
+      mockSkins.unshift(entry);
+      return { entry, added: true };
+    }
+    case "rename_skin": {
+      const skin = mockSkins.find((item) => item.id === args?.id);
+      if (skin === undefined) {
+        throw "no such skin";
+      }
+      skin.name = String(args?.name);
+      return { ...skin };
+    }
+    case "set_skin_model": {
+      const skin = mockSkins.find((item) => item.id === args?.id);
+      if (skin === undefined) {
+        throw "no such skin";
+      }
+      skin.slim = Boolean(args?.slim);
+      return { ...skin };
+    }
+    case "remove_skin":
+      mockSkins.splice(
+        mockSkins.findIndex((item) => item.id === args?.id),
+        1,
+      );
       return null;
     case "get_content_target":
       return { gameVersion: "1.21.1", loader: "fabric" };

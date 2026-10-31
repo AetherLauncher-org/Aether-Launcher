@@ -138,6 +138,18 @@ export type {
   SchematicView,
 } from "./schematics";
 
+// 皮肤库：本机保存的皮肤
+export {
+  addSkinFromFile,
+  addSkinFromPlayer,
+  getSkinImage,
+  listSkins,
+  removeSkin,
+  renameSkin,
+  setSkinModel,
+} from "./skinLibrary";
+export type { AddSkinResult, SkinEntry } from "./skinLibrary";
+
 // 内容下载：搜索 Modrinth、装进实例或世界
 export { contentTypes, getContentTarget, installContent, searchContent } from "./content";
 export type {

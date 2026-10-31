@@ -16,8 +16,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use aether_content::skin::{
-    MAX_PROFILE_BYTES, MAX_SKIN_BYTES, TEXTURE_HOST, is_uuid, profile_url, skin_url_from_profile,
-    validate_skin_png,
+    MAX_PROFILE_BYTES, MAX_SKIN_BYTES, TEXTURE_HOST, is_player_name, is_uuid, name_lookup_url,
+    parse_name_lookup, profile_url, skin_from_profile, skin_url_from_profile, validate_skin_png,
 };
 
 use crate::host::Host;
@@ -32,9 +32,13 @@ pub trait SkinNet {
     fn get_bytes(&self, url: &str, limit: usize) -> Result<Vec<u8>, String>;
 }
 
-/// `true` for the two places skin lookup may talk to.
+/// `true` for the places skin lookup may talk to: the session server (a profile by id),
+/// the texture host (a picture) and the name lookup (a player name to an id).
 #[must_use]
 pub fn is_allowed_url(url: &str) -> bool {
+    let lookup = url
+        .strip_prefix("https://api.minecraftservices.com/minecraft/profile/lookup/name/")
+        .is_some_and(is_player_name);
     let session = url
         .strip_prefix("https://sessionserver.mojang.com/session/minecraft/profile/")
         .is_some_and(is_uuid);
@@ -42,7 +46,7 @@ pub fn is_allowed_url(url: &str) -> bool {
         .strip_prefix("https://")
         .and_then(|rest| rest.split_once('/'))
         .is_some_and(|(host, path)| host == TEXTURE_HOST && path.starts_with("texture/"));
-    (session || texture) && !url.chars().any(|c| c.is_control() || c.is_whitespace())
+    (session || texture || lookup) && !url.chars().any(|c| c.is_control() || c.is_whitespace())
 }
 
 /// The production [`SkinNet`]: blocking `ureq`, no redirects, bounded bodies.
@@ -110,6 +114,48 @@ fn kept_skin(path: &Path) -> Option<String> {
         "data:image/png;base64,{}",
         crate::schematics::base64(&bytes)
     ))
+}
+
+/// A player's skin taken for the skin library: not kept in the cache, and with the model.
+pub(crate) struct PlayerSkin {
+    /// The name with its real capitalisation.
+    pub name: String,
+    pub bytes: Vec<u8>,
+    pub slim: bool,
+}
+
+/// Finds a player by name and takes the skin they wear: name → id (the name lookup), id →
+/// profile (session server), profile → picture (texture host). Each answer is checked before
+/// the next request is built from it.
+///
+/// # Errors
+///
+/// For a name that is not a player name, a player who does not exist or has no custom skin, a
+/// service that cannot be reached, or an answer that is not what the service documents.
+pub(crate) fn download_by_name(net: &dyn SkinNet, name: &str) -> Result<PlayerSkin, String> {
+    let url = name_lookup_url(name).ok_or("that is not a player name")?;
+    let answer = net.get_text(&url, MAX_PROFILE_BYTES).map_err(|error| {
+        if error.ends_with("404") || error.ends_with("204") {
+            "no player has this name".to_owned()
+        } else {
+            error
+        }
+    })?;
+    let (uuid, real_name) = parse_name_lookup(&answer).map_err(|error| error.to_string())?;
+    let profile = net.get_text(
+        &profile_url(&uuid).ok_or("not a player id")?,
+        MAX_PROFILE_BYTES,
+    )?;
+    let skin = skin_from_profile(&profile)
+        .map_err(|error| error.to_string())?
+        .ok_or("this player has no custom skin")?;
+    let bytes = net.get_bytes(&skin.url, MAX_SKIN_BYTES)?;
+    validate_skin_png(&bytes).map_err(|error| error.to_string())?;
+    Ok(PlayerSkin {
+        name: real_name,
+        bytes,
+        slim: skin.slim,
+    })
 }
 
 fn fetch(net: &dyn SkinNet, uuid: &str) -> Result<Option<Vec<u8>>, String> {

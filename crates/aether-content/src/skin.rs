@@ -107,6 +107,65 @@ struct TextureSet {
 #[derive(Deserialize)]
 struct Skin {
     url: String,
+    metadata: Option<SkinMetadata>,
+}
+
+#[derive(Deserialize)]
+struct SkinMetadata {
+    model: Option<String>,
+}
+
+/// A skin as the profile names it: where the picture is, and whether the model has slim
+/// (3-pixel, "Alex") arms. A skin that says nothing about its model is the classic one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkinRef {
+    pub url: String,
+    pub slim: bool,
+}
+
+/// The longest player name Mojang allows, and the shortest.
+pub const MIN_NAME: usize = 3;
+pub const MAX_NAME: usize = 16;
+
+/// `true` for a Minecraft player name: 3 to 16 letters, digits or underscores.
+#[must_use]
+pub fn is_player_name(text: &str) -> bool {
+    (MIN_NAME..=MAX_NAME).contains(&text.len())
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
+/// The address that turns a player name into a player id (`GET`, no token needed).
+#[must_use]
+pub fn name_lookup_url(name: &str) -> Option<String> {
+    is_player_name(name)
+        .then(|| format!("https://api.minecraftservices.com/minecraft/profile/lookup/name/{name}"))
+}
+
+#[derive(Deserialize)]
+struct NameAnswer {
+    id: String,
+    name: String,
+}
+
+/// Reads the answer to a name lookup: the player's id (lower-case, 32 digits) and the name
+/// with its real capitalisation.
+///
+/// # Errors
+///
+/// [`ContentError::TooLarge`] and [`ContentError::Malformed`].
+pub fn parse_name_lookup(body: &str) -> Result<(String, String), ContentError> {
+    if body.len() > MAX_PROFILE_BYTES {
+        return Err(ContentError::TooLarge(MAX_PROFILE_BYTES));
+    }
+    let answer: NameAnswer = serde_json::from_str(body).map_err(|_| ContentError::Malformed)?;
+    let id = answer.id.to_ascii_lowercase();
+    if is_uuid(&id) && is_player_name(&answer.name) {
+        Ok((id, answer.name))
+    } else {
+        Err(ContentError::Malformed)
+    }
 }
 
 /// The skin's address from a profile answer: `Ok(None)` for a player with no custom skin.
@@ -116,6 +175,15 @@ struct Skin {
 /// [`ContentError::TooLarge`] and [`ContentError::Malformed`]; the latter also for a skin whose
 /// address is not a texture address, which is an odd answer and not "no skin".
 pub fn skin_url_from_profile(body: &str) -> Result<Option<String>, ContentError> {
+    Ok(skin_from_profile(body)?.map(|skin| skin.url))
+}
+
+/// Like [`skin_url_from_profile`], and also says which model the skin is made for.
+///
+/// # Errors
+///
+/// As [`skin_url_from_profile`].
+pub fn skin_from_profile(body: &str) -> Result<Option<SkinRef>, ContentError> {
     if body.len() > MAX_PROFILE_BYTES {
         return Err(ContentError::TooLarge(MAX_PROFILE_BYTES));
     }
@@ -134,9 +202,12 @@ pub fn skin_url_from_profile(body: &str) -> Result<Option<String>, ContentError>
     let Some(skin) = textures.textures.and_then(|set| set.skin) else {
         return Ok(None);
     };
-    trusted_texture_url(&skin.url)
-        .map(Some)
-        .ok_or(ContentError::Malformed)
+    let url = trusted_texture_url(&skin.url).ok_or(ContentError::Malformed)?;
+    let slim = skin
+        .metadata
+        .and_then(|metadata| metadata.model)
+        .is_some_and(|model| model == "slim");
+    Ok(Some(SkinRef { url, slim }))
 }
 
 /// Checks that `bytes` is a PNG of a skin: small, with the PNG signature, an `IHDR` first and

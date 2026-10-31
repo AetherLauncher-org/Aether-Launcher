@@ -1771,6 +1771,47 @@
   gap: 2px;
 }
 
+/* 皮肤库 */
+.skin-library {
+  display: grid;
+  gap: 12px;
+}
+
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skin-card {
+  display: grid;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--colorNeutralForeground1) 4%, transparent);
+  border: 1px solid var(--colorNeutralStroke2);
+  border-radius: var(--borderRadiusLarge);
+}
+
+.skin-card-figure {
+  display: grid;
+  place-items: center;
+  padding: 16px 0 8px;
+  background: color-mix(in srgb, var(--colorNeutralForeground1) 3%, transparent);
+}
+
+.skin-figure {
+  image-rendering: pixelated;
+}
+
+.skin-card-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 14px 12px;
+}
+
 /* 下载页的内容搜索 */
 .content-browser {
   display: grid;
