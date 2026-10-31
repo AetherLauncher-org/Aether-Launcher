@@ -227,3 +227,4 @@ mod tests {
         assert_eq!(image_mime(b""), None);
     }
 }
+pub mod modpack;
