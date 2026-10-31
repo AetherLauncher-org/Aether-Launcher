@@ -518,6 +518,24 @@ fn folder_save_dependencies_share_destination_only_when_enabled() {
 }
 
 #[test]
+fn folder_save_discards_wrong_checksum_without_touching_other_files() {
+    let host = FakeHost::new();
+    let instance = host.instance(FABRIC);
+    let folder = host.dir.join("chosen");
+    fs::create_dir(&folder).unwrap();
+    fs::write(folder.join("existing.jar"), b"keep").unwrap();
+    *host.selected.lock().unwrap() = Some(folder.clone());
+    let mut net = FakeNet::new().project("AAAAAAAA", "mod.jar", b"good", "\"fabric\"", &[]);
+    net.files.insert("https://cdn.modrinth.com/data/AAAAAAAA/mod.jar".to_owned(), b"evil".to_vec());
+
+    let error = save_to_folder_with(&net, &host, &instance.id.to_string(), "AAAAAAAA", "mod", false).unwrap_err();
+    assert!(error.contains("checksum"), "{error}");
+    let names = fs::read_dir(&folder).unwrap().map(|entry| entry.unwrap().file_name()).collect::<Vec<_>>();
+    assert_eq!(names, ["existing.jar"]);
+    assert_eq!(fs::read(folder.join("existing.jar")).unwrap(), b"keep");
+}
+
+#[test]
 fn folder_save_cancellation_does_not_contact_network() {
     let host = FakeHost::new();
     let instance = host.instance("1.21.1");

@@ -15,6 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use aether_content::browse::{
     self, DependencyKind, Hit, ProjectType, SearchQuery, Sort, VersionFile, is_game_version,
@@ -245,21 +246,35 @@ pub fn search_modrinth(host: &dyn Host, request: &SearchRequest<'_>) -> Result<S
 // Downloading one verified file
 // --------------------------------------------------------------------------------------
 
+static NEXT_TEMPORARY: AtomicU64 = AtomicU64::new(0);
+
 /// Downloads `file` into `folder` under its own name, and keeps it only if its size and hashes
 /// are what Modrinth listed.
 fn download_verified(net: &dyn ContentNet, file: &VersionFile, folder: &Path) -> Result<PathBuf, String> {
     fs::create_dir_all(folder).map_err(|_| "cannot create the folder".to_owned())?;
     let target = folder.join(&file.filename);
-    let temporary = folder.join(format!(".{}.aether-part", file.filename));
+    let temporary = folder.join(format!(
+        ".{}.{}.{}.aether-part",
+        file.filename,
+        std::process::id(),
+        NEXT_TEMPORARY.fetch_add(1, Ordering::Relaxed)
+    ));
 
-    // claim the name first so a file that appears meanwhile is not replaced
+    let mut temporary_file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|_| "cannot write the file".to_owned())?;
+    // Claim the final name before downloading so an existing file is not replaced.
     let claim = fs::OpenOptions::new().write(true).create_new(true).open(&target);
     if claim.is_err() {
+        let _ = fs::remove_file(&temporary);
         return Err("a file with this name is already there".to_owned());
     }
     drop(claim);
 
-    let result = write_checked(net, file, &temporary).and_then(|()| {
+    let result = write_checked(net, file, &mut temporary_file).and_then(|()| {
+        drop(temporary_file);
         fs::rename(&temporary, &target).map_err(|_| "cannot place the file".to_owned())
     });
     if result.is_err() {
@@ -269,14 +284,7 @@ fn download_verified(net: &dyn ContentNet, file: &VersionFile, folder: &Path) ->
     result.map(|()| target)
 }
 
-fn write_checked(net: &dyn ContentNet, file: &VersionFile, temporary: &Path) -> Result<(), String> {
-    // a stale temporary (or a link planted at its name) is removed, never followed
-    let _ = fs::remove_file(temporary);
-    let mut out = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(temporary)
-        .map_err(|_| "cannot write the file".to_owned())?;
+fn write_checked(net: &dyn ContentNet, file: &VersionFile, out: &mut fs::File) -> Result<(), String> {
     let mut reader = net.get_stream(&file.url, file.size.saturating_add(1))?;
 
     let mut sha1 = Sha1::new();
