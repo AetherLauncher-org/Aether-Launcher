@@ -25,6 +25,21 @@ impl FakeHost {
 }
 
 impl Host for FakeHost {
+    fn emit_import_item(&self, _event: &crate::import::ImportItemEvent) {}
+
+    fn pick_folder(&self, _title: &str) -> Result<Option<PathBuf>, String> {
+        Ok(None)
+    }
+
+    fn known_folders(&self) -> crate::host::KnownFolders {
+        crate::host::KnownFolders {
+            desktop: None,
+            downloads: None,
+            documents: None,
+            home: None,
+        }
+    }
+
     fn data_dir(&self) -> Result<PathBuf, String> {
         Ok(self.dir.clone())
     }

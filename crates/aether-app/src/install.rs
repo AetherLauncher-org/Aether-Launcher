@@ -107,7 +107,7 @@ pub struct InstallState {
 }
 
 impl InstallState {
-    pub fn begin(&self) -> Result<CancellationToken, String> {
+    pub(crate) fn begin(&self) -> Result<CancellationToken, String> {
         let mut active = self
             .active
             .lock()
@@ -120,7 +120,7 @@ impl InstallState {
         Ok(token)
     }
 
-    pub fn finish(&self) {
+    pub(crate) fn finish(&self) {
         if let Ok(mut active) = self.active.lock() {
             *active = None;
         }
@@ -454,8 +454,7 @@ pub(crate) fn check_instance_name(base: &Path, name: &str) -> Result<(), String>
 
 /// Optional inputs to [`install_and_create_with`].
 #[derive(Default, Clone, Copy)]
-// still used by src-tauri's import until it moves
-pub struct InstallOptions<'a> {
+pub(crate) struct InstallOptions<'a> {
     /// A read-only folder laid out like a `.minecraft` whose verified files may
     /// be copied instead of downloaded.
     pub seed: Option<&'a Path>,
@@ -485,8 +484,7 @@ fn install_and_create(
 }
 
 /// [`install_and_create`] with a seed folder and/or a reused catalog.
-// still used by src-tauri's import until it moves
-pub fn install_and_create_with(
+pub(crate) fn install_and_create_with(
     transport: &dyn HttpTransport,
     base: &Path,
     version: &str,

@@ -4,8 +4,17 @@ use std::path::PathBuf;
 
 use aether_core::InstanceId;
 
+use crate::import::ImportItemEvent;
 use crate::install::InstallProgress;
 use crate::microsoft::LoginEvent;
+
+/// Platform folders used by the bounded launcher search.
+pub struct KnownFolders {
+    pub desktop: Option<PathBuf>,
+    pub downloads: Option<PathBuf>,
+    pub documents: Option<PathBuf>,
+    pub home: Option<PathBuf>,
+}
 
 /// The outside world, as the operations need it. Errors are plain sentences that are safe to
 /// show: no paths, no secrets.
@@ -34,4 +43,17 @@ pub trait Host: Send + Sync {
     /// Installation progress. Called from a download thread, so it must not block.
     /// Carries no secrets.
     fn emit_install(&self, progress: &InstallProgress);
+
+    /// Import item progress. Called from the import worker thread, so it must not block.
+    fn emit_import_item(&self, event: &ImportItemEvent);
+
+    /// Opens a native folder picker on a blocking worker thread. Dismissal returns `None`.
+    ///
+    /// # Errors
+    ///
+    /// When the selected folder path is not usable.
+    fn pick_folder(&self, title: &str) -> Result<Option<PathBuf>, String>;
+
+    /// Platform folders to search for launcher installations, in the operation's fixed order.
+    fn known_folders(&self) -> KnownFolders;
 }

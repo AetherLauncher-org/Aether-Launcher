@@ -4,7 +4,6 @@
 //! from IPC are in `aether_app::instances`. Instances are created by the installer
 //! (`install::install_vanilla_version`).
 
-pub use aether_app::instances::InstanceSummary;
 use aether_app::instances::{self, InstanceListing};
 
 use super::host::run;

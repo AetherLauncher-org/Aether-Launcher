@@ -3,10 +3,13 @@
 use std::sync::Arc;
 
 use aether_app::Host;
+use aether_app::host::KnownFolders;
+use aether_app::import::{ITEM_EVENT, ImportItemEvent};
 use aether_app::install::{self, InstallProgress};
 use aether_app::microsoft::{LoginEvent, STATUS_EVENT};
 use aether_core::InstanceId;
 use tauri::{Emitter, Manager};
+use tauri_plugin_dialog::DialogExt;
 
 /// Wraps the running app so the UI-independent layer can ask it for the data directory and
 /// whether an instance's game is running.
@@ -22,6 +25,36 @@ impl TauriHost {
 }
 
 impl Host for TauriHost {
+    fn emit_import_item(&self, event: &ImportItemEvent) {
+        let _ = self.app.emit(ITEM_EVENT, event);
+    }
+
+    fn pick_folder(&self, title: &str) -> Result<Option<std::path::PathBuf>, String> {
+        let picked = self
+            .app
+            .dialog()
+            .file()
+            .set_title(title)
+            .blocking_pick_folder();
+        let Some(picked) = picked else {
+            return Ok(None);
+        };
+        let path = picked
+            .into_path()
+            .map_err(|_| "the selected folder path is not usable".to_owned())?;
+        Ok(Some(path))
+    }
+
+    fn known_folders(&self) -> KnownFolders {
+        let resolver = self.app.path();
+        KnownFolders {
+            desktop: resolver.desktop_dir().ok(),
+            downloads: resolver.download_dir().ok(),
+            documents: resolver.document_dir().ok(),
+            home: resolver.home_dir().ok(),
+        }
+    }
+
     fn emit_install(&self, progress: &InstallProgress) {
         let _ = self.app.emit(install::PROGRESS_EVENT, progress);
     }

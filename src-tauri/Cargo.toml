@@ -25,11 +25,9 @@ tauri = { version = "2", features = [] }
 aether-core = { path = "../crates/aether-core" }
 aether-app = { path = "../crates/aether-app" }
 aether-auth = { path = "../crates/aether-auth" }
-aether-download = { path = "../crates/aether-download" }
 aether-launch = { path = "../crates/aether-launch" }
 aether-manifest = { path = "../crates/aether-manifest" }
 aether-runtime = { path = "../crates/aether-runtime" }
-aether-storage = { path = "../crates/aether-storage" }
 serde.workspace = true
 serde_json.workspace = true
 tauri-plugin-dialog = "2"

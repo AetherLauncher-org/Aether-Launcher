@@ -15,6 +15,7 @@
 pub mod catalog;
 pub mod host;
 pub mod identify;
+pub mod import;
 pub mod install;
 pub mod instances;
 pub mod launch;

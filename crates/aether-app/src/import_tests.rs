@@ -24,7 +24,7 @@ use super::{
     drop_repeated_game_directories, installation_at, listing_of, pcl2_game_directories,
     plan_source, run_import,
 };
-use crate::commands::instances::InstanceSummary;
+use crate::instances::InstanceSummary;
 
 /// Monotonic counter that keeps temporary directory names unique per process.
 static TEMP_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -264,7 +264,7 @@ impl HttpTransport for OfflineTransport {
 struct SilentReporter;
 
 impl Reporter for SilentReporter {
-    fn report(&self, _progress: &aether_app::install::InstallProgress) {}
+    fn report(&self, _progress: &crate::install::InstallProgress) {}
 }
 
 fn plan_of(ids: &[&str], seed: &Path) -> ImportPlan {
