@@ -139,6 +139,51 @@ describe("world dialog", () => {
     expect(calls("open_world_folder")[0][1]).toEqual({ id: "i1", world: "My World" });
   });
 
+  it("does not spin for ever when the backend never answers: it times out with a reason and a retry", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let answer = false;
+      vi.mocked(invoke).mockImplementation((command: string) =>
+        command === "get_world_details"
+          ? answer
+            ? Promise.resolve(world)
+            : new Promise(() => undefined) // a call whose answer never comes
+          : Promise.resolve(null),
+      );
+      renderWithState(
+        <WorldDialog instanceId="i1" world="My World" locked={false} onClose={vi.fn()} onChanged={vi.fn()} />,
+      );
+      expect(await screen.findByText("正在读取世界…")).toBeInTheDocument();
+
+      await vi.advanceTimersByTimeAsync(16_000);
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("读取世界超时");
+      expect(screen.queryByText("正在读取世界…")).not.toBeInTheDocument();
+
+      // the world can be read again once the backend answers
+      answer = true;
+      fireEvent.click(screen.getByRole("button", { name: "重试" }));
+      expect(await screen.findByText("Better Trading.zip")).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows an error even when the backend's message is empty, instead of spinning", async () => {
+    routeInvoke(vi.mocked(invoke), {
+      get_world_details: () => {
+        throw "";
+      },
+    });
+    renderWithState(
+      <WorldDialog instanceId="i1" world="My World" locked={false} onClose={vi.fn()} onChanged={vi.fn()} />,
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("读取失败");
+    expect(screen.queryByText("正在读取世界…")).not.toBeInTheDocument();
+  });
+
   it("asks for nothing while it is closed", () => {
     routeInvoke(vi.mocked(invoke), { get_world_details: () => world });
     renderWithState(

@@ -8,6 +8,7 @@ import {
   DialogSurface,
   DialogTitle,
   MessageBar,
+  MessageBarActions,
   MessageBarBody,
   Spinner,
   Text,
@@ -17,9 +18,12 @@ import { useCallback, useState } from "react";
 import { describeCommandError, getWorldDetails, openWorldFolder, removeWorldDatapack } from "../ipc";
 import type { DatapackInfo } from "../ipc";
 import { formatBytes, formatModified } from "../lib/instanceContent";
-import { useQuery } from "../lib/query";
+import { useQuery, withTimeout } from "../lib/query";
 import { describeDifficulty, describeMode, describePackRemoval, packStateLabels } from "../lib/world";
 import { ConfirmDialog } from "./ConfirmDialog";
+
+/** 读一个世界最多等多久，毫秒。 */
+const LOAD_TIMEOUT_MS = 15_000;
 
 type WorldDialogProps = {
   instanceId: string;
@@ -41,8 +45,9 @@ type WorldDialogProps = {
  */
 export function WorldDialog({ instanceId, world, locked, onClose, onChanged }: WorldDialogProps) {
   const open = world !== null;
+  // 读一个世界是几毫秒的事。超过期限就报错并给重试，不让对话框永远转圈
   const load = useCallback(
-    () => getWorldDetails(instanceId, world ?? ""),
+    () => withTimeout(getWorldDetails(instanceId, world ?? ""), LOAD_TIMEOUT_MS, "读取世界超时：后端没有回应"),
     [instanceId, world],
   );
   const { status, data, error, reload } = useQuery(load, open);
@@ -108,9 +113,14 @@ export function WorldDialog({ instanceId, world, locked, onClose, onChanged }: W
         <DialogBody>
           <DialogTitle>{data?.levelName ?? world ?? ""}</DialogTitle>
           <DialogContent className="dialog-content">
-            {status === "error" && error ? (
+            {status === "error" ? (
               <MessageBar intent="error" role="alert">
-                <MessageBarBody>{error}</MessageBarBody>
+                <MessageBarBody>{error || "读取失败"}</MessageBarBody>
+                <MessageBarActions>
+                  <Button size="small" onClick={reload}>
+                    重试
+                  </Button>
+                </MessageBarActions>
               </MessageBar>
             ) : data === null ? (
               <div className="loading-block" role="status">

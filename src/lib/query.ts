@@ -93,11 +93,33 @@ export function useQuery<T>(
 }
 
 function describeError(error: unknown): string {
+  // 空的错误信息也要有话说：界面用「有没有错误文字」判断要不要显示错误，空字符串会被
+  // 当成没有错误，于是一直转圈
   if (error instanceof Error) {
-    return error.message;
+    return error.message || "读取失败";
   }
   if (typeof error === "string") {
-    return error;
+    return error || "读取失败";
   }
   return "读取失败";
+}
+
+/**
+ * 给一次读取加上期限：`ms` 毫秒内没有结果就当失败。后端命令一直不回应时（命令卡住、结果
+ * 没送到窗口），界面不会永远转圈，而是显示 `message` 并可以重试。
+ */
+export function withTimeout<T>(pending: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    pending.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(describeError(error)));
+      },
+    );
+  });
 }
