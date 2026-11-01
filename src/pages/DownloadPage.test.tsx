@@ -361,8 +361,8 @@ describe("DownloadPage skin sources", () => {
     await screen.findByText("最新正式版");
 
     const tabs = within(screen.getByRole("tablist", { name: "下载什么" })).getAllByRole("tab");
-    expect(tabs.at(-2)).toBe(screen.getByRole("tab", { name: "光影" }));
-    expect(tabs.at(-1)).toBe(screen.getByRole("tab", { name: "皮肤" }));
+    expect(tabs[tabs.length - 2]).toBe(screen.getByRole("tab", { name: "光影" }));
+    expect(tabs[tabs.length - 1]).toBe(screen.getByRole("tab", { name: "皮肤" }));
 
     fireEvent.click(screen.getByRole("tab", { name: "皮肤" }));
 
