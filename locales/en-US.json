@@ -25,5 +25,6 @@
   "titlebar.close": "Close",
   "settings.language.title": "Language",
   "settings.language.description": "Switch the interface language; the choice is saved on this machine",
-  "settings.language.aria": "Language"
+  "settings.language.aria": "Language",
+  "settings.language.system": "Follow system"
 }

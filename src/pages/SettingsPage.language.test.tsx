@@ -42,12 +42,13 @@ describe("SettingsPage language selector", () => {
     window.localStorage.clear();
   });
 
-  it("offers the language choice and defaults to 简体中文", () => {
+  it("offers follow-system, 简体中文 and English, and defaults to following the system", () => {
     renderSettings();
 
     expect(screen.getByText("界面语言")).toBeInTheDocument();
     const select = screen.getByRole("combobox", { name: "界面语言" });
-    expect(select).toHaveValue("zh-CN");
+    expect(select).toHaveValue("system");
+    expect(screen.getByRole("option", { name: "跟随系统" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "简体中文" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "English" })).toBeInTheDocument();
   });

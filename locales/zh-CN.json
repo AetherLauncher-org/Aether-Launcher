@@ -25,5 +25,6 @@
   "titlebar.close": "关闭",
   "settings.language.title": "界面语言",
   "settings.language.description": "切换界面显示的语言，选择会保存在本机",
-  "settings.language.aria": "界面语言"
+  "settings.language.aria": "界面语言",
+  "settings.language.system": "跟随系统"
 }

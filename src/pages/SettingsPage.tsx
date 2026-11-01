@@ -6,7 +6,7 @@ import { MemorySection } from "../components/MemorySection";
 import { PageHeader } from "../components/PageHeader";
 import { useT } from "../i18n/context";
 import { localeDisplayNames, locales } from "../i18n/catalogs";
-import { isLocale } from "../i18n/locale";
+import { isPreference } from "../i18n/locale";
 import { isThemePreference } from "../lib/theme";
 import type { ThemePreference } from "../lib/theme";
 import type { MotionPreference } from "../lib/motion";
@@ -50,7 +50,7 @@ export function SettingsPage({
   onMotionChange,
   version,
 }: SettingsPageProps) {
-  const { locale, setLocale, t } = useT();
+  const { preference, setPreference, t } = useT();
   return (
     <>
       <PageHeader title={page.label} description={page.summary} />
@@ -89,13 +89,14 @@ export function SettingsPage({
         >
           <Select
             aria-label={t("settings.language.aria")}
-            value={locale}
+            value={preference}
             onChange={(_, data) => {
-              if (isLocale(data.value)) {
-                setLocale(data.value);
+              if (isPreference(data.value)) {
+                setPreference(data.value);
               }
             }}
           >
+            <option value="system">{t("settings.language.system")}</option>
             {locales.map((item) => (
               <option key={item} value={item}>
                 {localeDisplayNames[item]}

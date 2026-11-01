@@ -1,22 +1,35 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { bundledCatalogs, defaultLocale } from "./catalogs";
-import type { Locale } from "./catalogs";
 import { I18nContext } from "./context";
 import type { I18nValue, TFunction } from "./context";
-import { loadLocale, saveLocale } from "./locale";
+import { loadPreference, resolveLocale, savePreference } from "./locale";
+import type { LocalePreference } from "./locale";
 import { translate } from "./messages";
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(loadLocale);
+  const [preference, setPreferenceState] = useState<LocalePreference>(loadPreference);
+  // 系统语言变了（浏览器里改了首选语言）时，「跟随系统」跟着变
+  const [systemTick, setSystemTick] = useState(0);
+  const locale = useMemo(
+    () => resolveLocale(preference),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- systemTick 只用来重新读系统语言
+    [preference, systemTick],
+  );
 
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
 
-  const setLocale = useCallback((next: Locale) => {
-    setLocaleState(next);
-    saveLocale(next);
+  useEffect(() => {
+    const onChange = () => setSystemTick((tick) => tick + 1);
+    window.addEventListener("languagechange", onChange);
+    return () => window.removeEventListener("languagechange", onChange);
+  }, []);
+
+  const setPreference = useCallback((next: LocalePreference) => {
+    setPreferenceState(next);
+    savePreference(next);
   }, []);
 
   const t = useCallback<TFunction>(
@@ -26,8 +39,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<I18nValue>(
-    () => ({ locale, setLocale, t }),
-    [locale, setLocale, t],
+    () => ({ locale, preference, setPreference, setLocale: setPreference, t }),
+    [locale, preference, setPreference, t],
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
