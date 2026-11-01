@@ -159,7 +159,22 @@ pub fn start(
 ) -> Result<InstanceProcessStatus, String> {
     let id = parse_id(id)?;
     let mut vars = BTreeMap::new();
+    let mut jvm_args: Vec<String> = Vec::new();
     match account_id {
+        Some(account) if crate::yggdrasil::is_yggdrasil_account(host, account)? => {
+            let credentials = crate::yggdrasil::launch_credentials_for(host, account)?;
+            let jar = crate::authlib::ensure_agent_production(host)?;
+            let jar_path = jar.to_str().filter(|path| !path.contains('=') && !path.chars().any(char::is_control))
+                .ok_or("authlib-invalid-path")?;
+            let agent = format!("-javaagent:{jar_path}={}", credentials.server_root);
+            jvm_args.push(agent);
+            vars.insert("auth_player_name".to_owned(), credentials.name);
+            vars.insert("auth_uuid".to_owned(), credentials.uuid);
+            vars.insert("auth_access_token".to_owned(), credentials.access_token);
+            vars.insert("user_type".to_owned(), "mojang".to_owned());
+            vars.insert("xuid".to_owned(), String::new());
+            vars.insert("auth_xuid".to_owned(), String::new());
+        }
         Some(account) => {
             let credentials = crate::microsoft::launch_credentials_for(host, account)?;
             vars.insert("auth_player_name".to_owned(), credentials.name);
@@ -199,7 +214,13 @@ pub fn start(
         env!("CARGO_PKG_VERSION").to_owned(),
     );
 
-    let runtimes = aether_runtime::discover_java_runtimes(&[]);
+    let mut runtimes = aether_runtime::discover_java_runtimes(&[]);
+    if !jvm_args.is_empty() {
+        runtimes.retain(|runtime| runtime.major_version >= 8);
+        if runtimes.is_empty() {
+            return Err("authlib-java-required".to_owned());
+        }
+    }
     let mut guard = state
         .coordinator
         .lock()
@@ -217,6 +238,7 @@ pub fn start(
             &runtimes,
             &current_environment(),
             &vars,
+            &jvm_args,
             &[],
         )
         .map_err(|error| error.to_string())

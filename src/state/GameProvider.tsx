@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import {
   describeCommandError,
   describeMicrosoftError,
+  describeYggdrasilError,
   gameStatus,
   startInstalledInstance,
   stopInstalledInstance,
@@ -55,14 +56,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
           account.name,
           launch.memoryMiB,
           account.kind === "offline" ? account.uuid : null,
-          account.kind === "microsoft" ? account.id : null,
+          account.kind !== "offline" ? account.id : null,
         );
         saveLastPlayedId(instance.id);
         setSession(instance.id, sessionFromStatus(status));
       } catch (error: unknown) {
         setSession(
           instance.id,
-          failedSession(describeMicrosoftError(describeCommandError(error))),
+          failedSession(/^(yggdrasil|authlib)-/.test(describeCommandError(error))
+            ? describeYggdrasilError(error)
+            : describeMicrosoftError(describeCommandError(error))),
         );
       }
     },

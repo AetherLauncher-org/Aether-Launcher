@@ -32,14 +32,16 @@ struct Transport {
     requests: RefCell<Vec<HttpRequest>>,
     fail: bool,
     wrong_profile: bool,
+    validate_status: u16,
 }
 impl Transport {
-    fn new() -> Self { Self { requests: RefCell::new(Vec::new()), fail: false, wrong_profile: false } }
+    fn new() -> Self { Self { requests: RefCell::new(Vec::new()), fail: false, wrong_profile: false, validate_status: 204 } }
 }
 impl HttpTransport for Transport {
     fn execute(&self, request: &HttpRequest) -> Result<HttpResponse, HttpError> {
         self.requests.borrow_mut().push(request.clone());
         if self.fail { return Err(HttpError::transport(&request.url)); }
+        if request.url.ends_with("/authserver/validate") { return Ok(HttpResponse::new(self.validate_status, "")); }
         if request.url.ends_with("/authserver/invalidate") { return Ok(HttpResponse::new(204, "")); }
         if request.url.ends_with("/authserver/authenticate") || request.url.ends_with("/authserver/refresh") {
             let body: serde_json::Value = serde_json::from_str(request.body().unwrap()).unwrap();
@@ -130,6 +132,56 @@ fn yggdrasil_refresh_checks_identity_and_remove_works_offline() {
     remove_with(&store, &transport, id).unwrap();
     assert!(store.values.borrow().is_empty());
 }
+fn launch_fixture() -> (Store, Transport, AccountId) {
+    let (mut pending, transport, challenge) = pending();
+    let store = Store::default();
+    let account = finish_with(&mut pending, &store, &transport, &challenge.id, PROFILE, Instant::now()).unwrap();
+    transport.requests.borrow_mut().clear();
+    (store, transport, AccountId::parse(&account.id).unwrap())
+}
+
+#[test]
+fn yggdrasil_launch_validates_without_rotating() {
+    let (store, transport, id) = launch_fixture();
+    store.fail_save.set(true);
+    let credentials = credentials_for_launch(&store, &transport, id).unwrap();
+    assert_eq!(credentials.uuid, PROFILE);
+    assert_eq!(credentials.server_root, protocol::LITTLE_SKIN);
+    assert_eq!(transport.requests.borrow().len(), 1);
+    assert!(transport.requests.borrow()[0].url.ends_with("/validate"));
+}
+
+#[test]
+fn yggdrasil_launch_refreshes_and_requires_vault_save() {
+    let (store, mut transport, id) = launch_fixture();
+    transport.validate_status = 403;
+    let credentials = credentials_for_launch(&store, &transport, id).unwrap();
+    assert_eq!(credentials.name, "Renamed");
+    assert_eq!(credentials.access_token, "access-secret-rotated");
+    let requests = transport.requests.borrow();
+    let body: serde_json::Value = serde_json::from_str(requests[1].body().unwrap()).unwrap();
+    assert_eq!(body["selectedProfile"]["id"], PROFILE);
+    assert!(!format!("{:?}", requests[1]).contains("access-secret-rotated"));
+    drop(requests);
+    store.fail_save.set(true);
+    assert_eq!(credentials_for_launch(&store, &transport, id).err().as_deref(), Some(STORAGE));
+    store.fail_save.set(false);
+    transport.wrong_profile = true;
+    assert_eq!(credentials_for_launch(&store, &transport, id).err().as_deref(), Some("yggdrasil-invalid-profile"));
+}
+
+#[test]
+fn yggdrasil_launch_does_not_refresh_network_or_service_failures() {
+    let (store, mut transport, id) = launch_fixture();
+    transport.validate_status = 500;
+    assert!(credentials_for_launch(&store, &transport, id).is_err());
+    assert_eq!(transport.requests.borrow().len(), 1);
+    transport.requests.borrow_mut().clear();
+    transport.fail = true;
+    assert!(credentials_for_launch(&store, &transport, id).is_err());
+    assert_eq!(transport.requests.borrow().len(), 1);
+}
+
 #[test]
 fn yggdrasil_invalid_input_never_contacts_server() {
     let transport = Transport::new();
@@ -138,10 +190,10 @@ fn yggdrasil_invalid_input_never_contacts_server() {
 }
 #[test]
 fn yggdrasil_network_policy_rejects_private_and_transition_addresses() {
-    for ip in ["127.0.0.1", "10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "192.0.2.1", "198.51.100.1", "203.0.113.1", "198.18.0.1", "224.0.0.1", "0.0.0.0", "240.0.0.1", "::1", "::ffff:127.0.0.1", "fc00::1", "fe80::1", "2001:db8::1", "2002:7f00:1::", "3fff::1"] {
+    for ip in ["127.0.0.1", "10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "192.0.2.1", "198.51.100.1", "203.0.113.1", "198.18.0.1", "224.0.0.1", "0.0.0.0", "240.0.0.1", "::1", "::ffff:127.0.0.1", "fc00::1", "fe80::1", "2001:db8::1", "2002:7f00:1::", "3fff::1", "2001::1", "2001:2::1", "2001:10::1", "2001:20::1", "2002::1", "64:ff9b::1"] {
         assert!(!transport::public_ip(ip.parse().unwrap()), "{ip}");
     }
-    for ip in ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"] {
+    for ip in ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111", "2606:4700::1111", "2001:4860:4860::8888", "2400:cb00::1"] {
         assert!(transport::public_ip(ip.parse().unwrap()), "{ip}");
     }
 }

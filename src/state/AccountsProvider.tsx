@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { listMicrosoftAccounts } from "../ipc";
+import { listMicrosoftAccounts, listYggdrasilAccounts } from "../ipc";
 import {
   activeAccount,
   addAccount,
@@ -9,15 +9,15 @@ import {
   saveAccountBook,
   selectAccount,
   signInMicrosoftAccount,
-  syncMicrosoftAccounts,
+  syncRemoteAccounts,
 } from "../lib/accounts";
-import type { Account, AccountBook, MicrosoftAccountEntry } from "../lib/accounts";
+import type { Account, AccountBook, MicrosoftAccountEntry, YggdrasilAccountEntry } from "../lib/accounts";
 import { AccountsContext } from "./accounts";
 import type { AccountsApi } from "./accounts";
 
 /**
  * 账户簿放在内存里，每次变更写回 `localStorage`。离线账户没有秘密，可以明文存。
- * 微软账户以后端为准：启动时读一次后端的列表，把账户簿对齐过去。
+ * 微软和第三方账户以后端为准：启动时读一次后端的列表，把账户簿对齐过去。
  */
 export function AccountsProvider({ children }: { children: ReactNode }) {
   const [book, setBook] = useState<AccountBook>(loadAccountBook);
@@ -42,8 +42,20 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
         name: account.displayName,
         uuid: account.uuid,
       }));
-      update((previous) => syncMicrosoftAccounts(previous, entries));
+      update((previous) => syncRemoteAccounts(previous, entries));
     });
+    void listYggdrasilAccounts().then((accounts) => {
+      if (!current || accounts === null) {
+        return;
+      }
+      update((previous) => syncRemoteAccounts(previous, accounts.map((account) => ({
+        id: account.id,
+        kind: "yggdrasil",
+        name: account.profile.name,
+        uuid: account.profile.id,
+        server: account.server,
+      })), "yggdrasil"));
+    }).catch(() => undefined);
     return () => {
       current = false;
     };
@@ -56,6 +68,10 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
       add: (account: Account) => update((previous) => addAccount(previous, account)),
       remove: (id: string) => update((previous) => removeAccount(previous, id)),
       select: (id: string) => update((previous) => selectAccount(previous, id)),
+      signInYggdrasil: (account: YggdrasilAccountEntry) =>
+        update((previous) => signInMicrosoftAccount(previous, account)),
+      syncYggdrasil: (accounts: YggdrasilAccountEntry[]) =>
+        update((previous) => syncRemoteAccounts(previous, accounts, "yggdrasil")),
       signInMicrosoft: (account: MicrosoftAccountEntry) =>
         update((previous) => signInMicrosoftAccount(previous, account)),
     }),

@@ -19,6 +19,7 @@
 //! newtypes that make accidental token logging hard.
 
 pub mod auth_code;
+pub mod authlib;
 pub mod device_code;
 pub mod http;
 pub mod minecraft;

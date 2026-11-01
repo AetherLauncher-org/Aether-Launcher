@@ -31,7 +31,7 @@ import {
   removeMicrosoftAccount,
 } from "../ipc";
 import { describeUuidMode, formatUuid } from "../lib/accounts";
-import type { Account } from "../lib/accounts";
+import type { Account, MicrosoftAccountEntry, OfflineAccount } from "../lib/accounts";
 import type { PageDefinition } from "../navigation";
 import { useAccounts } from "../state/accounts";
 
@@ -65,21 +65,21 @@ const groups: readonly {
   },
 ];
 
-/** 一个账户属于哪一类。第三方账户还没有，所以现在只有微软和离线两类有人。 */
+/** 一个账户属于哪一类。 */
 function groupOf(account: Account): Group {
-  return account.kind === "microsoft" ? "microsoft" : "offline";
+  return account.kind === "yggdrasil" ? "thirdparty" : account.kind;
 }
 
 /**
  * 账户页。点一张账户卡片就直接使用这个账户（卡片就是按钮，没有单独的「使用」按钮）。页头三个按钮从左到右：登录微软账户（主色）、第三方登录、添加离线账户；下面的列表按
  * 同样的顺序分三类。离线账户保存在本机并在重启后保留；微软账户走设备码或浏览器登录：令牌由后端保管，
- * 这里只显示账户身份。没有配置 Azure 应用 ID 的构建会如实说明，而不是点了没反应。第三方登录还没做，
- * 按钮在那里但点不了，悬停说明原因。
+ * 这里只显示账户身份。没有配置 Azure 应用 ID 的构建会如实说明，而不是点了没反应。第三方账户由
+ * authlib-injector 认证服务器登录，凭据同样只保存在系统凭据库。
  */
 export function AccountsPage({ page }: AccountsPageProps) {
   const { book, active, select, remove, signInMicrosoft } = useAccounts();
   const [adding, setAdding] = useState(false);
-  const [removing, setRemoving] = useState<Account | null>(null);
+  const [removing, setRemoving] = useState<OfflineAccount | MicrosoftAccountEntry | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [loginAvailable, setLoginAvailable] = useState<boolean | null>(null);
@@ -153,7 +153,9 @@ export function AccountsPage({ page }: AccountsPageProps) {
         if (group.id === "thirdparty") {
           return <YggdrasilAccounts key={group.id} adding={thirdPartyOpen} onClose={() => setThirdPartyOpen(false)} />;
         }
-        const accounts = book.accounts.filter((account) => groupOf(account) === group.id);
+        const accounts = book.accounts.filter(
+          (account): account is OfflineAccount | MicrosoftAccountEntry => groupOf(account) === group.id,
+        );
         return (
           <section
             key={group.id}

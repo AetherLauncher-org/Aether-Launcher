@@ -12,7 +12,7 @@ use serde::Serialize;
 use crate::Host;
 #[path = "yggdrasil_transport.rs"]
 mod transport;
-use transport::PublicTransport;
+pub(crate) use transport::{public_get_bytes, public_get_artifact_bytes, PublicTransport};
 
 // Serialize token rotation and removal; retain at most one profile selection.
 static GATE: Mutex<Option<Pending>> = Mutex::new(None);
@@ -62,6 +62,17 @@ fn list_with(store: &dyn CredentialStore) -> Result<Vec<Account>, String> {
 /// Reads metadata only, without unlocking the OS vault.
 pub fn accounts(host: &dyn Host) -> Result<Vec<Account>, String> {
     list_with(&FileCredentialStore::new(root(host)?))
+}
+
+/// Whether `account_id` names a stored Yggdrasil account. Reads metadata only; does not
+/// unlock the vault or touch the network.
+pub fn is_yggdrasil_account(host: &dyn Host, account_id: &str) -> Result<bool, String> {
+    let id = AccountId::parse(account_id).ok_or("yggdrasil-invalid-account")?;
+    let store = FileCredentialStore::new(root(host)?);
+    let Some(credential) = store.load(id).map_err(|_| STORAGE)? else {
+        return Ok(false);
+    };
+    Ok(matches!(credential.kind, AccountKind::Yggdrasil { .. }))
 }
 fn begin_with(pending: &mut Option<Pending>, transport: &dyn HttpTransport, server: &str, username: &str, password: &str, now: Instant) -> Result<Challenge, String> {
     if pending.as_ref().is_some_and(|p| p.expires > now) { return Err("yggdrasil-busy".to_owned()); }
@@ -167,6 +178,65 @@ pub fn remove(host: &dyn Host, id: &str) -> Result<(), String> {
     let _guard = GATE.lock().map_err(|_| "yggdrasil-busy")?;
     let id = AccountId::parse(id).ok_or("yggdrasil-invalid-account")?;
     remove_with(&KeyringCredentialStore::new(root(host)?), &PublicTransport, id)
+}
+
+// --------------------------------------------------------------------------------------
+// Launch credentials
+// --------------------------------------------------------------------------------------
+
+/// What a game launch needs for a Yggdrasil account. The access token is backend-only and
+/// is never `Debug`, `Serialize`d or logged.
+pub(crate) struct YggdrasilLaunchCredentials {
+    pub name: String,
+    pub uuid: String,
+    pub access_token: String,
+    /// The account's API root, used to build the `-javaagent` argument.
+    pub server_root: String,
+}
+
+/// Validates the stored tokens, refreshing (and rotating) them when validation fails, then
+/// returns the values a launch needs. The refreshed tokens are stored back to the vault.
+pub(crate) fn launch_credentials_for(
+    host: &dyn Host,
+    account_id: &str,
+) -> Result<YggdrasilLaunchCredentials, String> {
+    let _guard = GATE.lock().map_err(|_| "yggdrasil-busy")?;
+    let id = AccountId::parse(account_id).ok_or("yggdrasil-invalid-account")?;
+    let store = KeyringCredentialStore::new(root(host)?);
+    credentials_for_launch(&store, &PublicTransport, id)
+}
+
+fn credentials_for_launch(
+    store: &dyn CredentialStore,
+    transport: &dyn HttpTransport,
+    id: AccountId,
+) -> Result<YggdrasilLaunchCredentials, String> {
+    let mut value = store.load(id).map_err(|_| STORAGE)?.ok_or("yggdrasil-sign-in-required")?;
+    let account = identity(&value).ok_or("yggdrasil-sign-in-required")?;
+    let server = Server::parse(&account.server)?;
+    let tokens = Tokens::from_vault(value.refresh.as_ref().ok_or("yggdrasil-sign-in-required")?)?;
+
+    // Validate first; refresh only when validation says the token is no longer valid.
+    let tokens = match protocol::parse_empty(&execute(transport, &protocol::build_validate(&server, &tokens))?) {
+        Ok(()) => tokens,
+        Err("yggdrasil-sign-in-required") => {
+            let response = execute(transport, &protocol::build_refresh(&server, &tokens, Some(&account.profile)))?;
+            let fresh = protocol::parse_session(&response, Some(tokens.client()))?;
+            let profile = fresh.selected.filter(|p| p.id == account.profile.id).ok_or("yggdrasil-invalid-profile")?;
+            value.display_name = profile.name;
+            value.refresh = Some(fresh.tokens.to_vault());
+            store.save(&value).map_err(|_| STORAGE)?;
+            fresh.tokens
+        }
+        Err(other) => return Err(other.to_owned()),
+    };
+
+    Ok(YggdrasilLaunchCredentials {
+        name: value.display_name,
+        uuid: account.profile.id,
+        access_token: tokens.access().to_owned(),
+        server_root: server.root().to_owned(),
+    })
 }
 
 #[cfg(test)]

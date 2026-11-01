@@ -16,7 +16,7 @@ import {
   saveAccountBook,
   selectAccount,
   signInMicrosoftAccount,
-  syncMicrosoftAccounts,
+  syncRemoteAccounts,
   uuidModes,
   validatePlayerName,
 } from "./accounts";
@@ -262,7 +262,7 @@ describe("Microsoft accounts in the book", () => {
     };
     const added: MicrosoftAccountEntry = { ...microsoft, id: "new", name: "Fresh" };
 
-    const synced = syncMicrosoftAccounts(book, [microsoft, added]);
+    const synced = syncRemoteAccounts(book, [microsoft, added]);
 
     expect(synced.accounts.map((entry) => [entry.id, entry.name])).toEqual([
       ["offline-1", "Steve"],
@@ -276,7 +276,7 @@ describe("Microsoft accounts in the book", () => {
   it("syncing with nothing signed in removes only the Microsoft accounts", () => {
     const book = signInMicrosoftAccount(addAccount(emptyAccountBook, account()), microsoft);
 
-    expect(syncMicrosoftAccounts(book, []).accounts.map((entry) => entry.kind)).toEqual(["offline"]);
+    expect(syncRemoteAccounts(book, []).accounts.map((entry) => entry.kind)).toEqual(["offline"]);
   });
 
   it("round-trips through storage and drops malformed Microsoft entries", () => {

@@ -98,16 +98,17 @@ impl Tokens {
         &self.access
     }
     pub fn to_vault(&self) -> RefreshToken {
-        // The constant trailer keeps even the legacy redacted Debug tail nonsecret.
+        // A versioned prefix keeps future format changes unambiguous and keeps even the
+        // legacy redacted Debug tail nonsecret.
         RefreshToken::new(format!(
-            "{}#END",
+            "ygg1:{}",
             serde_json::json!([self.access, self.client])
         ))
     }
     pub fn from_vault(value: &RefreshToken) -> Result<Self> {
         let raw = value
             .expose()
-            .strip_suffix("#END")
+            .strip_prefix("ygg1:")
             .ok_or("yggdrasil-sign-in-required")?;
         if raw.len() > MAX_BODY {
             return Err("yggdrasil-sign-in-required");
@@ -288,6 +289,21 @@ mod tests {
             .is_err()
         );
     }
+    #[test]
+    fn yggdrasil_vault_tag_is_versioned_and_strict() {
+        let tokens = Tokens { access: "access-secret".to_owned(), client: "client-secret".to_owned() };
+        let vault = tokens.to_vault();
+        assert!(vault.expose().starts_with("ygg1:"));
+        assert_eq!(Tokens::from_vault(&vault).unwrap().access(), "access-secret");
+        // The previous trailer form and any untagged text are rejected: no migration is
+        // possible or needed because no credentials exist in the wild.
+        let legacy = RefreshToken::new(format!("{}#END", serde_json::json!(["a", "c"])));
+        assert_eq!(Tokens::from_vault(&legacy).err(), Some("yggdrasil-sign-in-required"));
+        let untagged = RefreshToken::new(serde_json::json!(["a", "c"]).to_string());
+        assert_eq!(Tokens::from_vault(&untagged).err(), Some("yggdrasil-sign-in-required"));
+        assert!(!format!("{vault:?}").contains("secret"));
+    }
+
     #[test]
     fn yggdrasil_session_roundtrip() {
         let response = HttpResponse::new(

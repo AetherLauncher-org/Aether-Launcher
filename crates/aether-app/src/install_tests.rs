@@ -555,6 +555,7 @@ fn live_launch_of_an_installed_version_stays_running() {
             &super::super::launch::current_environment(),
             &vars,
             &[],
+            &[],
         )
         .unwrap();
     println!("started: {started:?}");

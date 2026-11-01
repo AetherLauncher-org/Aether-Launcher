@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   beginYggdrasilLogin,
   cancelYggdrasilLogin,
@@ -16,6 +16,11 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
+  Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true });
+});
+
+afterEach(() => {
+  Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
 });
 
 describe("Yggdrasil IPC", () => {

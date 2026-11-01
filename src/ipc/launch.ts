@@ -15,7 +15,7 @@ declare module "./call" {
       offlineName: string;
       memoryMib: number;
       accountUuid: string | null;
-      /** 微软账户的 ID；有它时后端用刷新后的正版令牌启动，忽略玩家名和 UUID */
+      /** 在线账户（微软或第三方）的 ID；有它时后端校验或刷新令牌后启动，忽略玩家名和 UUID */
       accountId: string | null;
     };
     stop_installed_instance: { id: string };
@@ -33,8 +33,8 @@ declare module "./call" {
  * 启动一个已安装的实例。
  *
  * 离线：`accountUuid` 为 null 时由后端用玩家名生成标准离线 UUID；否则必须是 32 位
- * 十六进制（可带连字符）。微软账户：传 `accountId`，后端刷新登录并用正版令牌启动，
- * 令牌不经过前端。
+ * 十六进制（可带连字符）。在线账户：传 `accountId`，后端按已保存的账户类型走微软
+ * 或 Yggdrasil 登录，校验/刷新令牌后启动，令牌不经过前端。
  */
 export function startInstalledInstance(
   id: string,
