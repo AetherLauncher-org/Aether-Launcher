@@ -165,7 +165,7 @@ export type { AddSkinResult, SkinEntry } from "./skinLibrary";
 
 // 内容下载：搜索 Modrinth、装进实例或世界
 export {
-  beginContentInstall, cancelContentInstall, contentInstallProgressEvent, contentTypes,
+  beginContentInstall, beginFolderSave, cancelContentInstall, contentInstallProgressEvent, contentTypes,
   getContentTarget, installContent, listenContentInstallProgress, searchContent, waitContentInstall,
 } from "./content";
 export type {
@@ -175,6 +175,7 @@ export type {
   ContentInstallResult,
   ContentTarget,
   ContentType,
+  FolderSaveArgs,
   InstallReport,
   InstalledFile,
   SearchHit,
@@ -238,3 +239,6 @@ export type {
   ModLoaderInstallResult,
   ModLoaderKind,
 } from "./modloader";
+
+export { installDrop } from "./drop";
+export type { DropPreview, DropReport, DroppedItem } from "./drop";

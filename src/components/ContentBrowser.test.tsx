@@ -295,3 +295,46 @@ describe("content browser", () => {
     expect(calls("search_content")).toHaveLength(0);
   });
 });
+
+describe("native folder saves", () => {
+  it("passes compatibility and dependency choice, never a path or world", async () => {
+    backend({ begin_folder_save: () => "folder-op" });
+    renderWithState(<ContentBrowser type="mod" />);
+    fireEvent.click(await screen.findByRole("button", { name: "保存 Sodium 到文件夹" }));
+    await waitFor(() => expect(calls("begin_folder_save")).toHaveLength(1));
+    expect(calls("begin_folder_save")[0][1]).toEqual({ id: "i1", projectId: "AANobbMI", projectType: "mod", withDependencies: true });
+    expect(await screen.findByText(/已保存 保存 Sodium 到文件夹：已保留并校验 sodium-1.0.0.jar/)).toBeInTheDocument();
+    expect(calls("begin_content_install")).toHaveLength(0);
+  });
+
+  it("honors the dependency switch", async () => {
+    backend({ begin_folder_save: () => "folder-op" });
+    renderWithState(<ContentBrowser type="mod" />);
+    await screen.findByText("Sodium");
+    fireEvent.click(screen.getByRole("switch", { name: "同时装必需的前置" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存 Sodium 到文件夹" }));
+    await waitFor(() => expect(calls("begin_folder_save")[0]?.[1]).toMatchObject({ withDependencies: false }));
+  });
+
+  it("saves datapacks without asking for an instance world", async () => {
+    backend({ begin_folder_save: () => "folder-op" });
+    renderWithState(<ContentBrowser type="datapack" />);
+    fireEvent.click(await screen.findByRole("button", { name: "保存 Sodium 到文件夹" }));
+    await waitFor(() => expect(calls("begin_folder_save")[0]?.[1]).toMatchObject({ projectType: "datapack", withDependencies: false }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("reports a refused save and enables retry", async () => {
+    backend({
+      begin_folder_save: () => "folder-op",
+      wait_content_install: () => ({
+        operationId: "folder-op", status: "failed", error: "a file with this name is already there",
+        installed: [], skipped: [],
+      }),
+    });
+    renderWithState(<ContentBrowser type="mod" />);
+    fireEvent.click(await screen.findByRole("button", { name: "保存 Sodium 到文件夹" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("a file with this name is already there");
+    expect(screen.getByRole("button", { name: "保存 Sodium 到文件夹" })).toBeEnabled();
+  });
+});

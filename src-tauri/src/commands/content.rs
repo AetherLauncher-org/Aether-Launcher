@@ -119,3 +119,31 @@ pub async fn install_content(
     })
     .await
 }
+
+/// Starts a folder save and returns its backend-generated operation ID. The user picks the
+/// destination natively on the worker; no folder path crosses IPC.
+#[tauri::command]
+pub fn begin_folder_save(
+    app: tauri::AppHandle,
+    id: String,
+    project_id: String,
+    project_type: String,
+    with_dependencies: bool,
+) -> Result<String, String> {
+    let operation_id = app.state::<ContentInstallState>().begin()?;
+    let worker_id = operation_id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<ContentInstallState>();
+        let host = TauriHost::new(app.clone());
+        aether_app::content_operation::execute_folder(
+            &state,
+            &worker_id,
+            &host,
+            &id,
+            &project_id,
+            &project_type,
+            with_dependencies,
+        );
+    });
+    Ok(operation_id)
+}

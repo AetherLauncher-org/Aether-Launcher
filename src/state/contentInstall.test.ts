@@ -8,7 +8,8 @@ vi.mock("../ipc", () => ({
   listenContentInstallProgress: vi.fn(), waitContentInstall: vi.fn(),
   describeCommandError: (error: unknown) => String(error),
 }));
-const args = (projectId: string): ContentInstallArgs => ({
+const args = (projectId: string): ContentInstallArgs & { kind: "install" } => ({
+  kind: "install",
   id: "instance", projectId, projectType: "mod", world: null, withDependencies: true,
 });
 function deferred<T>() {

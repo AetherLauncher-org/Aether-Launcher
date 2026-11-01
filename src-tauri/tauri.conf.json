@@ -20,6 +20,7 @@
         "minHeight": 620,
         "center": true,
         "decorations": false,
+        "dragDropEnabled": false,
         "transparent": true,
         "shadow": true,
         "windowEffects": {

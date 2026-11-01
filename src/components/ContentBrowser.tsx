@@ -114,12 +114,22 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
   const install = (hit: SearchHit, world: string | null) => {
     if (currentId === null) return;
     enqueue(hit.title, {
+      kind: "install",
       id: currentId, projectId: hit.projectId, projectType: type, world,
       withDependencies: withDependencies && type === "mod",
     });
   };
   const busy = new Set(tasks.filter((task) => task.args.id === currentId &&
     (task.status === "queued" || task.status === "running")).map((task) => task.args.projectId));
+
+  const saveFolder = (hit: SearchHit) => {
+    if (currentId === null) return;
+    enqueue(`保存 ${hit.title} 到文件夹`, {
+      kind: "folder",
+      id: currentId, projectId: hit.projectId, projectType: type,
+      withDependencies: withDependencies && type === "mod",
+    });
+  };
 
   const openPage = async (hit: SearchHit) => {
     try {
@@ -287,6 +297,9 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
                       </Text>
                     ) : null}
                     <div className="search-hit-actions">
+                      <Button size="small" disabled={busy.has(hit.projectId) || blocked !== null}
+                        aria-label={`保存 ${hit.title} 到文件夹`}
+                        onClick={() => void saveFolder(hit)}>保存到文件夹…</Button>
                       <Button
                         size="small"
                         appearance="subtle"
@@ -353,17 +366,21 @@ function ContentInstallCard({ task, onCancel, onDismiss }: {
   task: ContentInstallTask; onCancel: () => void; onDismiss: () => void;
 }) {
   const active = task.status === "queued" || task.status === "running";
+  const saving = task.args.kind === "folder";
+  // 安装任务的措辞保持原样（「已装 …」「安装完成」）；保存任务换动词，句式一致。
+  const verb = saving ? "保存" : "安装";
+  const doneLead = saving ? `已保存 ${task.title}：` : `已装 ${task.title}：`;
   const progress = task.progress;
   const result = task.result;
-  const label = task.status === "queued" ? "等待安装" : task.status === "running"
-    ? task.cancelRequested ? "正在取消…" : progress ? phaseLabels[progress.phase] : "正在准备安装"
-    : task.status === "done" ? "安装完成" : task.status === "cancelled" ? "已取消" : "安装失败";
+  const label = task.status === "queued" ? `等待${verb}` : task.status === "running"
+    ? task.cancelRequested ? "正在取消…" : progress ? phaseLabels[progress.phase] : `正在准备${verb}`
+    : task.status === "done" ? (saving ? "保存完成" : "安装完成") : task.status === "cancelled" ? "已取消" : `${verb}失败`;
   const fileRatio = progress?.phase === "downloading" && progress.bytesTotal > 0
     ? Math.min(1, Math.max(0, progress.bytesDone / progress.bytesTotal)) : undefined;
   return (
     <article className="content-install-card" aria-label={`${task.title} 安装任务`}>
       <div className="content-install-heading">
-        <Text weight="semibold">{task.title}{task.args.world ? ` · ${task.args.world}` : ""}</Text>
+        <Text weight="semibold">{task.title}{task.args.kind === "install" && task.args.world ? ` · ${task.args.world}` : ""}</Text>
         <Badge appearance="tint" color={task.status === "failed" ? "danger" : task.status === "done" ? "success" : "brand"}>{label}</Badge>
         <Button size="small" appearance="subtle" disabled={active && task.cancelRequested}
           aria-label={`${active ? "取消" : "关闭"} ${task.title}`} onClick={active ? onCancel : onDismiss}>
@@ -380,10 +397,10 @@ function ContentInstallCard({ task, onCancel, onDismiss }: {
         </Text> : null}
       </> : <div role={task.status === "failed" ? "alert" : "status"}>
         <Text size={200}>
-          {task.status === "done" ? `已装 ${task.title}：` : `${label} ${task.title}：`}
+          {task.status === "done" ? doneLead : `${label} ${task.title}：`}
           {result ? result.installed.length > 0
             ? `已保留并校验 ${result.installed.map((file) => file.fileName).join("、")}`
-            : "未保留已校验文件" : task.operationId ? "未能读取保留文件清单" : "未启动安装"}
+            : "未保留已校验文件" : task.operationId ? "未能读取保留文件清单" : `未启动${verb}`}
           {result?.error ? `；${result.error}` : ""}
           {result && result.skipped.length > 0
             ? `；${result.skipped.length} 个前置没能装上（${result.skipped.map((item) => `${item.projectId}：${item.reason}`).join("；")}）` : ""}

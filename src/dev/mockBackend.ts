@@ -8,7 +8,8 @@
  * 只在开发服务器里加载（见 `main.tsx`），不会进入生产构建。网址上带 `?mock=off`
  * 可以回到「没有后端」的原始浏览器预览；`?mock=login-denied`、`?mock=login-child`、
  * `?mock=login-expired` 让微软登录以对应的原因失败，`?mock=no-login` 模拟没有配置
- * Azure 应用 ID 的构建。
+ * Azure 应用 ID 的构建，`?mock=drop` 在页面加载 300 毫秒后模拟一次拖放（令牌和
+ * 文件名单，没有路径），用来在浏览器里试拖放确认对话框。
  *
  * 假数据里没有任何真实令牌，登录出来的账户是虚构的。
  */
@@ -924,6 +925,14 @@ async function handle(command: string, args: Args): Promise<unknown> {
     case "search_content":
       await sleep(300);
       return mockSearch(String(args?.text ?? ""), String(args?.projectType));
+    case "begin_folder_save": {
+      const { id, projectId, projectType, withDependencies } = args as {
+        id: string; projectId: string; projectType: ContentInstallArgs["projectType"]; withDependencies: boolean;
+      };
+      return beginMockContentInstall({ id, projectId, projectType, world: null, withDependencies });
+    }
+    case "install_drop":
+      return { installed: [{ name: "example.jar", world: null }, ...((args?.worlds as string[]) ?? []).map((world) => ({ name: "example.zip", world }))], skipped: [] };
     case "begin_content_install":
       return beginMockContentInstall(args as ContentInstallArgs);
     case "cancel_content_install": {
@@ -991,6 +1000,9 @@ function handlePlugin(command: string, args: Args): unknown {
     case "plugin:event|listen": {
       const id = nextId++;
       listeners.set(id, { event: String(args?.event), handlerId: Number(args?.handler) });
+      if (mode === "drop" && args?.event === "drop://staged") {
+        window.setTimeout(() => emit("drop://staged", { token: "mock-drop", items: [{ name: "example.jar", size: 4096, kind: "mod" }, { name: "example.zip", size: 8192, kind: "datapack" }] }), 300);
+      }
       return id;
     }
     case "plugin:event|unlisten":

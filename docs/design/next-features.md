@@ -9,11 +9,11 @@
 | 1 | 导航栏改到页面顶部，不在左边 | 已做（见 [ui-shell.md](ui-shell.md)） | — |
 | 2 | 原生界面：iced / egui / Slint 三个候选都做对比 | iced、egui 做完且输入法通过；Slint 在做 | — |
 | 3 | 世界可管理：能查看数据包等 | 已做（见 [instance-management.md](../modules/instance-management.md)）；启用／停用数据包没做 | — |
-| 4 | 下载页能从 Modrinth 和 CurseForge 下载模组、数据包、资源包、光影等，装进实例（或实例的世界）或选定文件夹 | Modrinth → 实例 / 世界已做（见 [content-metadata.md](../modules/content-metadata.md)）；整合包（`.mrpack`）已做（见 [modpack.md](../modules/modpack.md)）；进度和取消已做（见 [content-metadata.md](../modules/content-metadata.md)）；选定文件夹、CurseForge 没做 | CurseForge 的 key（待定） |
+| 4 | 下载页能从 Modrinth 和 CurseForge 下载模组、数据包、资源包、光影等，装进实例（或实例的世界）或选定文件夹 | Modrinth → 实例 / 世界已做（见 [content-metadata.md](../modules/content-metadata.md)）；整合包（`.mrpack`）已做（见 [modpack.md](../modules/modpack.md)）；进度和取消已做（见 [content-metadata.md](../modules/content-metadata.md)）；选定文件夹已做（走同一套进度、取消和排队，见 [content-metadata.md](../modules/content-metadata.md)「保存到所选文件夹」）；CurseForge 没做 | CurseForge 的 key（待定） |
 | 5 | 皮肤库：选皮肤、加皮肤；换皮肤时有多个正版账户就弹卡片多选；下载页能从 NameMC / Skindex 等下皮肤，存进皮肤库或选定文件夹 | 皮肤库和「换上」已做（左边导航里的独立栏目「皮肤库」，见 [skin-library.md](../modules/skin-library.md)）；下载页的皮肤来源没做 | — |
 | 6 | 第三方账户登录，像 LittleSkin | 登录、刷新、移除、启动已做（见 [yggdrasil.md](../modules/yggdrasil.md)） | — |
 | 7 | i18n | 基础设施、跟随系统（中英）和导航栏已做（见 [i18n.md](i18n.md)）；其余页面分片迁移，后端错误码方案待定 | — |
-| 8 | 拖放：拖到模组页就当模组加；拖到主页按扩展名判断，zip 看里面是资源包还是数据包，数据包弹窗选世界（可多选，和皮肤库一样） | 设计见下，待做 | 世界管理（3）；皮肤库（5，拖 PNG 时） |
+| 8 | 拖放安装 | 分类、单次令牌、流式复制、确认界面和逐项报告已做；私有原生监听器待接入，当前不能实际拖入 | 私有原生监听器 |
 
 ## 3. 世界管理
 
@@ -43,7 +43,7 @@ DatapackInfo { name, isFolder, sizeBytes, description?, packFormat?, state: enab
 
 1. **实例**：模组 → `mods/`，资源包 → `resourcepacks/`，光影 → `shaderpacks/`；
 2. **实例的某个世界**：数据包 → `saves/<世界>/datapacks/`；
-3. **选定的文件夹**：由后端开原生文件夹对话框（页面不传路径），只写这一个已校验的文件，文件名净化，已存在的文件不覆盖、要问（负责人 2026-10-31 定）。
+3. **选定的文件夹**：由后端开原生文件夹对话框（页面不传路径），只写校验过的文件，文件名净化，已存在的文件不覆盖；与装进实例共用操作 id、进度事件、取消和两槽队列，保留文件逐项报告，见 [内容元数据](../modules/content-metadata.md)「保存到所选文件夹」。
 
 每个文件都按 API 给的哈希校验（Modrinth：sha1 + sha512；CurseForge：sha1），哈希不符就丢掉。搜索要按游戏版本、加载器、类型筛，并给出依赖。
 
@@ -75,26 +75,9 @@ Yggdrasil 协议的外置登录服务器（LittleSkin、Ely.by、Blessing Skin �
 
 ## 8. 拖放安装
 
-要求：文件拖到**模组页**就当模组加进去；拖到**主页（别的地方）**按扩展名判断；`.zip` 要看里面的文件，判断是资源包还是数据包；数据包弹窗选世界，可多选。
+分类、短期单次令牌、流式复制、实例及多世界选择和逐项报告已实现，详见 [拖放安装](../modules/drop-install.md)。目前没有原生拖放入口：Tauri 2 的默认处理器把路径发给网页，已禁用。`NativeDropListener` 是占位接口；待通过 Tauri 上游提供仅 Rust 可见的回调，或实现 Windows 原生拖放钩子，再把文件路径交给后端并只向网页发送令牌与文件信息。不要启用 `tauri://drag-drop`。
 
-**安全上的关键点**：Tauri 的拖放事件会把文件路径交给网页，而第一条不变量是「前端不传路径」。所以拖放由 Rust 一侧接住（窗口的 `DragDrop` 事件），路径只留在后端，放在一个不透明的令牌后面（和导入一样：单次有效、有数量和时间上限）；网页只收到令牌、每个文件的显示名、大小、判断结果，以及落点的坐标（用来知道落在哪个区域）。网页之后只能说「令牌 X 里的第 N 个文件，装到实例 Y 的某个目标」，由后端重新校验。原生界面以后用自己的拖放事件，调用同一批 `aether-app` 函数，路径同样不进界面代码。
-
-判断（后端做，所有内容都是不可信输入）：
-
-| 拖进来的 | 判断 | 去向 |
-| --- | --- | --- |
-| `.jar` | 模组 | `mods/` |
-| `.zip` | 只读名单和 `pack.mcmeta`（不解压到磁盘；条目数、单个条目和总大小有上限）：有 `pack.mcmeta` + `data/` → 数据包；有 `pack.mcmeta` + `assets/` → 资源包；两者都有 → 问；有 `shaders/` 且没有 `pack.mcmeta` → 光影；根上有 `level.dat` → 世界；`modrinth.index.json`（`.mrpack`）或 `manifest.json` → 整合包。压缩包里多套一层文件夹也认（只看一层） | 资源包 `resourcepacks/`，光影 `shaderpacks/`，数据包 `saves/<世界>/datapacks/`，世界 `saves/` |
-| 文件夹 | 同上，有 `pack.mcmeta` 才认 | 同上 |
-| `.litematic` `.schem` `.schematic` `.nbt` | 投影 | `schematics/` |
-| `.png`，64×64 或 64×32 | 皮肤 | 皮肤库（没有皮肤库之前不认） |
-| 其他 | 不认，原样告诉用户 | — |
-
-落到**模组页**时只认 `.jar`，别的告诉用户这里放不进去；落到**别处**时出一个对话框：选实例（默认上次玩的），每个文件显示判断结果和去向；数据包再选世界（卡片，可多选，没有世界时说明并跳过）。
-
-复制规则：复制不是移动；源文件是链接就拒绝；目标名净化成一个普通文件名、扩展名不变；目标已存在时不覆盖，改名成 `名字 (1).扩展名`；游戏运行中的实例不能改；一次最多 50 个文件，单个文件有大小上限；每个文件复制完算 SHA-1 给界面看，不当作信任依据。
-
-待定：主页拖进来没有选中实例时，默认选哪个；整合包拖进来是导入成新实例还是先不认；一个 zip 既是资源包又是数据包时是默认问还是两个都装。
+浏览器开发预览可用 `?mock=drop` 模拟事件；Rust 测试直接调用 `stage`，无需把路径传过 IPC。桌面开发构建可用 `simulate_dev_drop` 命令（配合 `AETHER_DEV_DROP` 环境变量）走完整流程，见 [拖放安装](../modules/drop-install.md)。
 
 ## 顺序
 

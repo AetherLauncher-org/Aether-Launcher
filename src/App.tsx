@@ -1,6 +1,7 @@
 import { FluentProvider } from "@fluentui/react-components";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageTransition } from "./components/PageTransition";
+import { DropInstallDialog } from "./components/DropInstallDialog";
 import { defaultApplicationInfo, getApplicationInfo, isTauri, setWindowTheme } from "./ipc";
 import type { ApplicationInfo } from "./ipc";
 import { aetherDarkTheme, aetherLightTheme } from "./lib/brand";
@@ -97,6 +98,7 @@ function App() {
           <InstancesProvider>
             <InstallProvider>
               <GameProvider>
+                <DropInstallDialog />
                 <div className="app-shell">
                   <TitleBar />
                   <div className="app-body">

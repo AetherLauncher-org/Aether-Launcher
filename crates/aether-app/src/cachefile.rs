@@ -49,3 +49,25 @@ pub(crate) fn read_capped(path: &Path, limit: u64) -> Option<Vec<u8>> {
 #[cfg(test)]
 #[path = "cachefile_tests.rs"]
 mod tests;
+
+/// Reject links in all directory components, including Windows junctions.
+/// Callers must prevent concurrent replacement of directory components.
+pub(crate) fn check_directory(path: &Path) -> io::Result<()> {
+    for ancestor in path.ancestors() {
+        let metadata = fs::symlink_metadata(ancestor)?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() || is_reparse(&metadata) {
+            return Err(io::Error::other("not a plain directory"));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn is_reparse(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    metadata.file_attributes() & 0x400 != 0
+}
+#[cfg(not(windows))]
+fn is_reparse(_: &fs::Metadata) -> bool {
+    false
+}

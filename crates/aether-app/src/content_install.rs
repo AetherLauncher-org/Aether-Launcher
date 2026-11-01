@@ -15,6 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use aether_content::browse::{
     self, DependencyKind, Hit, ProjectType, SearchQuery, Sort, VersionFile, is_game_version,
@@ -254,6 +255,8 @@ pub fn search_modrinth(
 // Downloading one verified file
 // --------------------------------------------------------------------------------------
 
+static NEXT_TEMPORARY: AtomicU64 = AtomicU64::new(0);
+
 /// Downloads `file` into `folder` under its own name, and keeps it only if its size and hashes
 /// are what Modrinth listed.
 fn download_verified(
@@ -264,7 +267,12 @@ fn download_verified(
 ) -> Result<PathBuf, String> {
     fs::create_dir_all(folder).map_err(|_| "cannot create the folder".to_owned())?;
     let target = folder.join(&file.filename);
-    let temporary = folder.join(format!(".{}.aether-part", file.filename));
+    let temporary = folder.join(format!(
+        ".{}.{}.{}.aether-part",
+        file.filename,
+        std::process::id(),
+        NEXT_TEMPORARY.fetch_add(1, Ordering::Relaxed)
+    ));
 
     // claim the name first so a file that appears meanwhile is not replaced
     let claim = fs::OpenOptions::new()
@@ -272,6 +280,7 @@ fn download_verified(
         .create_new(true)
         .open(&target);
     if claim.is_err() {
+        let _ = fs::remove_file(&temporary);
         return Err("a file with this name is already there".to_owned());
     }
     drop(claim);
@@ -664,3 +673,6 @@ pub fn install(
 #[cfg(test)]
 #[path = "content_install_tests.rs"]
 mod tests;
+
+mod folder;
+pub use folder::save_to_folder_with_control;

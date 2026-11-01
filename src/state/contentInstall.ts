@@ -1,20 +1,31 @@
 import { useSyncExternalStore } from "react";
 import {
-  beginContentInstall, cancelContentInstall, describeCommandError,
+  beginContentInstall, beginFolderSave, cancelContentInstall, describeCommandError,
   listenContentInstallProgress, waitContentInstall,
 } from "../ipc";
-import type { ContentInstallArgs, ContentInstallProgress, ContentInstallResult } from "../ipc";
+import type { ContentInstallArgs, ContentInstallProgress, ContentInstallResult, FolderSaveArgs } from "../ipc";
+
+export type ContentTaskArgs =
+  | ({ kind: "install" } & ContentInstallArgs)
+  | ({ kind: "folder" } & FolderSaveArgs);
 
 export type ContentInstallTask = {
   key: number;
   title: string;
-  args: ContentInstallArgs;
+  args: ContentTaskArgs;
   status: "queued" | "running" | ContentInstallResult["status"];
   operationId: string | null;
   progress: ContentInstallProgress | null;
   result: ContentInstallResult | null;
   cancelRequested: boolean;
   notice: string | null;
+};
+
+const sameTarget = (left: ContentTaskArgs, right: ContentTaskArgs) => {
+  if (left.kind !== right.kind) return false;
+  if (left.id !== right.id || left.projectId !== right.projectId || left.projectType !== right.projectType) return false;
+  if (left.kind === "install" && right.kind === "install") return left.world === right.world;
+  return true;
 };
 
 // Module lifetime deliberately exceeds ContentBrowser mounts and download tabs.
@@ -67,11 +78,19 @@ export function createContentInstallStore() {
       if (get(key)?.status === "running") patch(key, { cancelRequested: false, notice: `取消失败：${describeCommandError(error)}` });
     }
   };
+  // `kind` is a frontend-only discriminant: strip it so the backend sees only the command's own args.
+  const begin = async (task: ContentInstallTask): Promise<string> => {
+    const { kind, ...payload } = task.args;
+    if (kind === "install") {
+      return beginContentInstall(payload as ContentInstallArgs);
+    }
+    return beginFolderSave(payload as FolderSaveArgs);
+  };
   const run = async (key: number) => {
     try {
       await ensureListener();
       patch(key, { notice: listeningError });
-      const operationId = await beginContentInstall(get(key).args);
+      const operationId = await begin(get(key));
       patch(key, { operationId, progress: early.get(operationId) ?? null });
       early.delete(operationId);
       // Cancellation during begin is deferred until the backend ID becomes available.
@@ -99,9 +118,9 @@ export function createContentInstallStore() {
   return {
     subscribe(notify: () => void) { subscribers.add(notify); return () => { subscribers.delete(notify); }; },
     getSnapshot: () => tasks,
-    enqueue(title: string, args: ContentInstallArgs) {
-      if (tasks.some((task) => task.args.id === args.id && task.args.projectId === args.projectId &&
-        task.args.world === args.world && (task.status === "queued" || task.status === "running"))) return;
+    enqueue(title: string, args: ContentTaskArgs) {
+      if (tasks.some((task) => sameTarget(task.args, args) &&
+        (task.status === "queued" || task.status === "running"))) return;
       tasks = [...tasks, {
         key: nextKey++, title, args, status: "queued", operationId: null, progress: null,
         result: null, cancelRequested: false, notice: null,

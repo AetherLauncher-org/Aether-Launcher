@@ -249,6 +249,67 @@ pub fn execute(
     control.terminal(status, &report);
 }
 
+/// Runs a reserved folder save on a blocking worker thread. Shares the install machinery: the
+/// same operation id namespace, progress event, cancellation and two-slot queue. The user
+/// dismissing the native folder picker finishes the operation as `cancelled` without an error.
+pub fn execute_folder(
+    state: &ContentInstallState,
+    operation_id: &str,
+    host: &dyn Host,
+    instance_id: &str,
+    project_id: &str,
+    project_type: &str,
+    with_dependencies: bool,
+) {
+    let Ok(cancel) = state.start(operation_id) else {
+        return;
+    };
+    let control = OperationControl::new(host, operation_id, project_id, cancel);
+    let outcome = crate::content_install::save_to_folder_with_control(
+        &crate::identify::UreqNet,
+        host,
+        instance_id,
+        project_id,
+        project_type,
+        with_dependencies,
+        &control,
+    );
+    let (status, report, error) = match outcome {
+        Ok(Some(report)) => ("done", report, None),
+        Ok(None) => (
+            "cancelled",
+            InstallReport {
+                installed: Vec::new(),
+                skipped: Vec::new(),
+            },
+            None,
+        ),
+        Err((reason, installed)) => {
+            let status = if reason == "cancelled" {
+                "cancelled"
+            } else {
+                "failed"
+            };
+            (
+                status,
+                InstallReport {
+                    installed,
+                    skipped: Vec::new(),
+                },
+                Some(reason),
+            )
+        }
+    };
+    state.finish(ContentInstallResult {
+        operation_id: operation_id.to_owned(),
+        status,
+        installed: report.installed.clone(),
+        skipped: report.skipped.clone(),
+        error,
+    });
+    control.terminal(status, &report);
+}
+
 pub(crate) struct AtomicCancel(Arc<Operation>);
 
 pub(crate) struct OperationControl<'a> {

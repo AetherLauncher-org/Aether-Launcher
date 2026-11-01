@@ -17,6 +17,7 @@ pub mod authlib;
 pub mod catalog;
 pub mod content_install;
 pub mod content_operation;
+pub mod drop;
 pub mod host;
 pub mod identify;
 pub mod import;

@@ -7,6 +7,7 @@
 
 pub mod catalog;
 pub mod content;
+pub mod drop;
 mod host;
 pub mod import;
 pub mod install;

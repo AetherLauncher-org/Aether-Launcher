@@ -195,3 +195,25 @@ export async function installContent(
   requireDesktop();
   return callCommand("install_content", { id, projectId, projectType, world, withDependencies });
 }
+
+export type FolderSaveArgs = {
+  id: string;
+  projectId: string;
+  projectType: ContentType;
+  withDependencies: boolean;
+};
+
+declare module "./call" {
+  interface CommandArgs {
+    begin_folder_save: FolderSaveArgs;
+  }
+  interface CommandResults {
+    begin_folder_save: string;
+  }
+}
+
+/** 开始一次「保存到文件夹」；用户在后端弹出的原生对话框里选目录，路径不经过网页。 */
+export async function beginFolderSave(args: FolderSaveArgs): Promise<string> {
+  requireDesktop();
+  return callCommand("begin_folder_save", args);
+}
