@@ -10,7 +10,7 @@
 | 2 | 原生界面：iced / egui / Slint 三个候选都做对比 | iced、egui 做完且输入法通过；Slint 在做 | — |
 | 3 | 世界可管理：能查看数据包等 | 已做（见 [instance-management.md](../modules/instance-management.md)）；启用／停用数据包没做 | — |
 | 4 | 下载页能从 Modrinth 和 CurseForge 下载模组、数据包、资源包、光影等，装进实例（或实例的世界）或选定文件夹 | Modrinth → 实例 / 世界已做（见 [content-metadata.md](../modules/content-metadata.md)）；选定文件夹、进度、CurseForge 没做 | CurseForge 的 key（待定） |
-| 5 | 皮肤库：选皮肤、加皮肤；换皮肤时有多个正版账户就弹卡片多选；下载页能从 NameMC / Skindex 等下皮肤，存进皮肤库或选定文件夹 | 皮肤库已做（账户页「皮肤库」标签，见 [skin-library.md](../modules/skin-library.md)）；换到账户上、下载页的皮肤来源没做 | 换肤接口（要在 aether-auth 里加二进制上传） |
+| 5 | 皮肤库：选皮肤、加皮肤；换皮肤时有多个正版账户就弹卡片多选；下载页能从 NameMC / Skindex 等下皮肤，存进皮肤库或选定文件夹 | 已做：皮肤库、正版账户换肤、下载页官方 API 来源及网站外链（见 [skin-library.md](../modules/skin-library.md)） | — |
 | 6 | 第三方账户登录，像 LittleSkin | 在调研协议 | authlib-injector（官方下载，带校验和） |
 | 7 | i18n | 方案见下，待做 | — |
 | 8 | 拖放：拖到模组页就当模组加；拖到主页按扩展名判断，zip 看里面是资源包还是数据包，数据包弹窗选世界（可多选，和皮肤库一样） | 设计见下，待做 | 世界管理（3）；皮肤库（5，拖 PNG 时） |
@@ -57,7 +57,7 @@ DatapackInfo { name, isFolder, sizeBytes, description?, packFormat?, state: enab
 - **皮肤库**：本机的一个文件夹（应用数据目录下）加一份索引。皮肤按内容的 SHA-256 命名，所以重复添加同一张不会存两份；只收 PNG、64×64 或 64×32、64 KiB 以内（检查文件头，不先解码）。每张有名字、经典 / 纤细（Alex）两种模型、来源。
 - **加皮肤**：从文件、从玩家名（Mojang 官方的皮肤）、从下载页。
 - **换皮肤**：选一张皮肤，点「换上」。如果有不止一个**正版**账户，弹出模态框，里面是账户卡片（头像用现在画的那个头），**可多选**，对选中的每个账户各换一次；只有一个正版账户就直接换。离线账户没有皮肤可换，不列出。换肤要用 Minecraft 的访问令牌，只在后端里用，不过 IPC。**已做**（`docs/modules/skin-library.md`「换上」）。与上面不同的一处：只有一个正版账户时也弹框，账户默认选中，点一次确认——换肤立刻生效，Mojang 对更换频率有限制，误点一下的代价比多点一次大。要改成直接换，改 `WearSkinDialog` 即可。
-- **下载页的皮肤**（2026-10-31 负责人定，依据调研）：只自动取**有官方接口**的来源——Mojang 官方链路（玩家名 → UUID → 会话服务器 → `textures.minecraft.net`，贴图哈希是 PNG 的 **SHA-256**，下载后校验）、LittleSkin / Ely.by（authlib-injector 体系，文档公开）。NameMC、Skindex、Planet Minecraft 没有官方接口，条款也没核实，**不自动抓取**，只放「在浏览器里打开」的按钮，用户自己保存 PNG 后加进皮肤库（走第 5 条的「从文件加」，受同样的检查）。下载的去向是「皮肤库」或「选定的文件夹」，和第 4 条的文件夹规则一样。Crafatar、Minotar、mc-heads 这类渲染服务是镜像，不是信任根，不作为皮肤文件的来源。
+- **下载页的皮肤**（2026-10-31 负责人定，已实现）：只自动取有官方接口的 Mojang、LittleSkin、Ely.by；NameMC、Skindex、Planet Minecraft 只通过系统浏览器打开，用户自行保存 PNG 后添加。支持预览、加入皮肤库（`source: download`）和原生文件夹保存；同名文件不覆盖。接口链、主机白名单、限制和调研依据已移入 [皮肤库模块文档](../modules/skin-library.md#下载页的接口与安全边界)。Crafatar、Minotar、mc-heads 等渲染镜像不作为皮肤文件来源。
 
 待定：皮肤库做成导航栏里单独一页，还是放在账户页里。
 

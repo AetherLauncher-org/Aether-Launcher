@@ -261,6 +261,8 @@ fn only_the_documented_source_addresses_are_contacted() {
         "https://ely.by/storage/skins/not-hex.png".to_owned(),
         "https://skinsystem.ely.by/skins/notch.png".to_owned(),
         "https://namemc.com/".to_owned(),
+        "https://textures.minecraft.net/texture/../abc".to_owned(),
+        "https://textures.minecraft.net/texture/abc?next=evil".to_owned(),
         String::new(),
     ] {
         assert!(!is_allowed_source_url(&bad), "{bad}");
@@ -501,6 +503,18 @@ fn foreign_and_malformed_texture_urls_are_rejected_before_downloading() {
 }
 
 #[test]
+fn a_profile_for_another_player_is_refused() {
+    let other = "f".repeat(32);
+    let body = profile_with("https://ely.by/storage/skins/abc.png", false, "Notch")
+        .replacen(UUID, &other, 1);
+
+    assert_eq!(
+        skin_from_source_profile(&body, UUID, trusted_ely_texture).unwrap_err(),
+        "the skin service sent something unusable"
+    );
+}
+
+#[test]
 fn oversized_documents_and_invalid_pngs_are_refused() {
     let mut net = FakeNet::littleskin(skin_png(1), false);
     net.posts.insert(
@@ -517,11 +531,17 @@ fn oversized_documents_and_invalid_pngs_are_refused() {
         .is_err()
     );
     assert!(
-        skin_from_source_profile(&" ".repeat(MAX_PROFILE_BYTES + 1), trusted_ely_texture).is_err()
+        skin_from_source_profile(
+            &" ".repeat(MAX_PROFILE_BYTES + 1),
+            UUID,
+            trusted_ely_texture
+        )
+        .is_err()
     );
     assert!(
         skin_from_source_profile(
             &profile_with("https://ely.by/storage/skins/abc.png", false, "../bad"),
+            UUID,
             trusted_ely_texture
         )
         .is_err()

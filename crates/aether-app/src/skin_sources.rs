@@ -114,7 +114,11 @@ pub fn is_allowed_source_url(url: &str) -> bool {
         .strip_prefix("https://ely.by/storage/skins/")
         .map(|rest| rest.strip_suffix(".png").is_some_and(is_texture_hash))
         .unwrap_or_default();
-    let mojang = crate::skins::is_allowed_url(url);
+    let mojang = if url.starts_with("https://textures.minecraft.net/") {
+        trusted_texture_url(url).is_some_and(|normalized| normalized == url)
+    } else {
+        crate::skins::is_allowed_url(url)
+    };
     (mojang
         || littleskin_name
         || littleskin_profile
@@ -186,11 +190,11 @@ struct NameAnswer {
 /// Reads a one-name answer (`{"id","name"}`); `Ok(None)` for an empty body, which the
 /// services use for "no such player".
 fn parse_name_answer(body: &str) -> Result<Option<(String, String)>, String> {
-    if body.trim().is_empty() {
-        return Ok(None);
-    }
     if body.len() > MAX_PROFILE_BYTES {
         return Err("the skin service sent too much".to_owned());
+    }
+    if body.trim().is_empty() {
+        return Ok(None);
     }
     let answer: NameAnswer = serde_json::from_str(body)
         .map_err(|_| "the skin service sent something unusable".to_owned())?;
@@ -203,6 +207,7 @@ fn parse_name_answer(body: &str) -> Result<Option<(String, String)>, String> {
 
 #[derive(Deserialize)]
 struct Profile {
+    id: String,
     #[serde(default)]
     name: String,
     #[serde(default)]
@@ -249,6 +254,7 @@ struct SourceSkin {
 /// address into the HTTPS address to use, or `None` to refuse it.
 fn skin_from_source_profile(
     body: &str,
+    expected_uuid: &str,
     trusted: fn(&str) -> Option<String>,
 ) -> Result<(String, Option<SourceSkin>), String> {
     if body.len() > MAX_PROFILE_BYTES {
@@ -256,7 +262,7 @@ fn skin_from_source_profile(
     }
     let profile: Profile = serde_json::from_str(body)
         .map_err(|_| "the skin service sent something unusable".to_owned())?;
-    if !is_player_name(&profile.name) {
+    if !profile.id.eq_ignore_ascii_case(expected_uuid) || !is_player_name(&profile.name) {
         return Err("the skin service sent something unusable".to_owned());
     }
     let Some(property) = profile.properties.iter().find(|p| p.name == "textures") else {
@@ -387,7 +393,8 @@ fn download_with(
                 ),
                 MAX_PROFILE_BYTES,
             )?;
-            let (name, skin) = skin_from_source_profile(&profile, trusted_littleskin_texture)?;
+            let (name, skin) =
+                skin_from_source_profile(&profile, &uuid, trusted_littleskin_texture)?;
             let bytes = texture_bytes(net, skin.as_ref())?;
             Ok(PendingSkin {
                 source,
@@ -408,7 +415,7 @@ fn download_with(
                 &format!("https://authserver.ely.by/session/profile/{uuid}"),
                 MAX_PROFILE_BYTES,
             )?;
-            let (name, skin) = skin_from_source_profile(&profile, trusted_ely_texture)?;
+            let (name, skin) = skin_from_source_profile(&profile, &uuid, trusted_ely_texture)?;
             let bytes = texture_bytes(net, skin.as_ref())?;
             Ok(PendingSkin {
                 source,
