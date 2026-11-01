@@ -63,6 +63,87 @@ describe("callCommand", () => {
   });
 });
 
+describe("tracing calls in development", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  const development = () => {
+    vi.stubEnv("MODE", "development");
+    vi.stubEnv("DEV", true);
+  };
+
+  it("says nothing under test, so test output stays clean", async () => {
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    vi.mocked(invoke).mockResolvedValue(null);
+
+    await callCommand("list_instances");
+
+    expect(debug).not.toHaveBeenCalled();
+  });
+
+  it("logs the command, how long it took and what kind of thing came back", async () => {
+    development();
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    vi.mocked(invoke).mockResolvedValue({ instances: [], skipped: [] });
+
+    await callCommand("list_instances");
+    await Promise.resolve();
+
+    const lines = debug.mock.calls.map((call) => call.join(" "));
+    expect(lines[0]).toBe("[ipc] → list_instances()");
+    expect(lines[1]).toMatch(/^\[ipc\] ← list_instances ok in \d+ ms, object$/);
+  });
+
+  it("logs only the names of the arguments, never their values", async () => {
+    development();
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    vi.mocked(invoke).mockResolvedValue(null);
+
+    await callCommand("get_world_details", { id: "secret-instance-id", world: "Secret World" });
+    await Promise.resolve();
+
+    const text = debug.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(text).toContain("get_world_details(id,world)");
+    expect(text).not.toContain("secret-instance-id");
+    expect(text).not.toContain("Secret World");
+  });
+
+  it("logs a failure, and still hands the failure to the caller", async () => {
+    development();
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    vi.mocked(invoke).mockRejectedValue("no such world");
+
+    await expect(callCommand("list_instances")).rejects.toBe("no such world");
+    await Promise.resolve();
+
+    expect(debug.mock.calls.some((call) => String(call[0]).startsWith("[ipc] ✗ list_instances failed"))).toBe(true);
+  });
+
+  it("warns once when a call has not answered after five seconds, and not after it has", async () => {
+    development();
+    vi.useFakeTimers();
+    vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let answer: (value: unknown) => void = () => undefined;
+    vi.mocked(invoke).mockReturnValue(new Promise((resolve) => (answer = resolve)));
+
+    const pending = callCommand("list_instances");
+    await vi.advanceTimersByTimeAsync(4_900);
+    expect(warn).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain("list_instances has not answered after 5 s");
+
+    answer(null);
+    await pending;
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("describeCommandError", () => {
   it("keeps a string rejection as-is", () => {
     expect(describeCommandError("cannot list instances")).toBe(

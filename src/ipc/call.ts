@@ -53,10 +53,43 @@ export function callCommand<
   Name extends keyof CommandArgs & keyof CommandResults,
 >(name: Name, ...rest: CallRest<Name>): Promise<CommandResults[Name]> {
   const args = rest[0];
-  if (args === undefined) {
-    return invoke<CommandResults[Name]>(name);
+  const pending =
+    args === undefined ? invoke<CommandResults[Name]>(name) : invoke<CommandResults[Name]>(name, args);
+  if (import.meta.env.DEV && import.meta.env.MODE !== "test") {
+    traceCall(name, args, pending);
   }
-  return invoke<CommandResults[Name]>(name, args);
+  return pending;
+}
+
+/** 超过这么久还没回来的调用，在控制台警告一次（毫秒）。 */
+const SLOW_CALL_MS = 5000;
+
+/**
+ * 只在开发模式：把每次 IPC 调用记到控制台——发出、回来（耗时、结果是什么类型）、失败、
+ * 以及超过 5 秒还没回来的。**只记命令名和参数的键名，不记参数的值**：有的命令带着密码
+ * 之类的东西，日志里不该出现。界面「一直转圈」时，用它能一眼看出调用是没发出去、没回来，
+ * 还是回来了但界面没用上。
+ */
+function traceCall(name: string, args: unknown, pending: Promise<unknown>): void {
+  const keys = typeof args === "object" && args !== null ? Object.keys(args).join(",") : "";
+  const started = performance.now();
+  const elapsed = () => Math.round(performance.now() - started);
+  console.debug(`[ipc] → ${name}(${keys})`);
+  const slow = setTimeout(() => {
+    console.warn(`[ipc] ${name} has not answered after ${SLOW_CALL_MS / 1000} s`);
+  }, SLOW_CALL_MS);
+  // 这条分支自己处理了失败，不会多出一个未处理的拒绝；调用方拿到的仍是原来的 promise
+  pending.then(
+    (value) => {
+      clearTimeout(slow);
+      const kind = value === null ? "null" : Array.isArray(value) ? `array(${value.length})` : typeof value;
+      console.debug(`[ipc] ← ${name} ok in ${elapsed()} ms, ${kind}`);
+    },
+    (error: unknown) => {
+      clearTimeout(slow);
+      console.debug(`[ipc] ✗ ${name} failed in ${elapsed()} ms:`, error);
+    },
+  );
 }
 
 /**
