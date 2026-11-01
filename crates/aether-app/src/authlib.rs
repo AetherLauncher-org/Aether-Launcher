@@ -97,13 +97,13 @@ fn offline(root: &Path) -> Result<PathBuf, String> {
 }
 /// Downloads raw bytes from one candidate URL, capped by the caller. The production
 /// implementation is [`crate::yggdrasil::public_get_artifact_bytes`].
-type JarFetcher = dyn Fn(&str, u64) -> Result<Vec<u8>, ()>;
+type JarFetcher<'a> = dyn Fn(&str, u64) -> Result<Vec<u8>, ()> + 'a;
 
 /// Metadata is requested only from the fixed official endpoint. No mirror supplies hashes.
-pub fn ensure_agent(
+pub fn ensure_agent<'a>(
     host: &dyn Host,
     transport: &dyn HttpTransport,
-    fetch: &JarFetcher,
+    fetch: &JarFetcher<'a>,
 ) -> Result<PathBuf, String> {
     let _guard = CACHE_GATE.lock().map_err(|_| STORAGE)?;
     let root = agent_root(host)?;
