@@ -98,4 +98,3 @@ agent 信任根是官方 HTTPS 清单 `https://authlib-injector.yushi.moe/artifa
 ## 待定
 
 - 换肤（`uploadSkin` / `uploadTexture`）是否对这些服务器开放、怎么接，见 [下一批功能](../design/next-features.md) 第 5 条。
-- agent JAR 的官方发布地址和 SHA-256 清单，以及下载校验的具体流程（上面「还没做」第 1 点）。

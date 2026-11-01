@@ -11,7 +11,7 @@
 | 3 | 世界可管理：能查看数据包等 | 已做（见 [instance-management.md](../modules/instance-management.md)）；启用／停用数据包没做 | — |
 | 4 | 下载页能从 Modrinth 和 CurseForge 下载模组、数据包、资源包、光影等，装进实例（或实例的世界）或选定文件夹 | Modrinth → 实例 / 世界已做（见 [content-metadata.md](../modules/content-metadata.md)）；选定文件夹、进度、CurseForge 没做 | CurseForge 的 key（待定） |
 | 5 | 皮肤库：选皮肤、加皮肤；换皮肤时有多个正版账户就弹卡片多选；下载页能从 NameMC / Skindex 等下皮肤，存进皮肤库或选定文件夹 | 皮肤库已做（账户页「皮肤库」标签，见 [skin-library.md](../modules/skin-library.md)）；换到账户上、下载页的皮肤来源没做 | 换肤接口（要在 aether-auth 里加二进制上传） |
-| 6 | 第三方账户登录，像 LittleSkin | 登录、刷新、移除已做（见 [yggdrasil.md](../modules/yggdrasil.md)）；用第三方账户启动游戏（agent 下载 + `-javaagent` 参数）没做 | authlib-injector（官方下载，带校验和） |
+| 6 | 第三方账户登录，像 LittleSkin | 登录、刷新、移除、启动已做（见 [yggdrasil.md](../modules/yggdrasil.md)） | — |
 | 7 | i18n | 方案见下，待做 | — |
 | 8 | 拖放：拖到模组页就当模组加；拖到主页按扩展名判断，zip 看里面是资源包还是数据包，数据包弹窗选世界（可多选，和皮肤库一样） | 设计见下，待做 | 世界管理（3）；皮肤库（5，拖 PNG 时） |
 
@@ -63,9 +63,9 @@ DatapackInfo { name, isFolder, sizeBytes, description?, packFormat?, state: enab
 
 ## 6. 第三方账户登录
 
-Yggdrasil 协议的外置登录服务器（LittleSkin、Ely.by、Blessing Skin 系）。登录、刷新、移除已做，见 [yggdrasil.md](../modules/yggdrasil.md)。密码不存、不进日志、不过 IPC，只存令牌（系统凭据库）；服务器地址只允许 HTTPS 且解析到公网地址。启动时用 authlib-injector（`-javaagent`），jar 从官方地址下载并校验 SHA-256——**这一部分还没做**：官方发布的 JAR 地址和 SHA-256 清单尚未核实，核实之前不写死哈希、不实现下载。
+Yggdrasil 协议的外置登录服务器（LittleSkin、Ely.by、Blessing Skin 系）。登录、刷新、移除和启动已做，见 [yggdrasil.md](../modules/yggdrasil.md)。密码不存、不进日志、不过 IPC，只存令牌（系统凭据库）；服务器地址只允许 HTTPS 且解析到公网地址。启动时用 authlib-injector（`-javaagent`），JAR 只信任官方 HTTPS 清单里的 SHA-256，下载后校验并缓存，每次启动重新校验。
 
-待定：agent 的官方发布地址与 SHA-256 清单；能不能通过这些服务器的接口换肤。
+待定：能不能通过这些服务器的接口换肤。
 
 ## 7. i18n
 
