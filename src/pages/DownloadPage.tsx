@@ -1,6 +1,7 @@
 import { Spinner, Tab, TabList } from "@fluentui/react-components";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ContentBrowser } from "../components/ContentBrowser";
+import { ModpackBrowser } from "../components/ModpackBrowser";
 import { PageHeader } from "../components/PageHeader";
 import { DesktopOnlyNotice, ErrorState } from "../components/PageState";
 import { VersionBrowser } from "../components/VersionBrowser";
@@ -14,8 +15,8 @@ import type { PageDefinition } from "../navigation";
 import { useInstall } from "../state/install";
 import { useInstances } from "../state/instances";
 
-/** 顶上的标签：Minecraft 本体，然后是各类内容。 */
-type DownloadTab = "versions" | ContentType;
+/** 顶上的标签：Minecraft 本体，然后是各类内容，最后是整合包。 */
+type DownloadTab = "versions" | ContentType | "modpack";
 
 type DownloadPageProps = {
   page: PageDefinition;
@@ -86,9 +87,12 @@ export function DownloadPage({ page }: DownloadPageProps) {
             {contentTypeLabels[type]}
           </Tab>
         ))}
+        <Tab value="modpack">整合包</Tab>
       </TabList>
 
-      {tab !== "versions" ? (
+      {tab === "modpack" ? (
+        <ModpackBrowser />
+      ) : tab !== "versions" ? (
         <ContentBrowser type={tab} />
       ) : status === "error" && error ? (
         <ErrorState title="读取版本目录失败" message={error} onRetry={refresh} retryLabel="重新读取" />

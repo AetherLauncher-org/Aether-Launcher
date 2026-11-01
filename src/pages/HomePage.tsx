@@ -134,7 +134,7 @@ export function HomePage({ greeting, summary }: HomePageProps) {
 
       {job !== null && job.status === "running" ? <InstallProgressCard job={job} onCancel={cancel} /> : null}
       {job !== null && (job.status === "error" || job.status === "cancelled") ? (
-        <InstallFailure job={job} onRetry={() => void start(job.version, job.name)} />
+        <InstallFailure job={job} onRetry={() => void start(job.version, job.name, null, job.modpack)} />
       ) : null}
 
       <section className="stat-row" aria-label="当前状态">

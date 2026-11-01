@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import {
   cancelVanillaInstall,
   describeCommandError,
+  installModpack,
   installModLoaderVersion,
   isInstallCancelled,
   listenInstallProgress,
@@ -64,6 +65,7 @@ export function InstallProvider({ children }: { children: ReactNode }) {
       version: string,
       name: string,
       loader: { kind: string; version: string } | null = null,
+      modpack?: { projectId: string | null; optional: boolean },
     ) => {
       if (running.current) {
         return;
@@ -71,6 +73,7 @@ export function InstallProvider({ children }: { children: ReactNode }) {
       running.current = true;
       sample.current = emptySpeedSample;
       setJob({
+        ...(modpack ? { modpack } : {}),
         version,
         name,
         status: "running",
@@ -82,7 +85,9 @@ export function InstallProvider({ children }: { children: ReactNode }) {
       try {
         // 选了加载器就走加载器那条链（后端会先装原版），否则只装原版。
         const instance =
-          loader === null
+          modpack !== undefined
+            ? await installModpack(modpack.projectId, name, modpack.optional)
+            : loader === null
             ? await startVanillaInstall(version, name)
             : (
                 await installModLoaderVersion(

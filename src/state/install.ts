@@ -5,6 +5,7 @@ export type InstallStatus = "running" | "done" | "error" | "cancelled";
 
 /** 当前（或刚结束的）一次安装。同一时间只有一个，后端也只允许一个。 */
 export type InstallJob = {
+  modpack?: { projectId: string | null; optional: boolean };
   version: string;
   name: string;
   status: InstallStatus;
@@ -22,6 +23,7 @@ export type InstallApi = {
     version: string,
     name: string,
     loader?: { kind: string; version: string } | null,
+    modpack?: { projectId: string | null; optional: boolean },
   ) => Promise<void>;
   cancel: () => void;
   /** 清掉已结束的安装记录（完成、失败或取消后）。 */

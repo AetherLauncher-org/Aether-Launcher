@@ -231,3 +231,7 @@ fn install_pack<R: Read + Seek>(
     }
     result
 }
+
+#[cfg(test)]
+#[path = "install_tests.rs"]
+mod install_tests;

@@ -263,3 +263,40 @@ fn the_platforms_filter_is_not_taken_on_trust() {
     let versions = [version("wrong", Channel::Release, "2026-10-01", &["1.16.5"], &["fabric"])];
     assert!(pick_version(&versions, "1.21.1", Some("fabric")).is_none());
 }
+
+fn mrpack(filename: &str, sha512: Option<&str>, primary: bool) -> VersionFile {
+    VersionFile {
+        filename: filename.to_owned(),
+        url: "https://cdn.modrinth.com/data/pack.mrpack".to_owned(),
+        size: 1,
+        sha1: SHA1.to_owned(),
+        sha512: sha512.map(str::to_owned),
+        primary,
+    }
+}
+
+#[test]
+fn pick_modpack_version_prefers_release_primary_and_both_hashes() {
+    let mut release = version("release", Channel::Release, "2026-06-01", &[], &[]);
+    release.files = vec![
+        mrpack("pack.mrpack", None, true),           // missing SHA-512
+        mrpack("extra.jar", Some(SHA512), false),    // not a .mrpack
+        mrpack("pack.mrpack", Some(SHA512), true),
+    ];
+    let mut beta = version("beta", Channel::Beta, "2026-09-01", &[], &[]);
+    beta.files = vec![mrpack("newer.mrpack", Some(SHA512), true)];
+    let versions = [release, beta];
+
+    let (chosen, file) = pick_modpack_version(&versions).unwrap();
+    assert_eq!(chosen.id, "release");
+    assert_eq!(file.filename, "pack.mrpack");
+}
+
+#[test]
+fn pick_modpack_version_needs_a_hashed_mrpack() {
+    let mut no_hash = version("nohash", Channel::Release, "2026-01-01", &[], &[]);
+    no_hash.files = vec![mrpack("pack.mrpack", None, true)];
+    let mut not_pack = version("notpack", Channel::Release, "2026-01-01", &[], &[]);
+    not_pack.files = vec![mrpack("mod.jar", Some(SHA512), true)];
+    assert!(pick_modpack_version(&[no_hash, not_pack]).is_none());
+}

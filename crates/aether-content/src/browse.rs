@@ -588,9 +588,9 @@ pub fn primary_file(version: &ProjectVersion) -> Option<&VersionFile> {
 /// most recently published among equals, and a file whose name ends in `.mrpack` and that
 /// carries both a SHA-1 and a SHA-512. The primary file is preferred over the first.
 #[must_use]
-pub fn pick_modpack_version<'a>(
-    versions: &'a [ProjectVersion],
-) -> Option<(&'a ProjectVersion, &'a VersionFile)> {
+pub fn pick_modpack_version(
+    versions: &[ProjectVersion],
+) -> Option<(&ProjectVersion, &VersionFile)> {
     let version = versions.iter().min_by(|a, b| {
         a.channel
             .cmp(&b.channel)

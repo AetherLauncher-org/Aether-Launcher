@@ -187,6 +187,50 @@ async function install(version: string, name: string): Promise<InstanceSummary> 
   }
 }
 
+// 整合包安装：和原版共用 installing 标志，进度一样经 install://progress 发出。
+async function installModpack(projectId: string | null, name: string): Promise<InstanceSummary> {
+  if (installing) {
+    throw "an installation is already running";
+  }
+  if (instances.some((instance) => instance.name.toLowerCase() === name.toLowerCase())) {
+    throw "an instance with this name already exists";
+  }
+  installing = true;
+  installCancelled = false;
+  try {
+    const label = projectId === null ? "本地整合包" : `整合包 ${projectId}`;
+    for (let step = 0; step <= 12; step += 1) {
+      if (installCancelled) {
+        throw "cancelled";
+      }
+      emit("install://progress", {
+        version: label,
+        stage: "files",
+        filesDone: step,
+        filesTotal: 12,
+        bytesDone: step * 8_000_000,
+        bytesTotal: 96_000_000,
+      } satisfies InstallProgress);
+      await sleep(70);
+    }
+    emit("install://progress", {
+      version: label,
+      stage: "finalize",
+      filesDone: 1,
+      filesTotal: 1,
+      bytesDone: 0,
+      bytesTotal: 0,
+    } satisfies InstallProgress);
+    await sleep(200);
+    const created: InstanceSummary = { id: uuid(), name, version: label, state: "ready" };
+    instances = [...instances, created];
+    saveInstances();
+    return created;
+  } finally {
+    installing = false;
+  }
+}
+
 // ---- 游戏 --------------------------------------------------------------------------------
 
 const games = new Map<string, GameRunStatus>();
@@ -646,6 +690,11 @@ async function handle(command: string, args: Args): Promise<unknown> {
       return { instances, skipped: [] };
     case "install_vanilla_version":
       return install(String(args?.version), String(args?.name));
+    case "install_modpack":
+      return installModpack(
+        (args?.projectId as string | null) ?? null,
+        String(args?.name),
+      );
     case "cancel_vanilla_install":
       installCancelled = installing;
       return installing;
