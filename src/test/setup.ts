@@ -28,6 +28,13 @@ Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
   writable: true,
 });
 
+// 界面语言默认跟随系统。jsdom 的系统语言是 en-US，会让所有渲染整个应用的测试变成英文；
+// 测试统一假装系统是简体中文，要测别的语言的用例自己再改（见 I18nProvider.test.tsx）。
+Object.defineProperty(window.navigator, "languages", {
+  get: () => ["zh-CN"],
+  configurable: true,
+});
+
 // vitest 没开 globals，RTL 不会自动清理，这里手动处理
 afterEach(() => {
   cleanup();

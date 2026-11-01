@@ -8,6 +8,7 @@ import {
   toggleMaximizeWindow,
   watchMaximized,
 } from "../ipc";
+import { useT } from "../i18n/context";
 import { overallFraction } from "../lib/install";
 import { useInstall } from "../state/install";
 import { useNavigation } from "../state/navigation";
@@ -22,6 +23,7 @@ export function TitleBar() {
   const [maximized, setMaximized] = useState(false);
   const { job } = useInstall();
   const { navigate } = useNavigation();
+  const { t } = useT();
 
   useEffect(() => {
     let cancelled = false;
@@ -58,11 +60,11 @@ export function TitleBar() {
           type="button"
           className="titlebar-install"
           onClick={() => navigate("download")}
-          aria-label={`正在安装 ${job.version}，${percent}%，点击查看`}
+          aria-label={t("titlebar.install.aria", { version: job.version, percent })}
         >
           <ArrowDownload16Regular aria-hidden="true" />
           <span className="titlebar-install-text">
-            安装 {job.version} · {percent}%
+            {t("titlebar.install.text", { version: job.version, percent })}
           </span>
           <ProgressBar
             className="titlebar-install-bar"
@@ -77,7 +79,7 @@ export function TitleBar() {
           <button
             type="button"
             className="caption-button"
-            aria-label="最小化"
+            aria-label={t("titlebar.minimize")}
             onClick={() => void minimizeWindow()}
           >
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
@@ -87,7 +89,7 @@ export function TitleBar() {
           <button
             type="button"
             className="caption-button"
-            aria-label={maximized ? "还原" : "最大化"}
+            aria-label={maximized ? t("titlebar.restore") : t("titlebar.maximize")}
             onClick={() => void toggleMaximizeWindow()}
           >
             {maximized ? (
@@ -108,7 +110,7 @@ export function TitleBar() {
           <button
             type="button"
             className="caption-button caption-close"
-            aria-label="关闭"
+            aria-label={t("titlebar.close")}
             onClick={() => void closeWindow()}
           >
             <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">

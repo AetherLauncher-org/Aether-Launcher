@@ -122,6 +122,14 @@ export type {
   MicrosoftAccount,
 } from "./accounts";
 
+// 第三方账户：凭据留在后端，暂不接入启动账户簿
+export {
+  beginYggdrasilLogin, finishYggdrasilLogin, cancelYggdrasilLogin,
+  listYggdrasilAccounts, refreshYggdrasilAccount, removeYggdrasilAccount,
+  describeYggdrasilError, isYggdrasilServer, yggdrasilPresets,
+} from "./yggdrasil";
+export type { YggdrasilAccount, YggdrasilLogin, YggdrasilProfile } from "./yggdrasil";
+
 // Installed game lifecycle (no arbitrary executable or paths)
 export { gameStatus, startInstalledInstance, stopInstalledInstance } from "./launch";
 export type { GameRunStatus } from "./launch";

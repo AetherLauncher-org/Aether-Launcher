@@ -13,7 +13,7 @@ import {
   Text,
 } from "@fluentui/react-components";
 import { useCallback, useState } from "react";
-import { describeCommandError, listMicrosoftAccounts, wearSkin } from "../ipc";
+import { describeCommandError, describeMicrosoftError, listMicrosoftAccounts, wearSkin } from "../ipc";
 import type { SkinEntry } from "../ipc";
 import { useQuery } from "../lib/query";
 
@@ -60,7 +60,7 @@ export function WearSkinDialog({ skin, onClose, onWorn }: Props) {
         await wearSkin(skin.id, account.id);
         worn.push(account.displayName);
       } catch (failure: unknown) {
-        failed.push({ name: account.displayName, reason: describeCommandError(failure) });
+        failed.push({ name: account.displayName, reason: describeMicrosoftError(describeCommandError(failure)) });
       }
     }
     setBusy(false);

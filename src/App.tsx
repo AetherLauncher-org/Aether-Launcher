@@ -9,6 +9,7 @@ import { loadMotionPreference, saveMotionPreference } from "./lib/motion";
 import type { MotionPreference } from "./lib/motion";
 import { detectMica } from "./lib/platform";
 import { useTheme } from "./lib/useTheme";
+import { I18nProvider } from "./i18n/I18nProvider";
 import { findPage } from "./navigation";
 import type { PageId } from "./navigation";
 import { AccountsPage } from "./pages/AccountsPage";
@@ -16,6 +17,7 @@ import { DownloadPage } from "./pages/DownloadPage";
 import { HomePage } from "./pages/HomePage";
 import { InstancesPage } from "./pages/InstancesPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { SkinsPage } from "./pages/SkinsPage";
 import { NavPane } from "./shell/NavPane";
 import { TitleBar } from "./shell/TitleBar";
 import { AccountsProvider } from "./state/AccountsProvider";
@@ -89,7 +91,8 @@ function App() {
 
   return (
     <FluentProvider theme={resolved === "dark" ? aetherDarkTheme : aetherLightTheme} className="app-root">
-      <NavigationContext.Provider value={navigation}>
+      <I18nProvider>
+        <NavigationContext.Provider value={navigation}>
         <AccountsProvider>
           <InstancesProvider>
             <InstallProvider>
@@ -106,6 +109,8 @@ function App() {
                           <InstancesPage page={page} />
                         ) : page.id === "download" ? (
                           <DownloadPage page={page} />
+                        ) : page.id === "skins" ? (
+                          <SkinsPage page={page} />
                         ) : page.id === "accounts" ? (
                           <AccountsPage page={page} />
                         ) : (
@@ -127,6 +132,7 @@ function App() {
           </InstancesProvider>
         </AccountsProvider>
       </NavigationContext.Provider>
+      </I18nProvider>
     </FluentProvider>
   );
 }

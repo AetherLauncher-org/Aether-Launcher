@@ -1,6 +1,6 @@
 # 皮肤库
 
-账户页的「皮肤库」标签：本机保存的皮肤，每张画成正对着看的整个人。可以从文件或玩家名添加，改名、选纤细或经典手臂、删除。命令在 `src-tauri/src/commands/skin_library.rs`，规则在 `aether_app::skin_library`，图片检查在 `aether_content::skin`。
+左边导航里的「皮肤库」栏目（`SkinsPage`，在「下载」后面）：本机保存的皮肤，每张画成正对着看的整个人。可以从文件或玩家名添加，改名、选纤细或经典手臂、删除。命令在 `src-tauri/src/commands/skin_library.rs`，规则在 `aether_app::skin_library`，图片检查在 `aether_content::skin`。
 
 ## 存什么、存在哪
 

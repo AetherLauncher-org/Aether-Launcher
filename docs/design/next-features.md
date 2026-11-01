@@ -10,8 +10,8 @@
 | 2 | 原生界面：iced / egui / Slint 三个候选都做对比 | iced、egui 做完且输入法通过；Slint 在做 | — |
 | 3 | 世界可管理：能查看数据包等 | 已做（见 [instance-management.md](../modules/instance-management.md)）；启用／停用数据包没做 | — |
 | 4 | 下载页能从 Modrinth 和 CurseForge 下载模组、数据包、资源包、光影等，装进实例（或实例的世界）或选定文件夹 | Modrinth → 实例 / 世界已做（见 [content-metadata.md](../modules/content-metadata.md)）；选定文件夹、进度、CurseForge 没做 | CurseForge 的 key（待定） |
-| 5 | 皮肤库：选皮肤、加皮肤；换皮肤时有多个正版账户就弹卡片多选；下载页能从 NameMC / Skindex 等下皮肤，存进皮肤库或选定文件夹 | 已做：皮肤库、正版账户换肤、下载页官方 API 来源及网站外链（见 [skin-library.md](../modules/skin-library.md)） | — |
-| 6 | 第三方账户登录，像 LittleSkin | 在调研协议 | authlib-injector（官方下载，带校验和） |
+| 5 | 皮肤库：选皮肤、加皮肤；换皮肤时有多个正版账户就弹卡片多选；下载页能从 NameMC / Skindex 等下皮肤，存进皮肤库或选定文件夹 | 皮肤库已做（左边导航里的独立栏目）；正版账户换肤和下载页官方 API 来源、网站外链已做（见 [skin-library.md](../modules/skin-library.md)） | — |
+| 6 | 第三方账户登录，像 LittleSkin | 登录、刷新、移除已做（见 [yggdrasil.md](../modules/yggdrasil.md)）；用第三方账户启动游戏（agent 下载 + `-javaagent` 参数）没做 | authlib-injector（官方下载，带校验和） |
 | 7 | i18n | 方案见下，待做 | — |
 | 8 | 拖放：拖到模组页就当模组加；拖到主页按扩展名判断，zip 看里面是资源包还是数据包，数据包弹窗选世界（可多选，和皮肤库一样） | 设计见下，待做 | 世界管理（3）；皮肤库（5，拖 PNG 时） |
 
@@ -59,13 +59,13 @@ DatapackInfo { name, isFolder, sizeBytes, description?, packFormat?, state: enab
 - **换皮肤**：选一张皮肤，点「换上」。如果有不止一个**正版**账户，弹出模态框，里面是账户卡片（头像用现在画的那个头），**可多选**，对选中的每个账户各换一次；只有一个正版账户就直接换。离线账户没有皮肤可换，不列出。换肤要用 Minecraft 的访问令牌，只在后端里用，不过 IPC。**已做**（`docs/modules/skin-library.md`「换上」）。与上面不同的一处：只有一个正版账户时也弹框，账户默认选中，点一次确认——换肤立刻生效，Mojang 对更换频率有限制，误点一下的代价比多点一次大。要改成直接换，改 `WearSkinDialog` 即可。
 - **下载页的皮肤**（2026-10-31 负责人定，已实现）：只自动取有官方接口的 Mojang、LittleSkin、Ely.by；NameMC、Skindex、Planet Minecraft 只通过系统浏览器打开，用户自行保存 PNG 后添加。支持预览、加入皮肤库（`source: download`）和原生文件夹保存；同名文件不覆盖。接口链、主机白名单、限制和调研依据已移入 [皮肤库模块文档](../modules/skin-library.md#下载页的接口与安全边界)。Crafatar、Minotar、mc-heads 等渲染镜像不作为皮肤文件来源。
 
-待定：皮肤库做成导航栏里单独一页，还是放在账户页里。
+**已定（2026-11-01，负责人）**：皮肤库是左边导航里的独立栏目，放在「下载」后面，不再是账户页里的标签。皮肤是本机的一份收藏，不属于某个账户，「换上」时才选账户。
 
 ## 6. 第三方账户登录
 
-Yggdrasil 协议的外置登录服务器（LittleSkin、Ely.by、Blessing Skin 系）。启动时用 authlib-injector（`-javaagent`）。密码不存、不进日志、不过 IPC，只存令牌（系统凭据库）；jar 从官方地址下载并校验 SHA-256。
+Yggdrasil 协议的外置登录服务器（LittleSkin、Ely.by、Blessing Skin 系）。登录、刷新、移除已做，见 [yggdrasil.md](../modules/yggdrasil.md)。密码不存、不进日志、不过 IPC，只存令牌（系统凭据库）；服务器地址只允许 HTTPS 且解析到公网地址。启动时用 authlib-injector（`-javaagent`），jar 从官方地址下载并校验 SHA-256——**这一部分还没做**：官方发布的 JAR 地址和 SHA-256 清单尚未核实，核实之前不写死哈希、不实现下载。
 
-待定：协议细节和安全边界在调研；用户输入的服务器地址要怎么校验（只允许 HTTPS）；能不能通过这些服务器的接口换肤。
+待定：agent 的官方发布地址与 SHA-256 清单；能不能通过这些服务器的接口换肤。
 
 ## 7. i18n
 

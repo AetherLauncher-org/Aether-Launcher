@@ -28,6 +28,7 @@ pub mod signin;
 pub mod store;
 pub mod token;
 pub mod xbox;
+pub mod yggdrasil;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -73,6 +74,7 @@ impl Default for AccountId {
 pub enum AccountKind {
     Microsoft,
     Offline,
+    Yggdrasil { server: String, profile_id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
