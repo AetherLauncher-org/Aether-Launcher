@@ -74,7 +74,9 @@ pub fn target_of(version_id: &str) -> Target {
             // `neoforge-1.20.1-47.1.106`
             [first, ..] if *first == "1" => rest.split_once('-').and_then(|(id, _)| game(id)),
             // `neoforge-21.1.172` is for 1.21.1, `neoforge-21.0.5` for 1.21
-            [minor, patch, _, ..] if minor.bytes().all(|b| b.is_ascii_digit()) && !minor.is_empty() => {
+            [minor, patch, _, ..]
+                if minor.bytes().all(|b| b.is_ascii_digit()) && !minor.is_empty() =>
+            {
                 if *patch == "0" {
                     Some(format!("1.{minor}"))
                 } else if patch.bytes().all(|b| b.is_ascii_digit()) && !patch.is_empty() {
@@ -110,7 +112,7 @@ pub fn content_target(host: &dyn Host, id: &str) -> Result<Target, String> {
 // Search
 // --------------------------------------------------------------------------------------
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchHit {
     pub project_id: String,
@@ -161,7 +163,7 @@ impl SearchHit {
     }
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResult {
     pub hits: Vec<SearchHit>,
@@ -213,7 +215,11 @@ pub fn search(
     let wanted: Vec<(&str, &str)> = page
         .hits
         .iter()
-        .filter_map(|hit| hit.icon_url.as_deref().map(|icon| (hit.project_id.as_str(), icon)))
+        .filter_map(|hit| {
+            hit.icon_url
+                .as_deref()
+                .map(|icon| (hit.project_id.as_str(), icon))
+        })
         .collect();
     let icons = match host.data_dir() {
         Ok(data) => icons_for(net, &data.join("cache"), &wanted),
@@ -237,7 +243,10 @@ pub fn search(
 /// # Errors
 ///
 /// As [`search`].
-pub fn search_modrinth(host: &dyn Host, request: &SearchRequest<'_>) -> Result<SearchResult, String> {
+pub fn search_modrinth(
+    host: &dyn Host,
+    request: &SearchRequest<'_>,
+) -> Result<SearchResult, String> {
     search(&UreqNet, host, request)
 }
 
@@ -247,19 +256,44 @@ pub fn search_modrinth(host: &dyn Host, request: &SearchRequest<'_>) -> Result<S
 
 /// Downloads `file` into `folder` under its own name, and keeps it only if its size and hashes
 /// are what Modrinth listed.
-fn download_verified(net: &dyn ContentNet, file: &VersionFile, folder: &Path, control: &dyn InstallControl) -> Result<PathBuf, String> {
+fn download_verified(
+    net: &dyn ContentNet,
+    file: &VersionFile,
+    folder: &Path,
+    control: &dyn InstallControl,
+) -> Result<PathBuf, String> {
     fs::create_dir_all(folder).map_err(|_| "cannot create the folder".to_owned())?;
     let target = folder.join(&file.filename);
     let temporary = folder.join(format!(".{}.aether-part", file.filename));
 
     // claim the name first so a file that appears meanwhile is not replaced
-    let claim = fs::OpenOptions::new().write(true).create_new(true).open(&target);
+    let claim = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&target);
     if claim.is_err() {
         return Err("a file with this name is already there".to_owned());
     }
     drop(claim);
 
-    let result = write_checked(net, file, &temporary, control).and_then(|()| {
+    // Claim the partial as well: a preexisting partial belongs to somebody else.
+    let mut partial = match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+    {
+        Ok(partial) => partial,
+        Err(_) => {
+            let _ = fs::remove_file(&target);
+            return Err("a temporary file with this name is already there".to_owned());
+        }
+    };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        write_checked(net, file, &mut partial, control)
+    }))
+    .unwrap_or_else(|_| Err("the content install task failed".to_owned()));
+    drop(partial);
+    let result = result.and_then(|()| {
         check_cancel(control)?;
         fs::rename(&temporary, &target).map_err(|_| "cannot place the file".to_owned())
     });
@@ -270,14 +304,12 @@ fn download_verified(net: &dyn ContentNet, file: &VersionFile, folder: &Path, co
     result.map(|()| target)
 }
 
-fn write_checked(net: &dyn ContentNet, file: &VersionFile, temporary: &Path, control: &dyn InstallControl) -> Result<(), String> {
-    // a stale temporary (or a link planted at its name) is removed, never followed
-    let _ = fs::remove_file(temporary);
-    let mut out = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(temporary)
-        .map_err(|_| "cannot write the file".to_owned())?;
+fn write_checked(
+    net: &dyn ContentNet,
+    file: &VersionFile,
+    out: &mut fs::File,
+    control: &dyn InstallControl,
+) -> Result<(), String> {
     let mut reader = net.get_stream(&file.url, file.size.saturating_add(1))?;
 
     let mut sha1 = Sha1::new();
@@ -304,7 +336,9 @@ fn write_checked(net: &dyn ContentNet, file: &VersionFile, temporary: &Path, con
         control.progress(total, file.size);
     }
     check_cancel(control)?;
-    out.flush().map_err(|_| "cannot write the file".to_owned())?;
+    control.verifying();
+    out.flush()
+        .map_err(|_| "cannot write the file".to_owned())?;
     if total != file.size {
         return Err("the download ended early".to_owned());
     }
@@ -323,7 +357,7 @@ fn write_checked(net: &dyn ContentNet, file: &VersionFile, temporary: &Path, con
 // Installing
 // --------------------------------------------------------------------------------------
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InstalledFile {
     pub project_id: String,
@@ -332,14 +366,14 @@ pub struct InstalledFile {
     pub version: String,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SkippedProject {
     pub project_id: String,
     pub reason: String,
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallReport {
     pub installed: Vec<InstalledFile>,
@@ -385,18 +419,29 @@ pub trait InstallControl {
     fn is_cancelled(&self) -> bool;
     /// Bytes written for the current file and its expected size.
     fn progress(&self, done: u64, total: u64);
+    fn resolving(&self, _project: &str) {}
+    fn discovered(&self, _count: usize) {}
+    fn downloading(&self, _name: &str, _size: u64) {}
+    fn verifying(&self) {}
+    fn committed(&self) {}
 }
 
 struct Uncontrolled;
 impl InstallControl for Uncontrolled {
-    fn is_cancelled(&self) -> bool { false }
+    fn is_cancelled(&self) -> bool {
+        false
+    }
     fn progress(&self, _: u64, _: u64) {}
 }
 
 const CANCELLED: &str = "cancelled";
 
 fn check_cancel(control: &dyn InstallControl) -> Result<(), String> {
-    if control.is_cancelled() { Err(CANCELLED.to_owned()) } else { Ok(()) }
+    if control.is_cancelled() {
+        Err(CANCELLED.to_owned())
+    } else {
+        Ok(())
+    }
 }
 
 /// Installs the newest suitable version of a project (and, if asked, the required
@@ -417,7 +462,17 @@ pub fn install_with(
     world: Option<&str>,
     with_dependencies: bool,
 ) -> Result<InstallReport, String> {
-    install_with_control(net, host, id, project_id, project_type, world, with_dependencies, &Uncontrolled).map_err(|(error, _)| error)
+    install_with_control(
+        net,
+        host,
+        id,
+        project_id,
+        project_type,
+        world,
+        with_dependencies,
+        &Uncontrolled,
+    )
+    .map_err(|(error, _)| error)
 }
 
 /// Installs with cancellation and byte progress; errors include files already installed.
@@ -427,20 +482,50 @@ pub fn install_with(
 /// As [`install_with`], or cancellation. Successfully installed files are retained.
 #[allow(clippy::too_many_arguments)]
 pub fn install_with_control(
-    net: &dyn ContentNet, host: &dyn Host, id: &str, project_id: &str,
-    project_type: &str, world: Option<&str>, with_dependencies: bool, control: &dyn InstallControl,
+    net: &dyn ContentNet,
+    host: &dyn Host,
+    id: &str,
+    project_id: &str,
+    project_type: &str,
+    world: Option<&str>,
+    with_dependencies: bool,
+    control: &dyn InstallControl,
 ) -> Result<InstallReport, (String, Vec<InstalledFile>)> {
-    let mut installed = Vec::new();
-    let result = install_controlled_inner(net, host, id, project_id, project_type, world, with_dependencies, control, &mut installed);
-    result.map_err(|error| (error, installed))
+    let mut report = InstallReport {
+        installed: Vec::new(),
+        skipped: Vec::new(),
+    };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        install_controlled_inner(
+            net,
+            host,
+            id,
+            project_id,
+            project_type,
+            world,
+            with_dependencies,
+            control,
+            &mut report,
+        )
+    }))
+    .unwrap_or_else(|_| Err("the content install task failed".to_owned()));
+    result
+        .map(|()| report.clone())
+        .map_err(|error| (error, report.installed))
 }
 
 #[allow(clippy::too_many_arguments)]
 fn install_controlled_inner(
-    net: &dyn ContentNet, host: &dyn Host, id: &str, project_id: &str,
-    project_type: &str, world: Option<&str>, with_dependencies: bool, control: &dyn InstallControl,
-    installed: &mut Vec<InstalledFile>,
-) -> Result<InstallReport, String> {
+    net: &dyn ContentNet,
+    host: &dyn Host,
+    id: &str,
+    project_id: &str,
+    project_type: &str,
+    world: Option<&str>,
+    with_dependencies: bool,
+    control: &dyn InstallControl,
+    report: &mut InstallReport,
+) -> Result<(), String> {
     check_cancel(control)?;
     let (_, instance) = load(host, id)?;
     refuse_while_running(host, &instance)?;
@@ -449,17 +534,18 @@ fn install_controlled_inner(
     let game_version = target
         .game_version
         .ok_or("cannot tell which game version this instance is")?;
-    let loader = if project_type == ProjectType::Mod {
-        Some(target.loader.ok_or("this instance has no mod loader, mods need Fabric, Quilt, Forge or NeoForge")?)
-    } else {
-        None
-    };
+    let loader =
+        if project_type == ProjectType::Mod {
+            Some(target.loader.ok_or(
+                "this instance has no mod loader, mods need Fabric, Quilt, Forge or NeoForge",
+            )?)
+        } else {
+            None
+        };
     let (folder, extension) = destination(&game_directory(&instance), project_type, world)?;
 
-    let mut report = InstallReport {
-        installed: Vec::new(),
-        skipped: Vec::new(),
-    };
+    let mut discovered = BTreeSet::from([project_id.to_owned()]);
+    control.discovered(discovered.len());
     let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut queue = vec![(project_id.to_owned(), 0usize)];
     while let Some((project, depth)) = queue.pop() {
@@ -475,12 +561,26 @@ fn install_controlled_inner(
             });
             continue;
         }
-        match install_one(net, &project, &game_version, loader, &folder, extension, control) {
+        control.resolving(&project);
+        match install_one(
+            net,
+            &project,
+            &game_version,
+            loader,
+            &folder,
+            extension,
+            control,
+        ) {
             Ok((file, dependencies)) => {
-                installed.push(InstalledFile { project_id: file.project_id.clone(), file_name: file.file_name.clone(), version: file.version.clone() });
                 report.installed.push(file);
+                control.committed();
                 if with_dependencies && depth < MAX_DEPENDENCY_DEPTH {
-                    queue.extend(dependencies.into_iter().map(|dependency| (dependency, depth + 1)));
+                    for dependency in dependencies {
+                        if discovered.insert(dependency.clone()) {
+                            queue.push((dependency, depth + 1));
+                        }
+                    }
+                    control.discovered(discovered.len());
                 }
             }
             Err(reason) if is_main || reason == CANCELLED => return Err(reason),
@@ -490,7 +590,7 @@ fn install_controlled_inner(
             }),
         }
     }
-    Ok(report)
+    Ok(())
 }
 
 /// Installs one project; returns what was installed and the projects it requires.
@@ -505,7 +605,8 @@ fn install_one(
 ) -> Result<(InstalledFile, Vec<String>), String> {
     let url = browse::versions_url(project_id, Some(game_version), loader.as_slice())
         .map_err(|error| error.to_string())?;
-    let versions = browse::parse_versions(&net.get_text(&url)?).map_err(|error| error.to_string())?;
+    let versions =
+        browse::parse_versions(&net.get_text(&url)?).map_err(|error| error.to_string())?;
     let version = browse::pick_version(&versions, game_version, loader)
         .ok_or_else(|| format!("no version of this project fits Minecraft {game_version}"))?;
     let file = browse::primary_file(version).ok_or("this version has no downloadable file")?;
@@ -513,6 +614,7 @@ fn install_one(
         return Err(format!("the file is not a .{extension} file"));
     }
     check_cancel(control)?;
+    control.downloading(&file.filename, file.size);
     download_verified(net, file, folder, control)?;
     let dependencies = version
         .dependencies
@@ -544,7 +646,15 @@ pub fn install(
     world: Option<&str>,
     with_dependencies: bool,
 ) -> Result<InstallReport, String> {
-    install_with(&UreqNet, host, id, project_id, project_type, world, with_dependencies)
+    install_with(
+        &UreqNet,
+        host,
+        id,
+        project_id,
+        project_type,
+        world,
+        with_dependencies,
+    )
 }
 
 #[cfg(test)]
