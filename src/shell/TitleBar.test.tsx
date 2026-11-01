@@ -8,7 +8,7 @@ import { TitleBar } from "./TitleBar";
 
 function renderTitleBar(job: InstallJob | null) {
   const navigate = vi.fn();
-  const install: InstallApi = { job, start: vi.fn(), cancel: vi.fn(), dismiss: vi.fn() };
+  const install: InstallApi = { job, start: vi.fn(), retry: vi.fn(), cancel: vi.fn(), dismiss: vi.fn() };
   render(
     <FluentProvider theme={webLightTheme}>
       <NavigationContext.Provider value={{ current: "home", navigate }}>
@@ -24,6 +24,7 @@ function renderTitleBar(job: InstallJob | null) {
 const running: InstallJob = {
   version: "1.21.1",
   name: "1.21.1",
+  loader: null,
   status: "running",
   progress: {
     version: "1.21.1",

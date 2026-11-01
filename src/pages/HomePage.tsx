@@ -60,7 +60,7 @@ function Stat({ icon, label, value, hint, onClick, index }: StatProps) {
 export function HomePage({ greeting, summary }: HomePageProps) {
   const { desktop, instances } = useInstances();
   const { active } = useAccounts();
-  const { job, cancel, start } = useInstall();
+  const { job, cancel, retry } = useInstall();
   const { navigate } = useNavigation();
   const { data: runtimes } = useQuery(discoverJavaRuntimes, desktop);
 
@@ -134,7 +134,7 @@ export function HomePage({ greeting, summary }: HomePageProps) {
 
       {job !== null && job.status === "running" ? <InstallProgressCard job={job} onCancel={cancel} /> : null}
       {job !== null && (job.status === "error" || job.status === "cancelled") ? (
-        <InstallFailure job={job} onRetry={() => void start(job.version, job.name)} />
+        <InstallFailure job={job} onRetry={retry} />
       ) : null}
 
       <section className="stat-row" aria-label="当前状态">
