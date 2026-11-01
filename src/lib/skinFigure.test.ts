@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { figureParts, figureSize, isModernSkin } from "./skinFigure";
+import { figureParts, figureSize, isModernSkin, legacyHatIsSolid } from "./skinFigure";
+
+/** 一张 64×32 皮肤的像素：每个点是 `alpha`，要改的点用 `except` 指定 */
+function legacyPixels(alpha: number, except: Record<string, number> = {}): Uint8ClampedArray {
+  const pixels = new Uint8ClampedArray(64 * 32 * 4);
+  for (let y = 0; y < 32; y += 1) {
+    for (let x = 0; x < 64; x += 1) {
+      pixels[(y * 64 + x) * 4 + 3] = except[`${x},${y}`] ?? alpha;
+    }
+  }
+  return pixels;
+}
 
 const inside = (part: { dx: number; dy: number; sw: number; sh: number }) =>
   part.dx >= 0 && part.dy >= 0 && part.dx + part.sw <= figureSize.width && part.dy + part.sh <= figureSize.height;
@@ -47,6 +58,30 @@ describe("skin figure", () => {
 
     expect(parts.some((part) => part.sx === 36 && part.sy === 52 && !part.flip)).toBe(true);
     expect(parts.some((part) => part.sx === 20 && part.sy === 52 && !part.flip)).toBe(true);
+  });
+
+  it("marks exactly the hat part, and it is the one that comes last", () => {
+    for (const modern of [true, false]) {
+      const parts = figureParts(modern, false);
+      expect(parts.filter((part) => part.hat)).toHaveLength(1);
+      expect(parts[parts.length - 1].hat).toBe(true);
+    }
+  });
+
+  it("treats an old skin whose hat area has no transparent pixel as having no hat (Notch's skin)", () => {
+    expect(legacyHatIsSolid(legacyPixels(255), 64)).toBe(true);
+    // the border of the area counts, and so does a half-transparent pixel
+    expect(legacyHatIsSolid(legacyPixels(255, { "32,0": 0 }), 64)).toBe(false);
+    expect(legacyHatIsSolid(legacyPixels(255, { "63,31": 127 }), 64)).toBe(false);
+    expect(legacyHatIsSolid(legacyPixels(255, { "40,8": 0 }), 64)).toBe(false);
+  });
+
+  it("does not let the base head area decide (only x 32-63, y 0-31 is looked at)", () => {
+    // a transparent pixel in the base head (x < 32) does not make the hat area count as non-solid
+    expect(legacyHatIsSolid(legacyPixels(255, { "10,10": 0 }), 64)).toBe(true);
+    // 128 is opaque enough, 127 is not
+    expect(legacyHatIsSolid(legacyPixels(128), 64)).toBe(true);
+    expect(legacyHatIsSolid(legacyPixels(127), 64)).toBe(false);
   });
 
   it("mirrors the right arm and leg for an old skin, and has no outer layer but the hat", () => {

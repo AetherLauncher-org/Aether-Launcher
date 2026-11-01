@@ -18,6 +18,8 @@ export type FigurePart = {
   /** 左右翻转（旧皮肤的左臂左腿是右边的镜像） */
   flip: boolean;
   overlay: boolean;
+  /** 头上的帽子层（旧式皮肤要先看这块是不是实心，见 `legacyHatIsSolid`） */
+  hat: boolean;
 };
 
 /** 人的大小，以皮肤的像素点计。 */
@@ -37,7 +39,7 @@ export function figureParts(modern: boolean, slim: boolean): FigurePart[] {
     dy: number,
     overlay: boolean,
     flip = false,
-  ): FigurePart => ({ sx, sy, sw, sh, dx, dy, flip, overlay });
+  ): FigurePart => ({ sx, sy, sw, sh, dx, dy, flip, overlay, hat: false });
 
   const parts: FigurePart[] = [
     // 里层：右腿、左腿、身体、右臂、左臂、头
@@ -59,8 +61,42 @@ export function figureParts(modern: boolean, slim: boolean): FigurePart[] {
     );
   }
   // 帽子层两种皮肤都有
-  parts.push(part(40, 8, 8, 8, 4, 0, true));
+  parts.push({ ...part(40, 8, 8, 8, 4, 0, true), hat: true });
   return parts;
+}
+
+/**
+ * 旧式（64×32）皮肤的帽子区域是不是整块实心。游戏对这种皮肤有一条老规矩（代码里叫
+ * Notch 透明度 hack）：(32,0)–(64,32) 这一块里要是**没有一个**透明像素（alpha < 128），
+ * 就当作没有帽子层，整块清成透明。Notch 的皮肤正是这样：这一块是不透明的黑色，不照这条
+ * 规矩画，脸会被黑色盖住。`pixels` 是整张皮肤的 RGBA。
+ */
+export function legacyHatIsSolid(pixels: Uint8ClampedArray, width: number): boolean {
+  for (let y = 0; y < 32; y += 1) {
+    for (let x = 32; x < 64 && x < width; x += 1) {
+      if (pixels[(y * width + x) * 4 + 3] < 128) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/** 整张皮肤的像素；读不出来（没有画布、被污染）返回 null。 */
+function readPixels(skin: CanvasImageSource & { width: number; height: number }): Uint8ClampedArray | null {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = skin.width;
+    canvas.height = skin.height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (context === null) {
+      return null;
+    }
+    context.drawImage(skin, 0, 0);
+    return context.getImageData(0, 0, skin.width, skin.height).data;
+  } catch {
+    return null;
+  }
 }
 
 /** `width`×`height` 的皮肤图是不是 64×64 的新式皮肤（旧式是 64×32）。 */
@@ -81,7 +117,14 @@ export function drawFigure(
   const scale = Math.max(1, Math.floor(target.width / figureSize.width));
   context.clearRect(0, 0, target.width, target.height);
   context.imageSmoothingEnabled = false;
-  for (const part of figureParts(isModernSkin(skin.width, skin.height), slim)) {
+  const modern = isModernSkin(skin.width, skin.height);
+  // 旧式皮肤的帽子区域整块实心就不画帽子；读不出像素时照画（宁可多画一层也不画错别的）
+  const pixels = modern ? null : readPixels(skin);
+  const skipHat = pixels !== null && legacyHatIsSolid(pixels, skin.width);
+  for (const part of figureParts(modern, slim)) {
+    if (part.hat && skipHat) {
+      continue;
+    }
     const x = part.dx * scale;
     const y = part.dy * scale;
     const w = part.sw * scale;
