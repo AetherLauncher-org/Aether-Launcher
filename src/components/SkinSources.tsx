@@ -9,7 +9,7 @@ import {
   Text,
 } from "@fluentui/react-components";
 import { Add20Regular, ArrowDownload20Regular, Open16Regular, Search20Regular } from "@fluentui/react-icons";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   addDownloadedSkin,
   addSkinFromFile,
@@ -19,7 +19,7 @@ import {
   searchSkin,
 } from "../ipc";
 import type { AddSkinResult, SkinPreview, SkinSite, SkinSource } from "../ipc";
-import { drawFigure, figureSize } from "../lib/skinFigure";
+import { SkinView } from "./SkinView";
 
 const sources: readonly { value: SkinSource; label: string }[] = [
   { value: "mojang", label: "Mojang" },
@@ -285,9 +285,8 @@ export function SkinSources() {
   );
 }
 
-/** Render the returned data URL as a complete, nearest-neighbour 2D figure. */
+/** Render the returned data URL as a small 3D figure (inner layer plus voxel outer layer). */
 function PreviewFigure({ preview, scale = 7 }: { preview: SkinPreview; scale?: number }) {
-  const canvas = useRef<HTMLCanvasElement>(null);
   const [loaded, setLoaded] = useState<{ url: string; image: HTMLImageElement } | null>(null);
 
   useEffect(() => {
@@ -307,21 +306,5 @@ function PreviewFigure({ preview, scale = 7 }: { preview: SkinPreview; scale?: n
 
   const image = loaded !== null && loaded.url === preview.image ? loaded.image : null;
 
-  useEffect(() => {
-    if (image !== null && canvas.current !== null) {
-      drawFigure(canvas.current, image, preview.slim);
-    }
-  }, [image, preview.slim]);
-
-  return (
-    <canvas
-      ref={canvas}
-      className="skin-figure"
-      width={figureSize.width * scale}
-      height={figureSize.height * scale}
-      style={{ width: figureSize.width * scale, height: figureSize.height * scale }}
-      role="img"
-      aria-label={`${preview.name} 的全身皮肤预览`}
-    />
-  );
+  return <SkinView image={image} slim={preview.slim} scale={scale} label={`${preview.name} 的全身皮肤预览`} />;
 }

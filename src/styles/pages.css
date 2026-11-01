@@ -1802,7 +1802,14 @@
 }
 
 .skin-figure {
-  image-rendering: pixelated;
+  /* 拖动旋转：不要让触屏把拖动当成滚动页面，也不要选中 */
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.skin-figure:active {
+  cursor: grabbing;
 }
 
 .skin-card-body {
