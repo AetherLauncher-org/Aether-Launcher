@@ -50,6 +50,7 @@ The project follows [Semantic Versioning](https://semver.org/) once public relea
 - Mods, resource packs, shader packs and worlds are shown as cards; mods, resource packs and shader packs are recognised on Modrinth by file SHA-1 and show the project's name, summary, version and icon (new `aether-content` crate; switch "联网识别" on the content tab, on by default; CurseForge is not implemented, see `docs/modules/content-metadata.md`)
 
 - Microsoft accounts show the player's skin head seen from the front, with the hat layer over the face (drawn on a canvas), instead of an initial; the skin comes from Mojang's public session server and `textures.minecraft.net`, and the avatar falls back to the initial when there is no skin or no network
+- Drag-and-drop install backend: dropped files are classified (`.jar` mod; `.zip` by entry names only — data pack, resource pack or shaders), staged behind a single-use token with a two-minute expiry, and installed with a never-overwriting claim-then-rename copy into the chosen instance (data packs go to the selected worlds); the paths never reach the webview (the stock webview drag-drop handler is disabled) and the confirmation dialog only ever sees names, sizes and kinds; the native listener hookup is still open, and dev builds can feed the pipeline through `AETHER_DEV_DROP` + `simulate_dev_drop` (see `docs/modules/drop-install.md`)
 
 ### Security
 
