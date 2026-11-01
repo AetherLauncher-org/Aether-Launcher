@@ -136,6 +136,28 @@ fn a_hit_carries_loaders_tags_versions_and_sides_apart() {
 }
 
 #[test]
+fn server_platforms_show_as_platforms_and_the_datapack_marker_is_not_a_tag() {
+    let body = r#"{"total_hits": 1, "hits": [
+        {"project_id":"AANobbMI","slug":"anticheat","title":"Anti Cheat","project_type":"datapack",
+         "display_categories":["datapack","paper","utility"],
+         "categories":["datapack","bukkit","folia","paper","spigot","utility","adventure"]}
+    ]}"#;
+
+    let hit = &parse_search(body).unwrap().hits[0];
+
+    assert_eq!(hit.loaders, ["bukkit", "spigot", "paper", "folia"]);
+    assert_eq!(hit.categories, ["utility", "adventure"]);
+}
+
+#[test]
+fn a_platform_is_not_a_loader_a_search_may_ask_for() {
+    let mut q = query();
+    q.loader = Some("paper");
+
+    assert_eq!(search_url(&q), Err(ContentError::InvalidId));
+}
+
+#[test]
 fn a_hit_with_no_tags_or_versions_is_still_a_hit() {
     let page = parse_search(
         r#"{"hits":[{"project_id":"AANobbMI","title":"Sodium","project_type":"mod"}]}"#,

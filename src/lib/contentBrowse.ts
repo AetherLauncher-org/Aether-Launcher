@@ -49,6 +49,16 @@ export const loaderLabels: Record<string, string> = {
   forge: "Forge",
   neoforge: "NeoForge",
   quilt: "Quilt",
+  // 服务端平台：数据包、插件常标这些
+  bukkit: "Bukkit",
+  spigot: "Spigot",
+  paper: "Paper",
+  folia: "Folia",
+  purpur: "Purpur",
+  sponge: "Sponge",
+  velocity: "Velocity",
+  bungeecord: "BungeeCord",
+  waterfall: "Waterfall",
 };
 
 /** Modrinth 的分类标签常用的几个翻成中文；没见过的原样显示。 */

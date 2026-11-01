@@ -38,7 +38,7 @@ export type SearchHit = {
   downloads: number;
   follows: number;
   projectType: string;
-  /** 支持的加载器：fabric / forge / neoforge / quilt 的子集 */
+  /** 支持的加载器和服务端平台：fabric / forge / neoforge / quilt，以及 paper、folia、bukkit 等 */
   loaders: string[];
   /** 分类标签（optimization、adventure…），不含加载器，最多 6 个 */
   categories: string[];

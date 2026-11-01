@@ -62,6 +62,25 @@ impl ProjectType {
 /// The loaders a mod search may be narrowed to.
 pub const LOADERS: [&str; 4] = ["fabric", "forge", "neoforge", "quilt"];
 
+/// Server platforms Modrinth lists among a project's categories, like the loaders. They only
+/// change how a hit is shown (as a platform badge instead of a tag): searching and installing
+/// still work from [`LOADERS`] alone.
+pub const PLATFORMS: [&str; 9] = [
+    "bukkit",
+    "spigot",
+    "paper",
+    "folia",
+    "purpur",
+    "sponge",
+    "velocity",
+    "bungeecord",
+    "waterfall",
+];
+
+/// Category entries that say what kind of project it is rather than what it is about. A data
+/// pack carries `datapack` on every project, so as a tag it tells nothing.
+const KIND_TAGS: [&str; 1] = ["datapack"];
+
 /// How results are ordered (Modrinth's `index`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sort {
@@ -253,9 +272,11 @@ pub fn parse_search(body: &str) -> Result<SearchPage, ContentError> {
                 .filter(|slug| is_slug(slug))
                 .unwrap_or_else(|| hit.project_id.clone());
             let tag_ok = |tag: &String| is_slug(tag) && tag.len() <= 32;
-            // Modrinth lists loaders among the categories; show them apart from the tags
+            // Modrinth lists loaders and server platforms among the categories; show them
+            // apart from the tags
             let loaders: Vec<String> = LOADERS
                 .iter()
+                .chain(PLATFORMS.iter())
                 .filter(|loader| {
                     hit.categories
                         .iter()
@@ -269,7 +290,13 @@ pub fn parse_search(body: &str) -> Result<SearchPage, ContentError> {
                 .display_categories
                 .iter()
                 .chain(&hit.categories)
-                .filter(|tag| tag_ok(tag) && !LOADERS.contains(&tag.as_str()))
+                .filter(|tag| {
+                    let name = tag.as_str();
+                    tag_ok(tag)
+                        && !LOADERS.contains(&name)
+                        && !PLATFORMS.contains(&name)
+                        && !KIND_TAGS.contains(&name)
+                })
             {
                 if !categories.contains(tag) {
                     categories.push(tag.clone());
