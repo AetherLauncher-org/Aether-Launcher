@@ -64,8 +64,12 @@ fn install_with(
 
     match project {
         Some(project) => {
-            let archive = fetch_archive(net, source, project, &base, cancel)?;
-            install_pack(host, Pack::open(archive)?, source, name, optional, cancel)
+            let (archive, staging) = fetch_archive(net, source, project, &base, cancel)?;
+            let result = install_pack(host, Pack::open(archive)?, source, name, optional, cancel);
+            // The staging file stays open for the Pack's lifetime (overrides are read from it);
+            // only now is it safe to remove it, and only on a best-effort basis.
+            let _ = fs::remove_file(staging);
+            result
         }
         None => {
             let path = host
@@ -88,14 +92,16 @@ fn install_with(
 }
 
 /// Fetch the latest `.mrpack` for `project`, spool it to a private file and verify it against the
-/// hashes the platform listed, before handing it back to be inspected as a ZIP.
+/// hashes the platform listed, before handing it back to be inspected as a ZIP. Returns the open
+/// handle (rewound) together with the staging path, which the caller removes once the `Pack` that
+/// owns the handle is dropped.
 fn fetch_archive(
     net: &dyn ContentNet,
     source: &dyn FileSource,
     project: &str,
     base: &Path,
     cancel: &CancellationToken,
-) -> Result<fs::File, String> {
+) -> Result<(fs::File, std::path::PathBuf), String> {
     let url = browse::versions_url(project, None, &[]).map_err(|error| error.to_string())?;
     let versions = browse::parse_versions(&net.get_text(&url)?).map_err(|error| error.to_string())?;
     let (_version, file) = browse::pick_modpack_version(&versions)
@@ -130,17 +136,14 @@ fn fetch_archive(
         output
             .rewind()
             .map_err(|_| "无法读取整合包".to_owned())?;
-        Ok(output)
+        Ok(())
     })();
 
-    let cleanup = fs::remove_file(&staging).map_err(|_| "无法清理整合包暂存文件".to_owned());
     match result {
-        Ok(file) => {
-            cleanup?;
-            Ok(file)
-        }
+        Ok(()) => Ok((output, staging)),
         Err(error) => {
-            let _ = cleanup;
+            drop(output);
+            let _ = fs::remove_file(&staging);
             Err(error)
         }
     }

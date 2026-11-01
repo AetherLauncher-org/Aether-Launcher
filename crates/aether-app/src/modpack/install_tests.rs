@@ -111,7 +111,7 @@ fn fetch_archive_verifies_against_the_platform_hashes() {
     let source = FakeSource(bytes.clone());
     let cancel = CancellationToken::new();
 
-    let archive = fetch_archive(&net, &source, "AAAA0000", &host.dir, &cancel).unwrap();
+    let (archive, _staging) = fetch_archive(&net, &source, "AAAA0000", &host.dir, &cancel).unwrap();
     let mut out = Vec::new();
     archive.take(64 * 1024).read_to_end(&mut out).unwrap();
     assert_eq!(out, bytes);
