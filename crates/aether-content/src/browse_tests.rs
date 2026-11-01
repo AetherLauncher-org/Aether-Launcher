@@ -293,6 +293,17 @@ fn pick_modpack_version_prefers_release_primary_and_both_hashes() {
 }
 
 #[test]
+fn pick_modpack_version_skips_ineligible_newer_releases() {
+    let newer = version("newer", Channel::Release, "2026-10-01", &[], &[]);
+    let mut older = version("older", Channel::Release, "2026-01-01", &[], &[]);
+    older.files = vec![mrpack("fallback.mrpack", Some(SHA512), false), mrpack("primary.mrpack", Some(SHA512), true)];
+    let versions = [newer, older];
+    let (chosen, file) = pick_modpack_version(&versions).unwrap();
+    assert_eq!(chosen.id, "older");
+    assert_eq!(file.filename, "primary.mrpack");
+}
+
+#[test]
 fn pick_modpack_version_needs_a_hashed_mrpack() {
     let mut no_hash = version("nohash", Channel::Release, "2026-01-01", &[], &[]);
     no_hash.files = vec![mrpack("pack.mrpack", None, true)];

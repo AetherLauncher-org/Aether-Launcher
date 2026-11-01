@@ -591,23 +591,15 @@ pub fn primary_file(version: &ProjectVersion) -> Option<&VersionFile> {
 pub fn pick_modpack_version(
     versions: &[ProjectVersion],
 ) -> Option<(&ProjectVersion, &VersionFile)> {
-    let version = versions.iter().min_by(|a, b| {
-        a.channel
-            .cmp(&b.channel)
+    versions.iter().filter_map(|version| {
+        let file = version.files.iter()
+            .filter(|file| file.filename.ends_with(".mrpack") && file.sha512.is_some())
+            .min_by_key(|file| !file.primary)?;
+        Some((version, file))
+    }).min_by(|(a, _), (b, _)| {
+        a.channel.cmp(&b.channel)
             .then_with(|| b.published.cmp(&a.published))
-    })?;
-    let file = version
-        .files
-        .iter()
-        .filter(|file| file.filename.ends_with(".mrpack") && file.sha512.is_some())
-        .find(|file| file.primary)
-        .or_else(|| {
-            version
-                .files
-                .iter()
-                .find(|file| file.filename.ends_with(".mrpack") && file.sha512.is_some())
-        })?;
-    Some((version, file))
+    })
 }
 
 /// The version to install for a game (and loader): among those that really list the game
