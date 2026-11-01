@@ -584,6 +584,24 @@ pub fn primary_file(version: &ProjectVersion) -> Option<&VersionFile> {
         .or_else(|| version.files.first())
 }
 
+/// The `.mrpack` to install for a modpack project: a release over a beta over an alpha, the
+/// most recently published among equals, and a file whose name ends in `.mrpack` and that
+/// carries both a SHA-1 and a SHA-512. The primary file is preferred over the first.
+#[must_use]
+pub fn pick_modpack_version(
+    versions: &[ProjectVersion],
+) -> Option<(&ProjectVersion, &VersionFile)> {
+    versions.iter().filter_map(|version| {
+        let file = version.files.iter()
+            .filter(|file| file.filename.ends_with(".mrpack") && file.sha512.is_some())
+            .min_by_key(|file| !file.primary)?;
+        Some((version, file))
+    }).min_by(|(a, _), (b, _)| {
+        a.channel.cmp(&b.channel)
+            .then_with(|| b.published.cmp(&a.published))
+    })
+}
+
 /// The version to install for a game (and loader): among those that really list the game
 /// version (and the loader), a release over a beta over an alpha, and the most recently
 /// published among equals. The answer is checked again here, not taken on the platform's word

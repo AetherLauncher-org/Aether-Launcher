@@ -4,6 +4,7 @@ import {
   cancelVanillaInstall,
   describeCommandError,
   installModLoaderVersion,
+  installModpack,
   isInstallCancelled,
   listenInstallProgress,
   startVanillaInstall,
@@ -12,14 +13,15 @@ import type { InstallProgress } from "../ipc";
 import { emptySpeedSample, nextSpeed } from "../lib/install";
 import type { SpeedSample } from "../lib/install";
 import { InstallContext } from "./install";
-import type { InstallApi, InstallJob, InstallLoader } from "./install";
+import type { InstallApi, InstallJob, InstallLoader, InstallModpack } from "./install";
 import { useInstances } from "./instances";
 
-/** 一次安装的目标。重试沿用的就是这一份，所以加载器也算在里面。 */
+/** 一次安装的目标。重试沿用的就是这一份，所以加载器和整合包也算在里面。 */
 type InstallAttempt = {
   version: string;
   name: string;
   loader: InstallLoader | null;
+  modpack?: InstallModpack;
 };
 
 /**
@@ -79,6 +81,7 @@ export function InstallProvider({ children }: { children: ReactNode }) {
         version: target.version,
         name: target.name,
         loader: target.loader,
+        ...(target.modpack ? { modpack: target.modpack } : {}),
         status: "running",
         progress: null,
         speed: 0,
@@ -86,9 +89,10 @@ export function InstallProvider({ children }: { children: ReactNode }) {
         error: null,
       });
       try {
-        // 选了加载器就走加载器那条链（后端会先装原版），否则只装原版。
-        const instance =
-          target.loader === null
+        // 整合包走整合包那条链；选了加载器就走加载器那条链（后端会先装原版），否则只装原版。
+        const instance = target.modpack
+          ? await installModpack(target.modpack.projectId, target.name, target.modpack.optional)
+          : target.loader === null
             ? await startVanillaInstall(target.version, target.name)
             : (
                 await installModLoaderVersion(
@@ -121,12 +125,12 @@ export function InstallProvider({ children }: { children: ReactNode }) {
   );
 
   const start = useCallback(
-    (version: string, name: string, loader: InstallLoader | null = null) => {
+    (version: string, name: string, loader: InstallLoader | null = null, modpack?: InstallModpack) => {
       // 后端一次只允许一个安装。已有安装时连「上一次的目标」也不改，免得重试装成别的。
       if (running.current) {
         return Promise.resolve();
       }
-      const target: InstallAttempt = { version, name, loader };
+      const target: InstallAttempt = { version, name, loader, ...(modpack ? { modpack } : {}) };
       attempt.current = target;
       return run(target);
     },

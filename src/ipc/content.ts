@@ -11,8 +11,9 @@ import { isTauri } from "./index";
  * 同名文件不覆盖。
  */
 
-/** 能搜索的内容类型，Modrinth 的 `project_type`。整合包只能搜，现在还不能装。 */
+/** Content installed into an existing instance. */
 export type ContentType = "mod" | "datapack" | "resourcepack" | "shader";
+export type SearchContentType = ContentType | "modpack";
 
 export const contentTypes: readonly ContentType[] = ["mod", "datapack", "resourcepack", "shader"];
 
@@ -82,7 +83,7 @@ declare module "./call" {
     get_content_target: { id: string };
     search_content: {
       text: string;
-      projectType: ContentType;
+      projectType: SearchContentType;
       gameVersion: string | null;
       loader: string | null;
       sort: SearchSort;
@@ -117,7 +118,7 @@ export async function getContentTarget(id: string): Promise<ContentTarget> {
 
 export async function searchContent(
   text: string,
-  projectType: ContentType,
+  projectType: SearchContentType,
   gameVersion: string | null,
   loader: string | null,
   sort: SearchSort,

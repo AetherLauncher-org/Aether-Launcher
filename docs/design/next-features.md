@@ -9,10 +9,10 @@
 | 1 | 导航栏改到页面顶部，不在左边 | 已做（见 [ui-shell.md](ui-shell.md)） | — |
 | 2 | 原生界面：iced / egui / Slint 三个候选都做对比 | iced、egui 做完且输入法通过；Slint 在做 | — |
 | 3 | 世界可管理：能查看数据包等 | 已做（见 [instance-management.md](../modules/instance-management.md)）；启用／停用数据包没做 | — |
-| 4 | 下载页能从 Modrinth 和 CurseForge 下载模组、数据包、资源包、光影等，装进实例（或实例的世界）或选定文件夹 | Modrinth → 实例 / 世界已做（见 [content-metadata.md](../modules/content-metadata.md)）；选定文件夹、进度、CurseForge 没做 | CurseForge 的 key（待定） |
-| 5 | 皮肤库：选皮肤、加皮肤；换皮肤时有多个正版账户就弹卡片多选；下载页能从 NameMC / Skindex 等下皮肤，存进皮肤库或选定文件夹 | 皮肤库已做（左边导航里的独立栏目「皮肤库」，见 [skin-library.md](../modules/skin-library.md)）；换到账户上、下载页的皮肤来源没做 | 换肤接口（要在 aether-auth 里加二进制上传） |
+| 4 | 下载页能从 Modrinth 和 CurseForge 下载模组、数据包、资源包、光影等，装进实例（或实例的世界）或选定文件夹 | Modrinth → 实例 / 世界已做（见 [content-metadata.md](../modules/content-metadata.md)）；整合包（`.mrpack`）已做（见 [modpack.md](../modules/modpack.md)）；选定文件夹、进度、CurseForge 没做 | CurseForge 的 key（待定） |
+| 5 | 皮肤库：选皮肤、加皮肤；换皮肤时有多个正版账户就弹卡片多选；下载页能从 NameMC / Skindex 等下皮肤，存进皮肤库或选定文件夹 | 皮肤库和「换上」已做（左边导航里的独立栏目「皮肤库」，见 [skin-library.md](../modules/skin-library.md)）；下载页的皮肤来源没做 | — |
 | 6 | 第三方账户登录，像 LittleSkin | 登录、刷新、移除已做（见 [yggdrasil.md](../modules/yggdrasil.md)）；用第三方账户启动游戏（agent 下载 + `-javaagent` 参数）没做 | authlib-injector（官方下载，带校验和） |
-| 7 | i18n | 方案见下，待做 | — |
+| 7 | i18n | 基础设施、跟随系统（中英）和导航栏已做（见 [i18n.md](i18n.md)）；其余页面分片迁移，后端错误码方案待定 | — |
 | 8 | 拖放：拖到模组页就当模组加；拖到主页按扩展名判断，zip 看里面是资源包还是数据包，数据包弹窗选世界（可多选，和皮肤库一样） | 设计见下，待做 | 世界管理（3）；皮肤库（5，拖 PNG 时） |
 
 ## 3. 世界管理

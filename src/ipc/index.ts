@@ -20,6 +20,10 @@ type CommandResults = {
   list_java_runtimes: JavaRuntimeInfo[];
 };
 
+export { installModpack } from "./modpack";
+export type { ModpackRequest } from "./modpack";
+export type { SearchContentType } from "./content";
+
 export const defaultApplicationInfo: ApplicationInfo = {
   name: "Aether Launcher",
   version: "0.1.0",
