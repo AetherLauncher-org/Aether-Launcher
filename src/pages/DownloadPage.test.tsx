@@ -353,3 +353,21 @@ describe("DownloadPage version detail", () => {
     install.resolve(created);
   });
 });
+
+describe("DownloadPage skin sources", () => {
+  it("places the skin tab after shaders and mounts the source browser", async () => {
+    backend();
+    renderWithState(<DownloadPage page={page} />);
+    await screen.findByText("最新正式版");
+
+    const tabs = within(screen.getByRole("tablist", { name: "下载什么" })).getAllByRole("tab");
+    expect(tabs.at(-2)).toBe(screen.getByRole("tab", { name: "光影" }));
+    expect(tabs.at(-1)).toBe(screen.getByRole("tab", { name: "皮肤" }));
+
+    fireEvent.click(screen.getByRole("tab", { name: "皮肤" }));
+
+    expect(screen.getByRole("region", { name: "皮肤来源" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "皮肤来源" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加皮肤文件" })).toBeInTheDocument();
+  });
+});

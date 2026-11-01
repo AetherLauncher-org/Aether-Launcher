@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { ContentBrowser } from "../components/ContentBrowser";
 import { PageHeader } from "../components/PageHeader";
 import { DesktopOnlyNotice, ErrorState } from "../components/PageState";
+import { SkinSources } from "../components/SkinSources";
 import { VersionBrowser } from "../components/VersionBrowser";
 import { VersionDetail } from "../components/VersionDetail";
 import { contentTypes } from "../ipc";
@@ -15,7 +16,7 @@ import { useInstall } from "../state/install";
 import { useInstances } from "../state/instances";
 
 /** 顶上的标签：Minecraft 本体，然后是各类内容。 */
-type DownloadTab = "versions" | ContentType;
+type DownloadTab = "versions" | ContentType | "skins";
 
 type DownloadPageProps = {
   page: PageDefinition;
@@ -86,9 +87,12 @@ export function DownloadPage({ page }: DownloadPageProps) {
             {contentTypeLabels[type]}
           </Tab>
         ))}
+        <Tab value="skins">皮肤</Tab>
       </TabList>
 
-      {tab !== "versions" ? (
+      {tab === "skins" ? (
+        <SkinSources />
+      ) : tab !== "versions" ? (
         <ContentBrowser type={tab} />
       ) : status === "error" && error ? (
         <ErrorState title="读取版本目录失败" message={error} onRetry={refresh} retryLabel="重新读取" />

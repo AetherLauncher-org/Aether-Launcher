@@ -31,7 +31,7 @@ import type {
 } from "../ipc/manage";
 import type { BrowserLoginInfo, DeviceCodeInfo, LoginEvent, MicrosoftAccount } from "../ipc/accounts";
 import type { SearchResult } from "../ipc/content";
-import type { SkinEntry } from "../ipc/skinLibrary";
+import type { SkinEntry, SkinPreview } from "../ipc/skinLibrary";
 import type { SystemMemory } from "../ipc/system";
 import type { ConversionResult, SchematicFormat } from "../ipc/schematics";
 import { mockConversionTargets, mockSchematicView } from "./mockSchematics";
@@ -289,6 +289,8 @@ function seedContent(): Record<ContentKind, ContentItem[]> {
     ],
   };
 }
+
+const mockSkinPreviews = new Map<string, { preview: SkinPreview; entry: SkinEntry }>();
 
 const mockSkins: SkinEntry[] = [
   { id: "a".repeat(64), name: "Aether hoodie", slim: false, source: "file", added: 1_761_900_000 },
@@ -727,6 +729,46 @@ async function handle(command: string, args: Args): Promise<unknown> {
       mockSkins.unshift(entry);
       return { entry, added: true };
     }
+    case "search_skin": {
+      const source = String(args?.source);
+      const name = String(args?.name).trim();
+      if (!["mojang", "littleskin", "elyby"].includes(source) || !/^[A-Za-z0-9_]{3,16}$/.test(name)) {
+        throw "unknown skin source or invalid player name";
+      }
+      await sleep(300);
+      const token = uuid();
+      const preview: SkinPreview = { token, source: source as SkinPreview["source"], name, slim: source !== "mojang", image: mockSkinImage };
+      const entry: SkinEntry = { id: token.replace(/-/g, "").padEnd(64, "0"), name, slim: preview.slim, source: "download", added: Math.floor(Date.now() / 1000) };
+      if (mockSkinPreviews.size >= 8) {
+        mockSkinPreviews.clear();
+      }
+      mockSkinPreviews.set(token, { preview, entry });
+      return preview;
+    }
+    case "add_downloaded_skin": {
+      const found = mockSkinPreviews.get(String(args?.token));
+      if (found === undefined) {
+        throw "this skin is no longer available; search for it again";
+      }
+      const existing = mockSkins.find((skin) => skin.id === found.entry.id);
+      if (existing !== undefined) {
+        return { entry: { ...existing }, added: false };
+      }
+      mockSkins.unshift({ ...found.entry });
+      return { entry: { ...found.entry }, added: true };
+    }
+    case "save_downloaded_skin": {
+      const found = mockSkinPreviews.get(String(args?.token));
+      if (found === undefined) {
+        throw "this skin is no longer available; search for it again";
+      }
+      return { fileName: `${found.preview.name}.png` };
+    }
+    case "open_skin_site":
+      if (!["namemc", "skindex", "planetminecraft"].includes(String(args?.site))) {
+        throw "not a skin site";
+      }
+      return null;
     case "rename_skin": {
       const skin = mockSkins.find((item) => item.id === args?.id);
       if (skin === undefined) {

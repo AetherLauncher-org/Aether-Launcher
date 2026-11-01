@@ -2417,6 +2417,135 @@
   gap: 4px;
 }
 
+/* 下载页的皮肤来源：来源和搜索在一条工具栏里，结果是一个人形预览加操作 */
+.skin-sources {
+  display: grid;
+  gap: 16px;
+}
+
+.skin-source-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-top: 4px;
+}
+
+.skin-source-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.skin-source-controls .fui-Select {
+  width: 150px;
+}
+
+.skin-player-search {
+  min-width: min(280px, 100%);
+}
+
+.skin-source-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skin-source-validation {
+  color: var(--colorStatusDangerForeground1);
+}
+
+.skin-source-preview {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  padding: 16px 18px;
+  border: 1px solid var(--colorNeutralStroke2);
+  border-radius: var(--borderRadiusLarge);
+  background: color-mix(in srgb, var(--colorNeutralForeground1) 4%, transparent);
+}
+
+.skin-source-figure {
+  display: grid;
+  place-items: center;
+  min-width: 112px;
+  padding: 8px 12px;
+  border-radius: var(--borderRadiusLarge);
+  background: color-mix(in srgb, var(--colorNeutralForeground1) 3%, transparent);
+}
+
+.skin-source-result {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  min-width: 0;
+}
+
+.skin-source-result-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+}
+
+.skin-source-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.skin-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.skin-site-browser {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 10px 12px;
+  border: 1px dashed var(--colorNeutralStroke2);
+  border-radius: var(--borderRadiusLarge);
+}
+
+.skin-site-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.skin-site-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+@media (max-width: 720px) {
+  .skin-source-preview {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .skin-source-result,
+  .skin-source-result-title,
+  .skin-source-actions {
+    justify-items: center;
+  }
+
+  .skin-site-browser {
+    justify-content: flex-start;
+  }
+}
+
 /* ---- 登录对话框：错误信息要折行，按钮文字不折行 ------------------------------------------ */
 
 .login-error,

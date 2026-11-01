@@ -47,6 +47,29 @@ describe("the browser mock backend", () => {
     ).rejects.toMatch(/unknown command/);
   });
 
+  it("keeps searched skins behind tokens and records downloaded library entries", async () => {
+    const pending = callCommand("search_skin", { source: "littleskin", name: "MockSkin" });
+    await vi.advanceTimersByTimeAsync(350);
+    const preview = await pending;
+    expect(preview).toMatchObject({ name: "MockSkin", source: "littleskin", slim: true });
+    expect(preview.image).toMatch(/^data:image\/png;base64,/);
+    expect(preview).not.toHaveProperty("path");
+    expect(preview).not.toHaveProperty("url");
+
+    const added = await callCommand("add_downloaded_skin", { token: preview.token });
+    expect(added.added).toBe(true);
+    expect(added.entry.source).toBe("download");
+    expect((await callCommand("add_downloaded_skin", { token: preview.token })).added).toBe(false);
+    expect(await callCommand("save_downloaded_skin", { token: preview.token })).toEqual({ fileName: "MockSkin.png" });
+    await expect(callCommand("save_downloaded_skin", { token: "unknown" })).rejects.toMatch(/no longer available/);
+    for (const site of ["namemc", "skindex", "planetminecraft"] as const) {
+      expect(await callCommand("open_skin_site", { site })).toBeNull();
+    }
+    await expect(
+      (callCommand as (name: string, args: unknown) => Promise<unknown>)("open_skin_site", { site: "https://evil.test" }),
+    ).rejects.toBe("not a skin site");
+  });
+
   it("installs a version with progress events and adds the instance", async () => {
     const seen: InstallProgress[] = [];
     const unlisten = await listen<InstallProgress>("install://progress", (event) =>
