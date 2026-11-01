@@ -3,9 +3,9 @@ use std::io::Cursor;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use aether_core::InstanceId;
 use super::*;
 use crate::identify::net::is_allowed_url;
+use aether_core::InstanceId;
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -41,7 +41,11 @@ impl Host for FakeHost {
         Ok(None)
     }
 
-    fn pick_file(&self, _filter_name: &str, _extensions: &[&str]) -> Result<Option<PathBuf>, String> {
+    fn pick_file(
+        &self,
+        _filter_name: &str,
+        _extensions: &[&str],
+    ) -> Result<Option<PathBuf>, String> {
         Ok(None)
     }
 
@@ -144,17 +148,27 @@ impl ContentNet for FakeNet {
             .strip_prefix("https://api.modrinth.com/v2/project/")
             .and_then(|rest| rest.split('/').next())
             .ok_or("unexpected address")?;
-        self.versions.get(id).cloned().ok_or_else(|| "the platform answered 404".to_owned())
+        self.versions
+            .get(id)
+            .cloned()
+            .ok_or_else(|| "the platform answered 404".to_owned())
     }
 
     fn get_bytes(&self, url: &str, _limit: usize) -> Result<Vec<u8>, String> {
         self.note(url);
-        self.files.get(url).cloned().ok_or_else(|| "the platform answered 404".to_owned())
+        self.files
+            .get(url)
+            .cloned()
+            .ok_or_else(|| "the platform answered 404".to_owned())
     }
 
     fn get_stream(&self, url: &str, limit: u64) -> Result<Box<dyn Read + Send>, String> {
         self.note(url);
-        let bytes = self.files.get(url).cloned().ok_or("the platform answered 404")?;
+        let bytes = self
+            .files
+            .get(url)
+            .cloned()
+            .ok_or("the platform answered 404")?;
         // like the real reader: it fails once more than `limit` bytes have been read
         let _ = limit;
         Ok(Box::new(Cursor::new(bytes)))
@@ -190,7 +204,11 @@ fn the_game_version_and_loader_come_from_the_version_id() {
     }
     case("1.21.1", Some("1.21.1"), None);
     case("24w14a", Some("24w14a"), None);
-    case("fabric-loader-0.16.5-1.21.1", Some("1.21.1"), Some("fabric"));
+    case(
+        "fabric-loader-0.16.5-1.21.1",
+        Some("1.21.1"),
+        Some("fabric"),
+    );
     case("quilt-loader-0.26.0-1.20.4", Some("1.20.4"), Some("quilt"));
     case("1.20.1-forge-47.2.0", Some("1.20.1"), Some("forge"));
     case("neoforge-21.1.172", Some("1.21.1"), Some("neoforge"));
@@ -207,12 +225,36 @@ fn a_mod_is_downloaded_checked_and_placed_with_its_required_dependency() {
     let host = FakeHost::new();
     let instance = host.instance(FABRIC);
     let net = FakeNet::new()
-        .project("AANobbMI", "sodium-1.0.0.jar", b"sodium bytes", r#""fabric""#, &["P7dR8mSH"])
-        .project("P7dR8mSH", "fabric-api-1.0.0.jar", b"api bytes", r#""fabric""#, &[]);
+        .project(
+            "AANobbMI",
+            "sodium-1.0.0.jar",
+            b"sodium bytes",
+            r#""fabric""#,
+            &["P7dR8mSH"],
+        )
+        .project(
+            "P7dR8mSH",
+            "fabric-api-1.0.0.jar",
+            b"api bytes",
+            r#""fabric""#,
+            &[],
+        );
 
-    let report = install_with(&net, &host, &instance.id.to_string(), "AANobbMI", "mod", None, true).unwrap();
+    let report = install_with(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AANobbMI",
+        "mod",
+        None,
+        true,
+    )
+    .unwrap();
 
-    assert_eq!(mods(&host, &instance), ["fabric-api-1.0.0.jar", "sodium-1.0.0.jar"]);
+    assert_eq!(
+        mods(&host, &instance),
+        ["fabric-api-1.0.0.jar", "sodium-1.0.0.jar"]
+    );
     assert_eq!(report.installed.len(), 2);
     assert!(report.skipped.is_empty());
     assert_eq!(
@@ -229,21 +271,240 @@ fn dependencies_are_left_alone_unless_asked_for() {
     let host = FakeHost::new();
     let instance = host.instance(FABRIC);
     let net = FakeNet::new()
-        .project("AANobbMI", "sodium-1.0.0.jar", b"s", r#""fabric""#, &["P7dR8mSH"])
+        .project(
+            "AANobbMI",
+            "sodium-1.0.0.jar",
+            b"s",
+            r#""fabric""#,
+            &["P7dR8mSH"],
+        )
         .project("P7dR8mSH", "fabric-api-1.0.0.jar", b"a", r#""fabric""#, &[]);
 
-    install_with(&net, &host, &instance.id.to_string(), "AANobbMI", "mod", None, false).unwrap();
+    install_with(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AANobbMI",
+        "mod",
+        None,
+        false,
+    )
+    .unwrap();
 
     assert_eq!(mods(&host, &instance), ["sodium-1.0.0.jar"]);
+}
+
+/// Records every control callback so progress behaviour can be asserted.
+#[derive(Default)]
+struct Recording {
+    updates: Mutex<Vec<(String, u64, u64)>>,
+    phases: Mutex<Vec<String>>,
+}
+
+impl Recording {
+    fn phase_list(&self) -> Vec<String> {
+        self.phases.lock().unwrap().clone()
+    }
+    fn bytes_list(&self) -> Vec<(String, u64, u64)> {
+        self.updates.lock().unwrap().clone()
+    }
+}
+
+impl InstallControl for Recording {
+    fn is_cancelled(&self) -> bool {
+        false
+    }
+    fn progress(&self, done: u64, total: u64) {
+        let phase = self
+            .phases
+            .lock()
+            .unwrap()
+            .last()
+            .cloned()
+            .unwrap_or_default();
+        let name = phase
+            .strip_prefix("downloading:")
+            .map(str::to_owned)
+            .unwrap_or(phase);
+        self.updates.lock().unwrap().push((name, done, total));
+    }
+    fn resolving(&self, project: &str) {
+        self.phases
+            .lock()
+            .unwrap()
+            .push(format!("resolving:{project}"));
+    }
+    fn discovered(&self, count: usize) {
+        self.phases
+            .lock()
+            .unwrap()
+            .push(format!("discovered:{count}"));
+    }
+    fn downloading(&self, name: &str, size: u64) {
+        self.phases
+            .lock()
+            .unwrap()
+            .push(format!("downloading:{name}"));
+        self.updates
+            .lock()
+            .unwrap()
+            .push((name.to_owned(), 0, size));
+    }
+    fn verifying(&self) {
+        self.phases.lock().unwrap().push("verifying".to_owned());
+    }
+    fn committed(&self) {
+        self.phases.lock().unwrap().push("committed".to_owned());
+    }
+}
+
+#[test]
+fn controlled_progress_moves_forward_only_within_one_file() {
+    let host = FakeHost::new();
+    let instance = host.instance(FABRIC);
+    let main = vec![7; 192 * 1024];
+    let dependency = vec![9; 64 * 1024];
+    let net = FakeNet::new()
+        .project("AANobbMI", "main.jar", &main, r#""fabric""#, &["BBBBBBBB"])
+        .project(
+            "BBBBBBBB",
+            "dependency.jar",
+            &dependency,
+            r#""fabric""#,
+            &[],
+        );
+
+    let control = Recording::default();
+    install_with_control(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AANobbMI",
+        "mod",
+        None,
+        true,
+        &control,
+    )
+    .unwrap();
+
+    let phases = control.phase_list();
+    // the main file resolves first, then its dependency
+    assert_eq!(
+        phases
+            .iter()
+            .filter(|phase| phase.starts_with("resolving:"))
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["resolving:AANobbMI", "resolving:BBBBBBBB"]
+    );
+    assert_eq!(
+        phases
+            .iter()
+            .filter(|phase| phase.starts_with("downloading:"))
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["downloading:main.jar", "downloading:dependency.jar"]
+    );
+    assert_eq!(
+        phases
+            .iter()
+            .filter(|phase| phase.as_str() == "verifying")
+            .count(),
+        2
+    );
+    assert_eq!(
+        phases
+            .iter()
+            .filter(|phase| phase.as_str() == "committed")
+            .count(),
+        2
+    );
+    // the second discovery is reported only after the main file is committed
+    assert_eq!(
+        phases
+            .iter()
+            .filter(|phase| phase.starts_with("discovered:"))
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["discovered:1", "discovered:2"]
+    );
+    assert!(
+        phases
+            .iter()
+            .position(|phase| phase.as_str() == "committed")
+            .unwrap()
+            < phases
+                .iter()
+                .position(|phase| phase.as_str() == "discovered:2")
+                .unwrap()
+    );
+    // within each file the byte counter only moves forward, and resets for a new file
+    let bytes = control.bytes_list();
+    for pair in bytes.windows(2) {
+        let (one, two) = (&pair[0], &pair[1]);
+        if one.0 == two.0 {
+            assert!(two.1 >= one.1, "{bytes:?}");
+        } else {
+            assert_eq!(two.1, 0, "{bytes:?}");
+        }
+    }
+    // every update carries the size the platform listed for its file
+    assert_eq!(bytes[0].2, 192 * 1024);
+    assert_eq!(bytes.last().unwrap().2, 64 * 1024);
+}
+
+#[test]
+fn a_preexisting_partial_of_another_file_is_left_alone_by_success() {
+    let host = FakeHost::new();
+    let instance = host.instance(FABRIC);
+    let net = FakeNet::new()
+        .project("AANobbMI", "main.jar", b"ok", "\"fabric\"", &["BBBBBBBB"])
+        .project("BBBBBBBB", "dependency.jar", b"dep", "\"fabric\"", &[]);
+    let folder = host.game(&instance).join("mods");
+    fs::create_dir_all(&folder).unwrap();
+    let foreign_partial = folder.join(".other.jar.aether-part");
+    fs::write(&foreign_partial, b"belongs to somebody else").unwrap();
+
+    let report = install_with(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AANobbMI",
+        "mod",
+        None,
+        true,
+    )
+    .unwrap();
+
+    assert_eq!(report.installed.len(), 2);
+    assert_eq!(
+        fs::read(&foreign_partial).unwrap(),
+        b"belongs to somebody else"
+    );
 }
 
 #[test]
 fn a_dependency_that_cannot_be_had_is_reported_and_the_mod_still_installs() {
     let host = FakeHost::new();
     let instance = host.instance(FABRIC);
-    let net = FakeNet::new().project("AANobbMI", "sodium-1.0.0.jar", b"s", r#""fabric""#, &["P7dR8mSH"]);
+    let net = FakeNet::new().project(
+        "AANobbMI",
+        "sodium-1.0.0.jar",
+        b"s",
+        r#""fabric""#,
+        &["P7dR8mSH"],
+    );
 
-    let report = install_with(&net, &host, &instance.id.to_string(), "AANobbMI", "mod", None, true).unwrap();
+    let report = install_with(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AANobbMI",
+        "mod",
+        None,
+        true,
+    )
+    .unwrap();
 
     assert_eq!(report.installed.len(), 1);
     assert_eq!(report.skipped.len(), 1);
@@ -258,7 +519,16 @@ fn a_dependency_cycle_ends() {
         .project("AAAAAAAA", "a.jar", b"a", r#""fabric""#, &["BBBBBBBB"])
         .project("BBBBBBBB", "b.jar", b"b", r#""fabric""#, &["AAAAAAAA"]);
 
-    let report = install_with(&net, &host, &instance.id.to_string(), "AAAAAAAA", "mod", None, true).unwrap();
+    let report = install_with(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AAAAAAAA",
+        "mod",
+        None,
+        true,
+    )
+    .unwrap();
 
     assert_eq!(report.installed.len(), 2);
 }
@@ -267,14 +537,24 @@ fn a_dependency_cycle_ends() {
 fn a_file_with_the_wrong_hash_is_discarded_and_nothing_is_left() {
     let host = FakeHost::new();
     let instance = host.instance(FABRIC);
-    let mut net = FakeNet::new().project("AANobbMI", "sodium.jar", b"good bytes", r#""fabric""#, &[]);
+    let mut net =
+        FakeNet::new().project("AANobbMI", "sodium.jar", b"good bytes", r#""fabric""#, &[]);
     // same length, other content: the mirror (or a man in the middle) swapped the file
     net.files.insert(
         "https://cdn.modrinth.com/data/AANobbMI/sodium.jar".to_owned(),
         b"evil bytes".to_vec(),
     );
 
-    let error = install_with(&net, &host, &instance.id.to_string(), "AANobbMI", "mod", None, false).unwrap_err();
+    let error = install_with(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AANobbMI",
+        "mod",
+        None,
+        false,
+    )
+    .unwrap_err();
 
     assert!(error.contains("checksum"), "{error}");
     assert_eq!(mods(&host, &instance), Vec::<String>::new());
@@ -285,11 +565,25 @@ fn a_file_longer_or_shorter_than_listed_is_discarded() {
     for bytes in [b"much longer than listed".to_vec(), b"x".to_vec()] {
         let host = FakeHost::new();
         let instance = host.instance(FABRIC);
-        let mut net = FakeNet::new().project("AANobbMI", "sodium.jar", b"ten bytes!", r#""fabric""#, &[]);
-        net.files
-            .insert("https://cdn.modrinth.com/data/AANobbMI/sodium.jar".to_owned(), bytes);
+        let mut net =
+            FakeNet::new().project("AANobbMI", "sodium.jar", b"ten bytes!", r#""fabric""#, &[]);
+        net.files.insert(
+            "https://cdn.modrinth.com/data/AANobbMI/sodium.jar".to_owned(),
+            bytes,
+        );
 
-        assert!(install_with(&net, &host, &instance.id.to_string(), "AANobbMI", "mod", None, false).is_err());
+        assert!(
+            install_with(
+                &net,
+                &host,
+                &instance.id.to_string(),
+                "AANobbMI",
+                "mod",
+                None,
+                false
+            )
+            .is_err()
+        );
         assert_eq!(mods(&host, &instance), Vec::<String>::new());
     }
 }
@@ -303,7 +597,16 @@ fn an_existing_file_is_never_overwritten() {
     fs::write(&existing, b"mine").unwrap();
     let net = FakeNet::new().project("AANobbMI", "sodium.jar", b"theirs", r#""fabric""#, &[]);
 
-    let error = install_with(&net, &host, &instance.id.to_string(), "AANobbMI", "mod", None, false).unwrap_err();
+    let error = install_with(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AANobbMI",
+        "mod",
+        None,
+        false,
+    )
+    .unwrap_err();
 
     assert!(error.contains("already there"), "{error}");
     assert_eq!(fs::read(&existing).unwrap(), b"mine");
@@ -323,7 +626,15 @@ fn a_link_at_the_file_name_is_not_followed() {
     let _ = std::os::windows::fs::symlink_file(&victim, mods_dir.join("sodium.jar"));
     let net = FakeNet::new().project("AANobbMI", "sodium.jar", b"theirs", r#""fabric""#, &[]);
 
-    let _ = install_with(&net, &host, &instance.id.to_string(), "AANobbMI", "mod", None, false);
+    let _ = install_with(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AANobbMI",
+        "mod",
+        None,
+        false,
+    );
 
     assert_eq!(fs::read(&victim).unwrap(), b"keep me");
 }
@@ -335,7 +646,18 @@ fn nothing_is_installed_while_the_game_runs() {
     host.running.lock().unwrap().insert(instance.id);
     let net = FakeNet::new().project("AANobbMI", "sodium.jar", b"s", r#""fabric""#, &[]);
 
-    assert!(install_with(&net, &host, &instance.id.to_string(), "AANobbMI", "mod", None, false).is_err());
+    assert!(
+        install_with(
+            &net,
+            &host,
+            &instance.id.to_string(),
+            "AANobbMI",
+            "mod",
+            None,
+            false
+        )
+        .is_err()
+    );
     assert!(net.asked.lock().unwrap().is_empty());
 }
 
@@ -352,7 +674,10 @@ fn a_mod_needs_a_loader_but_a_resource_pack_does_not() {
     assert!(error.contains("mod loader"), "{error}");
 
     install_with(&net, &host, &id, "RRRRRRRR", "resourcepack", None, false).unwrap();
-    assert_eq!(fs::read(host.game(&instance).join("resourcepacks/Faithful.zip")).unwrap(), b"pack");
+    assert_eq!(
+        fs::read(host.game(&instance).join("resourcepacks/Faithful.zip")).unwrap(),
+        b"pack"
+    );
 }
 
 #[test]
@@ -369,9 +694,29 @@ fn a_data_pack_goes_into_the_chosen_world() {
     assert!(install_with(&net, &host, &id, "DDDDDDDD", "datapack", None, false).is_err());
     assert!(net.asked.lock().unwrap().is_empty());
     // a name that is not a world of this instance is refused too
-    assert!(install_with(&net, &host, &id, "DDDDDDDD", "datapack", Some("../x"), false).is_err());
+    assert!(
+        install_with(
+            &net,
+            &host,
+            &id,
+            "DDDDDDDD",
+            "datapack",
+            Some("../x"),
+            false
+        )
+        .is_err()
+    );
 
-    install_with(&net, &host, &id, "DDDDDDDD", "datapack", Some("My World"), false).unwrap();
+    install_with(
+        &net,
+        &host,
+        &id,
+        "DDDDDDDD",
+        "datapack",
+        Some("My World"),
+        false,
+    )
+    .unwrap();
     assert_eq!(fs::read(world.join("datapacks/tweaks.zip")).unwrap(), b"dp");
 }
 
@@ -382,8 +727,16 @@ fn a_file_of_the_wrong_kind_for_the_folder_is_not_installed() {
     // a "resource pack" whose file is an executable jar
     let net = FakeNet::new().project("RRRRRRRR", "pack.jar", b"x", r#""minecraft""#, &[]);
 
-    let error = install_with(&net, &host, &instance.id.to_string(), "RRRRRRRR", "resourcepack", None, false)
-        .unwrap_err();
+    let error = install_with(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "RRRRRRRR",
+        "resourcepack",
+        None,
+        false,
+    )
+    .unwrap_err();
 
     assert!(error.contains(".zip"), "{error}");
     assert!(!host.game(&instance).join("resourcepacks/pack.jar").exists());
@@ -408,7 +761,16 @@ fn a_project_with_no_version_for_this_game_is_an_error() {
     let instance = host.instance("fabric-loader-0.16.5-1.19.2");
     let net = FakeNet::new().project("AANobbMI", "sodium.jar", b"s", r#""fabric""#, &[]);
 
-    let error = install_with(&net, &host, &instance.id.to_string(), "AANobbMI", "mod", None, false).unwrap_err();
+    let error = install_with(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AANobbMI",
+        "mod",
+        None,
+        false,
+    )
+    .unwrap_err();
 
     assert!(error.contains("1.19.2"), "{error}");
 }
@@ -416,20 +778,73 @@ fn a_project_with_no_version_for_this_game_is_an_error() {
 #[test]
 fn search_asks_for_the_type_and_drops_the_loader_where_it_does_not_apply() {
     let mut net = FakeNet::new();
-    net.search_answer = r#"{"total_hits":1,"hits":[{"project_id":"AANobbMI","slug":"sodium","title":"Sodium",
+    net.search_answer =
+        r#"{"total_hits":1,"hits":[{"project_id":"AANobbMI","slug":"sodium","title":"Sodium",
         "description":"Fast","author":"jelly","downloads":5,"project_type":"mod"}]}"#
-        .to_owned();
+            .to_owned();
 
-    let result = search(&net, &FakeHost::new(), &SearchRequest { text: "sodium", project_type: "mod", game_version: Some("1.21.1"), loader: Some("fabric"), sort: "downloads", offset: 0 }).unwrap();
+    let result = search(
+        &net,
+        &FakeHost::new(),
+        &SearchRequest {
+            text: "sodium",
+            project_type: "mod",
+            game_version: Some("1.21.1"),
+            loader: Some("fabric"),
+            sort: "downloads",
+            offset: 0,
+        },
+    )
+    .unwrap();
     assert_eq!(result.hits[0].title, "Sodium");
     assert_eq!(result.total, 1);
     assert!(net.asked.lock().unwrap()[0].contains("categories%3Afabric"));
 
-    search(&net, &FakeHost::new(), &SearchRequest { text: "faithful", project_type: "resourcepack", game_version: Some("1.21.1"), loader: Some("fabric"), sort: "relevance", offset: 0 }).unwrap();
+    search(
+        &net,
+        &FakeHost::new(),
+        &SearchRequest {
+            text: "faithful",
+            project_type: "resourcepack",
+            game_version: Some("1.21.1"),
+            loader: Some("fabric"),
+            sort: "relevance",
+            offset: 0,
+        },
+    )
+    .unwrap();
     assert!(!net.asked.lock().unwrap()[1].contains("categories"));
 
-    assert!(search(&net, &FakeHost::new(), &SearchRequest { text: "x", project_type: "plugin", game_version: None, loader: None, sort: "downloads", offset: 0 }).is_err());
-    assert!(search(&net, &FakeHost::new(), &SearchRequest { text: "x", project_type: "mod", game_version: None, loader: None, sort: "popular", offset: 0 }).is_err());
+    assert!(
+        search(
+            &net,
+            &FakeHost::new(),
+            &SearchRequest {
+                text: "x",
+                project_type: "plugin",
+                game_version: None,
+                loader: None,
+                sort: "downloads",
+                offset: 0
+            }
+        )
+        .is_err()
+    );
+    assert!(
+        search(
+            &net,
+            &FakeHost::new(),
+            &SearchRequest {
+                text: "x",
+                project_type: "mod",
+                game_version: None,
+                loader: None,
+                sort: "popular",
+                offset: 0
+            }
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -445,20 +860,64 @@ fn search_results_come_with_their_icons_and_a_missing_icon_is_not_an_error() {
     // a 16x16 PNG header for the first; nothing for the second (the CDN answers 404)
     let mut icon = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x10\0\0\0\x10".to_vec();
     icon.extend_from_slice(b"pixels");
-    net.files.insert("https://cdn.modrinth.com/data/AANobbMI/icon.png".to_owned(), icon);
+    net.files.insert(
+        "https://cdn.modrinth.com/data/AANobbMI/icon.png".to_owned(),
+        icon,
+    );
 
-    let result = search(&net, &host, &SearchRequest { text: "", project_type: "mod", game_version: None, loader: None, sort: "downloads", offset: 0 }).unwrap();
+    let result = search(
+        &net,
+        &host,
+        &SearchRequest {
+            text: "",
+            project_type: "mod",
+            game_version: None,
+            loader: None,
+            sort: "downloads",
+            offset: 0,
+        },
+    )
+    .unwrap();
 
-    assert!(result.hits[0].icon.as_deref().is_some_and(|icon| icon.starts_with("data:image/png;base64,")));
+    assert!(
+        result.hits[0]
+            .icon
+            .as_deref()
+            .is_some_and(|icon| icon.starts_with("data:image/png;base64,"))
+    );
     assert_eq!(result.hits[0].loaders, ["fabric"]);
     assert_eq!(result.hits[0].categories, ["optimization"]);
     assert_eq!(result.hits[0].newest_version.as_deref(), Some("1.21.1"));
     assert_eq!(result.hits[1].icon, None);
 
     // the second search finds the first icon in the cache: it is not fetched again
-    let before = net.asked.lock().unwrap().iter().filter(|url| url.contains("AANobbMI/icon")).count();
-    search(&net, &host, &SearchRequest { text: "", project_type: "mod", game_version: None, loader: None, sort: "downloads", offset: 0 }).unwrap();
-    let after = net.asked.lock().unwrap().iter().filter(|url| url.contains("AANobbMI/icon")).count();
+    let before = net
+        .asked
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|url| url.contains("AANobbMI/icon"))
+        .count();
+    search(
+        &net,
+        &host,
+        &SearchRequest {
+            text: "",
+            project_type: "mod",
+            game_version: None,
+            loader: None,
+            sort: "downloads",
+            offset: 0,
+        },
+    )
+    .unwrap();
+    let after = net
+        .asked
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|url| url.contains("AANobbMI/icon"))
+        .count();
     assert_eq!(before, after);
 }
 
@@ -479,4 +938,146 @@ fn the_dtos_use_camel_case_and_carry_no_path_or_address() {
     assert_eq!(value["installed"][0]["fileName"], "sodium.jar");
     assert_eq!(value["skipped"][0]["projectId"], "P7dR8mSH");
     assert!(!value.to_string().contains("http"));
+}
+
+#[test]
+fn controlled_download_cancels_between_chunks_and_cleans_up() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    struct Control {
+        cancelled: AtomicBool,
+        updates: Mutex<Vec<u64>>,
+    }
+    impl InstallControl for Control {
+        fn is_cancelled(&self) -> bool {
+            self.cancelled.load(Ordering::SeqCst)
+        }
+        fn progress(&self, done: u64, _total: u64) {
+            let mut updates = self.updates.lock().unwrap();
+            updates.push(done);
+            if updates.len() == 2 {
+                self.cancelled.store(true, Ordering::SeqCst);
+            }
+        }
+    }
+    let host = FakeHost::new();
+    let instance = host.instance(FABRIC);
+    let bytes = vec![42; 192 * 1024];
+    let net = FakeNet::new().project("AANobbMI", "example.jar", &bytes, "\"fabric\"", &[]);
+    let control = Control {
+        cancelled: AtomicBool::new(false),
+        updates: Mutex::new(Vec::new()),
+    };
+    let (error, kept) = install_with_control(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AANobbMI",
+        "mod",
+        None,
+        false,
+        &control,
+    )
+    .unwrap_err();
+    assert_eq!(error, "cancelled");
+    assert!(kept.is_empty());
+    assert!(mods(&host, &instance).is_empty());
+    assert_eq!(*control.updates.lock().unwrap(), vec![65536, 131072]);
+}
+
+#[test]
+fn cancellation_never_deletes_preexisting_files() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    struct Control {
+        cancelled: AtomicBool,
+        updates: Mutex<Vec<u64>>,
+    }
+    impl InstallControl for Control {
+        fn is_cancelled(&self) -> bool {
+            self.cancelled.load(Ordering::SeqCst)
+        }
+        fn progress(&self, done: u64, _total: u64) {
+            let mut updates = self.updates.lock().unwrap();
+            updates.push(done);
+            if updates.len() == 2 {
+                self.cancelled.store(true, Ordering::SeqCst);
+            }
+        }
+    }
+    let host = FakeHost::new();
+    let instance = host.instance(FABRIC);
+    let bytes = vec![42; 192 * 1024];
+    let net = FakeNet::new().project("AANobbMI", "example.jar", &bytes, "\"fabric\"", &[]);
+    let folder = host.game(&instance).join("mods");
+    fs::create_dir_all(&folder).unwrap();
+    let foreign_partial = folder.join(".other.jar.aether-part");
+    fs::write(&foreign_partial, b"belongs to somebody else").unwrap();
+    let foreign_target = folder.join("unrelated.jar");
+    fs::write(&foreign_target, b"also preexisting").unwrap();
+    let control = Control {
+        cancelled: AtomicBool::new(false),
+        updates: Mutex::new(Vec::new()),
+    };
+    let (error, kept) = install_with_control(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AANobbMI",
+        "mod",
+        None,
+        false,
+        &control,
+    )
+    .unwrap_err();
+    assert_eq!(error, "cancelled");
+    assert!(kept.is_empty());
+    // this run's partial and claimed target are gone; the foreign files remain
+    assert_eq!(
+        mods(&host, &instance),
+        vec![
+            ".other.jar.aether-part".to_owned(),
+            "unrelated.jar".to_owned()
+        ]
+    );
+    assert_eq!(
+        fs::read(&foreign_partial).unwrap(),
+        b"belongs to somebody else"
+    );
+    assert_eq!(fs::read(&foreign_target).unwrap(), b"also preexisting");
+}
+
+#[test]
+fn controlled_install_reports_verified_files_kept_on_cancellation() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    struct Control(AtomicBool);
+    impl InstallControl for Control {
+        fn is_cancelled(&self) -> bool {
+            self.0.load(Ordering::SeqCst)
+        }
+        fn progress(&self, done: u64, _total: u64) {
+            if done >= 65536 {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+    }
+    let host = FakeHost::new();
+    let instance = host.instance(FABRIC);
+    let bytes = vec![42; 128 * 1024];
+    let net = FakeNet::new()
+        .project("AANobbMI", "main.jar", b"ok", "\"fabric\"", &["BBBBBBBB"])
+        .project("BBBBBBBB", "dependency.jar", &bytes, "\"fabric\"", &[]);
+    let (error, kept) = install_with_control(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AANobbMI",
+        "mod",
+        None,
+        true,
+        &Control(AtomicBool::new(false)),
+    )
+    .unwrap_err();
+    assert_eq!(error, "cancelled");
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].file_name, "main.jar");
+    assert_eq!(mods(&host, &instance), vec!["main.jar"]);
 }

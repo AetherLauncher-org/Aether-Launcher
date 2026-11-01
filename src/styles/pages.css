@@ -1827,6 +1827,38 @@
   gap: 12px;
 }
 
+.content-install-tasks,
+.content-install-card {
+  display: grid;
+  gap: var(--spacingVerticalS);
+}
+
+.content-install-card {
+  min-width: 0;
+  padding: var(--spacingVerticalM) var(--spacingHorizontalL);
+  background: color-mix(in srgb, var(--colorNeutralForeground1) 4%, transparent);
+  border: 1px solid var(--colorNeutralStroke2);
+  border-radius: var(--borderRadiusLarge);
+}
+
+.content-install-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacingHorizontalS);
+}
+
+.content-install-heading > :first-child {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.content-install-file,
+.content-install-card [role="status"],
+.content-install-card [role="alert"] {
+  overflow-wrap: anywhere;
+}
+
 .search-results {
   display: grid;
   gap: 8px;

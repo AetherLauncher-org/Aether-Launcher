@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import { callCommand } from "./call";
 import { isTauri } from "./index";
 
@@ -78,8 +79,60 @@ export type InstallReport = {
   skipped: SkippedProject[];
 };
 
+export type ContentInstallArgs = {
+  id: string;
+  projectId: string;
+  projectType: ContentType;
+  world: string | null;
+  withDependencies: boolean;
+};
+
+export type ContentInstallPhase = "resolving" | "downloading" | "verifying" | "done" | "failed" | "cancelled";
+
+export type ContentInstallProgress = {
+  operationId: string;
+  phase: ContentInstallPhase;
+  projectId: string;
+  fileName: string | null;
+  bytesDone: number;
+  bytesTotal: number;
+  filesDone: number;
+  filesDiscovered: number;
+};
+
+export type ContentInstallResult = InstallReport & {
+  operationId: string;
+  status: "done" | "failed" | "cancelled";
+  error: string | null;
+};
+
+export const contentInstallProgressEvent = "content-install://progress";
+
+export async function beginContentInstall(args: ContentInstallArgs): Promise<string> {
+  requireDesktop();
+  return callCommand("begin_content_install", args);
+}
+
+export async function waitContentInstall(operationId: string): Promise<ContentInstallResult> {
+  requireDesktop();
+  return callCommand("wait_content_install", { operationId });
+}
+
+export async function cancelContentInstall(operationId: string): Promise<boolean> {
+  requireDesktop();
+  return callCommand("cancel_content_install", { operationId });
+}
+
+export async function listenContentInstallProgress(handler: (progress: ContentInstallProgress) => void): Promise<() => void> {
+  if (!isTauri()) return () => undefined;
+  return listen<ContentInstallProgress>(contentInstallProgressEvent, (event) => handler(event.payload));
+}
+
 declare module "./call" {
   interface CommandArgs {
+    begin_content_install: ContentInstallArgs;
+    cancel_content_install: { operationId: string };
+    wait_content_install: { operationId: string };
     get_content_target: { id: string };
     search_content: {
       text: string;
@@ -99,6 +152,9 @@ declare module "./call" {
   }
 
   interface CommandResults {
+    begin_content_install: string;
+    cancel_content_install: boolean;
+    wait_content_install: ContentInstallResult;
     get_content_target: ContentTarget;
     search_content: SearchResult;
     install_content: InstallReport;

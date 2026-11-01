@@ -44,6 +44,9 @@ pub trait Host: Send + Sync {
     /// Carries no secrets.
     fn emit_install(&self, progress: &InstallProgress);
 
+    /// Content installation progress, emitted from its worker thread without blocking.
+    fn emit_content_install(&self, _progress: &crate::content_operation::ContentInstallProgress) {}
+
     /// Import item progress. Called from the import worker thread, so it must not block.
     fn emit_import_item(&self, event: &ImportItemEvent);
 

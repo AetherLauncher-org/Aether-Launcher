@@ -7,7 +7,10 @@
 
 use aether_app::content_install::{self, InstallReport, SearchRequest, SearchResult, Target};
 
-use super::host::run;
+use aether_app::content_operation::{ContentInstallResult, ContentInstallState};
+use tauri::Manager;
+
+use super::host::{TauriHost, run};
 
 /// What content fits an instance (its game version and mod loader), for default filters.
 #[tauri::command]
@@ -40,6 +43,57 @@ pub async fn search_content(
         )
     })
     .await
+}
+
+/// Starts a content install and returns its backend-generated operation ID.
+#[tauri::command]
+pub fn begin_content_install(
+    app: tauri::AppHandle,
+    id: String,
+    project_id: String,
+    project_type: String,
+    world: Option<String>,
+    with_dependencies: bool,
+) -> Result<String, String> {
+    let operation_id = app.state::<ContentInstallState>().begin()?;
+    let worker_id = operation_id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<ContentInstallState>();
+        let host = TauriHost::new(app.clone());
+        aether_app::content_operation::execute(
+            &state,
+            &worker_id,
+            &host,
+            &id,
+            &project_id,
+            &project_type,
+            world.as_deref(),
+            with_dependencies,
+        );
+    });
+    Ok(operation_id)
+}
+
+/// Requests cancellation of only the named content operation.
+#[tauri::command]
+pub fn cancel_content_install(
+    state: tauri::State<'_, ContentInstallState>,
+    operation_id: String,
+) -> bool {
+    state.cancel(&operation_id)
+}
+
+/// Returns the retained outcome even when the worker finished before this call.
+#[tauri::command]
+pub async fn wait_content_install(
+    app: tauri::AppHandle,
+    operation_id: String,
+) -> Result<ContentInstallResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<ContentInstallState>().wait(&operation_id)
+    })
+    .await
+    .map_err(|_| "the content install task failed".to_owned())?
 }
 
 /// Installs the newest suitable version of a Modrinth project into an instance (or, for a data

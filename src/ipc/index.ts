@@ -164,8 +164,15 @@ export {
 export type { AddSkinResult, SkinEntry } from "./skinLibrary";
 
 // 内容下载：搜索 Modrinth、装进实例或世界
-export { contentTypes, getContentTarget, installContent, searchContent } from "./content";
+export {
+  beginContentInstall, cancelContentInstall, contentInstallProgressEvent, contentTypes,
+  getContentTarget, installContent, listenContentInstallProgress, searchContent, waitContentInstall,
+} from "./content";
 export type {
+  ContentInstallArgs,
+  ContentInstallPhase,
+  ContentInstallProgress,
+  ContentInstallResult,
   ContentTarget,
   ContentType,
   InstallReport,
