@@ -83,6 +83,11 @@ pub fn run() {
         .manage(aether_app::install::InstallState::default())
         .manage(aether_app::import::ImportState::default())
         .manage(aether_app::microsoft::MicrosoftLoginState::default())
+        .manage(aether_app::drop::DropState::default())
+        .setup(|app| {
+            commands::drop::start(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             application_info,
             list_java_runtimes,
@@ -119,6 +124,7 @@ pub fn run() {
             commands::content::search_content,
             commands::content::install_content,
             commands::content::save_content_to_folder,
+            commands::drop::install_drop,
             commands::schematics::read_instance_schematic,
             commands::schematics::convert_instance_schematic,
             commands::schematics::schematic_conversion_targets,
