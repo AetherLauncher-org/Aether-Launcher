@@ -4,6 +4,7 @@ import { ContentBrowser } from "../components/ContentBrowser";
 import { ModpackBrowser } from "../components/ModpackBrowser";
 import { PageHeader } from "../components/PageHeader";
 import { DesktopOnlyNotice, ErrorState } from "../components/PageState";
+import { SkinSources } from "../components/SkinSources";
 import { VersionBrowser } from "../components/VersionBrowser";
 import { VersionDetail } from "../components/VersionDetail";
 import { contentTypes } from "../ipc";
@@ -15,8 +16,8 @@ import type { PageDefinition } from "../navigation";
 import { useInstall } from "../state/install";
 import { useInstances } from "../state/instances";
 
-/** 顶上的标签：Minecraft 本体，然后是各类内容，最后是整合包。 */
-type DownloadTab = "versions" | ContentType | "modpack";
+/** 顶上的标签：Minecraft 本体、各类内容、整合包，最后是皮肤。 */
+type DownloadTab = "versions" | ContentType | "modpack" | "skins";
 
 type DownloadPageProps = {
   page: PageDefinition;
@@ -88,10 +89,13 @@ export function DownloadPage({ page }: DownloadPageProps) {
           </Tab>
         ))}
         <Tab value="modpack">整合包</Tab>
+        <Tab value="skins">皮肤</Tab>
       </TabList>
 
       {tab === "modpack" ? (
         <ModpackBrowser />
+      ) : tab === "skins" ? (
+        <SkinSources />
       ) : tab !== "versions" ? (
         <ContentBrowser type={tab} />
       ) : status === "error" && error ? (

@@ -5,11 +5,11 @@ use aether_core::InstanceId;
 
 use super::*;
 use crate::skins::is_allowed_url;
+use sha2::Sha256;
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
 const UUID: &str = "069a79f444e94726a5befca90e38aaf5";
-const HASH: &str = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
 
 struct FakeHost {
     dir: PathBuf,
@@ -112,8 +112,9 @@ struct FakeNet {
 impl FakeNet {
     fn knowing_notch(slim: bool, picture: Vec<u8>) -> Self {
         let model = if slim { r#","metadata":{"model":"slim"}"# } else { "" };
+        let hash = format!("{:x}", Sha256::digest(&picture));
         let textures = format!(
-            r#"{{"textures":{{"SKIN":{{"url":"http://textures.minecraft.net/texture/{HASH}"{model}}}}}}}"#
+            r#"{{"textures":{{"SKIN":{{"url":"http://textures.minecraft.net/texture/{hash}"{model}}}}}}}"#
         );
         let mut answers = BTreeMap::new();
         answers.insert(
@@ -128,7 +129,7 @@ impl FakeNet {
             ),
         );
         let mut pictures = BTreeMap::new();
-        pictures.insert(format!("https://textures.minecraft.net/texture/{HASH}"), picture);
+        pictures.insert(format!("https://textures.minecraft.net/texture/{hash}"), picture);
         Self {
             answers,
             pictures,
@@ -251,6 +252,19 @@ fn an_unknown_player_and_a_picture_that_is_not_a_skin_are_refused() {
 
     let junk = FakeNet::knowing_notch(false, b"<svg onload=alert(1)>".to_vec());
     assert!(add_from_player_with(&junk, &host, "notch").is_err());
+    assert!(list(&host).unwrap().is_empty());
+}
+
+#[test]
+fn a_mojang_picture_that_does_not_match_its_texture_hash_is_refused() {
+    let host = FakeHost::new();
+    let mut net = FakeNet::knowing_notch(false, skin_png(7));
+    *net.pictures.values_mut().next().unwrap() = skin_png(8);
+
+    assert_eq!(
+        add_from_player_with(&net, &host, "notch").unwrap_err(),
+        "the skin does not match its texture hash"
+    );
     assert!(list(&host).unwrap().is_empty());
 }
 
