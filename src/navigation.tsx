@@ -5,6 +5,8 @@ import {
   Box24Regular,
   Home24Filled,
   Home24Regular,
+  PaintBrush24Filled,
+  PaintBrush24Regular,
   Person24Filled,
   Person24Regular,
   Settings24Filled,
@@ -12,7 +14,7 @@ import {
 } from "@fluentui/react-icons";
 import type { ReactElement } from "react";
 
-export type PageId = "home" | "instances" | "download" | "accounts" | "settings";
+export type PageId = "home" | "instances" | "download" | "skins" | "accounts" | "settings";
 
 export type PageDefinition = {
   id: PageId;
@@ -45,6 +47,13 @@ export const mainPages: readonly PageDefinition[] = [
     summary: "从 Mojang 官方安装游戏版本，每个文件都会校验",
     icon: <ArrowDownload24Regular />,
     activeIcon: <ArrowDownload24Filled />,
+  },
+  {
+    id: "skins",
+    label: "皮肤库",
+    summary: "本机保存的皮肤，换到你的微软账户上",
+    icon: <PaintBrush24Regular />,
+    activeIcon: <PaintBrush24Filled />,
   },
 ];
 

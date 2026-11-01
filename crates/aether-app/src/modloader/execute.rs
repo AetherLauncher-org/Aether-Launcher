@@ -43,7 +43,7 @@ pub struct ModLoaderInstallResult {
 }
 
 /// 一次加载器安装的输入。
-pub(super) struct InstallRequest<'a> {
+pub(crate) struct InstallRequest<'a> {
     /// 应用数据目录；游戏树是 `<base>/game`。
     pub base: &'a Path,
     pub kind: ModLoaderKind,
@@ -62,6 +62,20 @@ pub(super) fn install_with(
     cancel: &CancellationToken,
     reporter: &dyn Reporter,
 ) -> Result<ModLoaderInstallResult, String> {
+    let base = request.base;
+    let name = request.name;
+    let version_id = prepare_with(transport, request, cancel, reporter)?;
+    let name = if name.trim().is_empty() { &version_id } else { name.trim() };
+    let instance = create_ready_instance(base, name, &version_id, reporter)?;
+    Ok(ModLoaderInstallResult { instance, version_id })
+}
+
+pub(crate) fn prepare_with(
+    transport: &KernelHttpTransport<UreqKernel>,
+    request: InstallRequest<'_>,
+    cancel: &CancellationToken,
+    reporter: &dyn Reporter,
+) -> Result<String, String> {
     let base = request.base;
     let kind = request.kind;
     let game_version = request.game_version;
@@ -114,11 +128,7 @@ pub(super) fn install_with(
 
     // 全部装好了才建实例，版本直接是加载器的版本 id。
     let version_id = installed_id.unwrap_or(version_id);
-    let instance = create_ready_instance(base, &instance_name, &version_id, reporter)?;
-    Ok(ModLoaderInstallResult {
-        instance,
-        version_id,
-    })
+    Ok(version_id)
 }
 
 /// 按加载器种类 + 游戏版本 + 加载器版本构造安装计划，并做静态校验。

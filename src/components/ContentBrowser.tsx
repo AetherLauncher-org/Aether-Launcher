@@ -10,6 +10,7 @@ import {
   DialogTitle,
   MessageBar,
   MessageBarBody,
+  ProgressBar,
   SearchBox,
   Select,
   Spinner,
@@ -27,13 +28,11 @@ import { useCallback, useState } from "react";
 import {
   describeCommandError,
   getContentTarget,
-  installContent,
-  saveContentToFolder,
   listInstanceContent,
   openContentProject,
   searchContent,
 } from "../ipc";
-import type { ContentType, InstallReport, SearchHit, SearchSort } from "../ipc";
+import type { ContentType, SearchHit, SearchSort } from "../ipc";
 import {
   cannotInstallReason,
   categoryLabel,
@@ -47,8 +46,11 @@ import {
   searchSorts,
   sortLabels,
 } from "../lib/contentBrowse";
+import { formatBytes } from "../lib/install";
 import { useQuery } from "../lib/query";
 import { useInstances } from "../state/instances";
+import { useContentInstalls } from "../state/contentInstall";
+import type { ContentInstallTask } from "../state/contentInstall";
 import { EmptyState } from "./EmptyState";
 import { ErrorState } from "./PageState";
 
@@ -75,9 +77,7 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
   const [withDependencies, setWithDependencies] = useState(true);
   const [offset, setOffset] = useState(0);
 
-  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
-  const [report, setReport] = useState<{ title: string; result: InstallReport } | null>(null);
-  const [folderNotice, setFolderNotice] = useState<string | null>(null);
+  const { tasks, enqueue, cancel, dismiss } = useContentInstalls();
   const [failure, setFailure] = useState<string | null>(null);
   const [picking, setPicking] = useState<SearchHit | null>(null);
 
@@ -111,51 +111,24 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
 
   const blocked = cannotInstallReason(type, target.data);
 
-  const install = async (hit: SearchHit, world: string | null) => {
-    if (currentId === null) {
-      return;
-    }
-    setFailure(null);
-    setReport(null);
-    setBusy((previous) => new Set(previous).add(hit.projectId));
-    try {
-      const result = await installContent(
-        currentId,
-        hit.projectId,
-        type,
-        world,
-        withDependencies && type === "mod",
-      );
-      setReport({ title: hit.title, result });
-    } catch (error: unknown) {
-      setFailure(`${hit.title}：${describeCommandError(error)}`);
-    } finally {
-      setBusy((previous) => {
-        const next = new Set(previous);
-        next.delete(hit.projectId);
-        return next;
-      });
-    }
-  };
-
-  const saveFolder = async (hit: SearchHit) => {
+  const install = (hit: SearchHit, world: string | null) => {
     if (currentId === null) return;
-    setFailure(null);
-    setFolderNotice(null);
-    setReport(null);
-    setBusy((previous) => new Set(previous).add(hit.projectId));
-    try {
-      const result = await saveContentToFolder(currentId, hit.projectId, type, withDependencies && type === "mod");
-      if (result !== null) setFolderNotice(`${result.message}：${result.files.join("、")}`);
-    } catch (error: unknown) {
-      setFailure(`${hit.title}：${describeCommandError(error)}`);
-    } finally {
-      setBusy((previous) => {
-        const next = new Set(previous);
-        next.delete(hit.projectId);
-        return next;
-      });
-    }
+    enqueue(hit.title, {
+      kind: "install",
+      id: currentId, projectId: hit.projectId, projectType: type, world,
+      withDependencies: withDependencies && type === "mod",
+    });
+  };
+  const busy = new Set(tasks.filter((task) => task.args.id === currentId &&
+    (task.status === "queued" || task.status === "running")).map((task) => task.args.projectId));
+
+  const saveFolder = (hit: SearchHit) => {
+    if (currentId === null) return;
+    enqueue(`保存 ${hit.title} 到文件夹`, {
+      kind: "folder",
+      id: currentId, projectId: hit.projectId, projectType: type,
+      withDependencies: withDependencies && type === "mod",
+    });
   };
 
   const openPage = async (hit: SearchHit) => {
@@ -243,16 +216,12 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
           <MessageBarBody>{failure}</MessageBarBody>
         </MessageBar>
       ) : null}
-      {folderNotice ? <MessageBar intent="success" role="status"><MessageBarBody>{folderNotice}</MessageBarBody></MessageBar> : null}
-      {report ? (
-        <MessageBar intent={report.result.skipped.length > 0 ? "warning" : "success"} className="page-notice" role="status">
-          <MessageBarBody>
-            已装 {report.title}：{report.result.installed.map((file) => file.fileName).join("、")}
-            {report.result.skipped.length > 0
-              ? `；${report.result.skipped.length} 个前置没能装上（${report.result.skipped.map((item) => item.reason).join("；")}）`
-              : ""}
-          </MessageBarBody>
-        </MessageBar>
+      {tasks.length > 0 ? (
+        <section className="content-install-tasks" aria-label="内容安装任务">
+          <Text size={200} className="muted">最多同时安装 2 项，其余按顺序等待</Text>
+          {tasks.map((task) => <ContentInstallCard key={task.key} task={task}
+            onCancel={() => cancel(task.key)} onDismiss={() => dismiss(task.key)} />)}
+        </section>
       ) : null}
 
       {results.status === "error" && results.error ? (
@@ -385,6 +354,61 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
         }}
       />
     </section>
+  );
+}
+
+const phaseLabels = {
+  resolving: "正在解析版本与前置", downloading: "正在下载", verifying: "正在校验",
+  done: "正在读取安装结果", failed: "正在读取失败结果", cancelled: "正在读取取消结果",
+};
+
+function ContentInstallCard({ task, onCancel, onDismiss }: {
+  task: ContentInstallTask; onCancel: () => void; onDismiss: () => void;
+}) {
+  const active = task.status === "queued" || task.status === "running";
+  const saving = task.args.kind === "folder";
+  // 安装任务的措辞保持原样（「已装 …」「安装完成」）；保存任务换动词，句式一致。
+  const verb = saving ? "保存" : "安装";
+  const doneLead = saving ? `已保存 ${task.title}：` : `已装 ${task.title}：`;
+  const progress = task.progress;
+  const result = task.result;
+  const label = task.status === "queued" ? `等待${verb}` : task.status === "running"
+    ? task.cancelRequested ? "正在取消…" : progress ? phaseLabels[progress.phase] : `正在准备${verb}`
+    : task.status === "done" ? (saving ? "保存完成" : "安装完成") : task.status === "cancelled" ? "已取消" : `${verb}失败`;
+  const fileRatio = progress?.phase === "downloading" && progress.bytesTotal > 0
+    ? Math.min(1, Math.max(0, progress.bytesDone / progress.bytesTotal)) : undefined;
+  return (
+    <article className="content-install-card" aria-label={`${task.title} 安装任务`}>
+      <div className="content-install-heading">
+        <Text weight="semibold">{task.title}{task.args.kind === "install" && task.args.world ? ` · ${task.args.world}` : ""}</Text>
+        <Badge appearance="tint" color={task.status === "failed" ? "danger" : task.status === "done" ? "success" : "brand"}>{label}</Badge>
+        <Button size="small" appearance="subtle" disabled={active && task.cancelRequested}
+          aria-label={`${active ? "取消" : "关闭"} ${task.title}`} onClick={active ? onCancel : onDismiss}>
+          {active ? "取消" : "关闭"}
+        </Button>
+      </div>
+      {active ? <>
+        <Text size={200} className="muted" role="status">
+          {progress ? `${progress.filesDone} / ≥${progress.filesDiscovered} 个文件已校验 · ${label}` : label}
+        </Text>
+        {task.status === "running" ? <ProgressBar aria-label={`${task.title} 当前文件进度`} value={fileRatio} /> : null}
+        {progress?.fileName ? <Text size={200} className="content-install-file">
+          {progress.fileName}{progress.bytesTotal > 0 ? ` · ${formatBytes(progress.bytesDone)} / ${formatBytes(progress.bytesTotal)}` : ""}
+        </Text> : null}
+      </> : <div role={task.status === "failed" ? "alert" : "status"}>
+        <Text size={200}>
+          {task.status === "done" ? doneLead : `${label} ${task.title}：`}
+          {result ? result.installed.length > 0
+            ? `已保留并校验 ${result.installed.map((file) => file.fileName).join("、")}`
+            : "未保留已校验文件" : task.operationId ? "未能读取保留文件清单" : `未启动${verb}`}
+          {result?.error ? `；${result.error}` : ""}
+          {result && result.skipped.length > 0
+            ? `；${result.skipped.length} 个前置没能装上（${result.skipped.map((item) => `${item.projectId}：${item.reason}`).join("；")}）` : ""}
+          {task.notice ? `；${task.notice}` : ""}
+        </Text>
+      </div>}
+      {active && task.notice ? <Text size={200} role="alert">{task.notice}</Text> : null}
+    </article>
   );
 }
 

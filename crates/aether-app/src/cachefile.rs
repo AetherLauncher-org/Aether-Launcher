@@ -5,16 +5,24 @@
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Makes every temporary name different, so two writers of the same file (two searches that
+/// both need one icon) never share a temporary file.
+static NEXT_TEMPORARY: AtomicU64 = AtomicU64::new(0);
 
 /// Writes `bytes` to `path` through a temporary file next to it, then renames it into place.
-/// A link at `path` or at the temporary name is replaced, never followed, so the file it
-/// points to is left alone.
+/// The temporary name is unique to this call and created with `create_new`, so another writer
+/// or a link planted there cannot be written through; a link at `path` itself is replaced,
+/// never followed, so the file it points to is left alone.
 pub(crate) fn write_replacing(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(".tmp");
+    name.push(format!(
+        ".{}.{}.tmp",
+        std::process::id(),
+        NEXT_TEMPORARY.fetch_add(1, Ordering::Relaxed)
+    ));
     let temporary = path.with_file_name(name);
-    // `remove_file` removes a link itself and not its target
-    let _ = fs::remove_file(&temporary);
     let written = fs::OpenOptions::new()
         .write(true)
         .create_new(true)

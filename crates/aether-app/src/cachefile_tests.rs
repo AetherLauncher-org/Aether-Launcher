@@ -20,7 +20,43 @@ fn a_file_is_written_whole_and_replaced() {
     write_replacing(&path, b"two").unwrap();
 
     assert_eq!(fs::read(&path).unwrap(), b"two");
-    assert!(!dir.join("a.png.tmp").exists());
+    let left: Vec<_> = fs::read_dir(&dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(left, vec![std::ffi::OsString::from("a.png")], "no temporary file is left");
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn writers_of_the_same_file_never_share_a_temporary_file() {
+    let dir = temp_dir();
+    let path = dir.join("icon");
+    let first = vec![1u8; 64 * 1024];
+    let second = vec![2u8; 48 * 1024];
+
+    // a rename onto a file another writer is renaming over can fail on Windows; a failed
+    // write is fine (icons are fetched again), a mixed or leftover file is not
+    std::thread::scope(|scope| {
+        for _ in 0..4 {
+            scope.spawn(|| {
+                for _ in 0..50 {
+                    let _ = write_replacing(&path, &first);
+                }
+            });
+            scope.spawn(|| {
+                for _ in 0..50 {
+                    let _ = write_replacing(&path, &second);
+                }
+            });
+        }
+    });
+    write_replacing(&path, &first).unwrap();
+
+    // the file is always one writer's whole payload, never a mix, and nothing is left behind
+    let bytes = fs::read(&path).unwrap();
+    assert!(bytes == first || bytes == second, "the file is one whole payload");
+    assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -30,8 +66,8 @@ fn a_link_in_the_way_is_replaced_and_its_target_is_left_alone() {
     let victim = dir.join("victim.txt");
     fs::write(&victim, b"keep me").unwrap();
     let path = dir.join("icon");
-    // a link to the victim at the final name and at the temporary name; where links cannot be
-    // made (no privilege on Windows) there is nothing to test
+    // a link to the victim at the final name and at the name the temporary file used to have;
+    // where links cannot be made (no privilege on Windows) there is nothing to test
     let linked =
         make_link(&victim, &path).is_ok() && make_link(&victim, &dir.join("icon.tmp")).is_ok();
 

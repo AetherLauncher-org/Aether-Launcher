@@ -15,6 +15,7 @@
 mod cachefile;
 pub mod catalog;
 pub mod content_install;
+pub mod content_operation;
 pub mod drop;
 pub mod host;
 pub mod identify;
@@ -26,6 +27,7 @@ pub mod launch;
 pub mod manage;
 pub mod microsoft;
 pub mod modloader;
+pub mod modpack;
 pub mod platform;
 pub mod schematics;
 pub mod skin_library;
@@ -35,3 +37,5 @@ pub mod vanilla;
 pub mod world;
 
 pub use host::Host;
+
+pub mod yggdrasil;

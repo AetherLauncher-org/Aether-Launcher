@@ -3,6 +3,9 @@
 use std::sync::Arc;
 
 use aether_app::Host;
+use aether_app::content_operation::{
+    ContentInstallProgress, PROGRESS_EVENT as CONTENT_PROGRESS_EVENT,
+};
 use aether_app::host::KnownFolders;
 use aether_app::import::{ITEM_EVENT, ImportItemEvent};
 use aether_app::install::{self, InstallProgress};
@@ -25,6 +28,9 @@ impl TauriHost {
 }
 
 impl Host for TauriHost {
+    fn emit_content_install(&self, progress: &ContentInstallProgress) {
+        let _ = self.app.emit(CONTENT_PROGRESS_EVENT, progress);
+    }
     fn emit_import_item(&self, event: &ImportItemEvent) {
         let _ = self.app.emit(ITEM_EVENT, event);
     }

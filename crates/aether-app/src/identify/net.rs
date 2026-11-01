@@ -5,6 +5,9 @@ use std::time::Duration;
 use aether_content::modrinth::{API_BASE, ICON_HOST, MAX_BODY_BYTES};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+/// A small file (an icon, at most a few hundred KiB): a CDN that has not answered by now is
+/// not worth waiting for, the page shows a placeholder instead.
+const SMALL_FILE_TIMEOUT: Duration = Duration::from_secs(6);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// What lookup needs from the network. A trait so tests can answer without one.
@@ -106,6 +109,9 @@ impl ContentNet for UreqNet {
         check(url)?;
         let mut response = Self::agent()
             .get(url)
+            .config()
+            .timeout_global(Some(SMALL_FILE_TIMEOUT))
+            .build()
             .call()
             .map_err(|error| failed(&error))?;
         response

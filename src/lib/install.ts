@@ -12,6 +12,18 @@ export const installStages: readonly InstallStage[] = [
   "finalize",
 ];
 
+/**
+ * 进度条上要列的步骤。装模组加载器时后端会在下载资源和创建实例之间报
+ * `modLoader`，这里也要有这一步——否则加载器安装期间当前阶段在列表里找不到，
+ * 四个步骤会一起退回「等待」，用户看不出装到哪儿了。
+ */
+export function installSteps(withLoader: boolean): readonly InstallStage[] {
+  if (!withLoader) {
+    return installStages;
+  }
+  return [...installStages.slice(0, -1), "modLoader", "finalize"];
+}
+
 const stageLabels: Record<InstallStage, string> = {
   metadata: "获取版本清单",
   files: "下载游戏文件",

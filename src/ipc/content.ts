@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import { callCommand } from "./call";
 import { isTauri } from "./index";
 
@@ -11,8 +12,9 @@ import { isTauri } from "./index";
  * 同名文件不覆盖。
  */
 
-/** 能搜索的内容类型，Modrinth 的 `project_type`。整合包只能搜，现在还不能装。 */
+/** Content installed into an existing instance. */
 export type ContentType = "mod" | "datapack" | "resourcepack" | "shader";
+export type SearchContentType = ContentType | "modpack";
 
 export const contentTypes: readonly ContentType[] = ["mod", "datapack", "resourcepack", "shader"];
 
@@ -77,12 +79,64 @@ export type InstallReport = {
   skipped: SkippedProject[];
 };
 
+export type ContentInstallArgs = {
+  id: string;
+  projectId: string;
+  projectType: ContentType;
+  world: string | null;
+  withDependencies: boolean;
+};
+
+export type ContentInstallPhase = "resolving" | "downloading" | "verifying" | "done" | "failed" | "cancelled";
+
+export type ContentInstallProgress = {
+  operationId: string;
+  phase: ContentInstallPhase;
+  projectId: string;
+  fileName: string | null;
+  bytesDone: number;
+  bytesTotal: number;
+  filesDone: number;
+  filesDiscovered: number;
+};
+
+export type ContentInstallResult = InstallReport & {
+  operationId: string;
+  status: "done" | "failed" | "cancelled";
+  error: string | null;
+};
+
+export const contentInstallProgressEvent = "content-install://progress";
+
+export async function beginContentInstall(args: ContentInstallArgs): Promise<string> {
+  requireDesktop();
+  return callCommand("begin_content_install", args);
+}
+
+export async function waitContentInstall(operationId: string): Promise<ContentInstallResult> {
+  requireDesktop();
+  return callCommand("wait_content_install", { operationId });
+}
+
+export async function cancelContentInstall(operationId: string): Promise<boolean> {
+  requireDesktop();
+  return callCommand("cancel_content_install", { operationId });
+}
+
+export async function listenContentInstallProgress(handler: (progress: ContentInstallProgress) => void): Promise<() => void> {
+  if (!isTauri()) return () => undefined;
+  return listen<ContentInstallProgress>(contentInstallProgressEvent, (event) => handler(event.payload));
+}
+
 declare module "./call" {
   interface CommandArgs {
+    begin_content_install: ContentInstallArgs;
+    cancel_content_install: { operationId: string };
+    wait_content_install: { operationId: string };
     get_content_target: { id: string };
     search_content: {
       text: string;
-      projectType: ContentType;
+      projectType: SearchContentType;
       gameVersion: string | null;
       loader: string | null;
       sort: SearchSort;
@@ -98,6 +152,9 @@ declare module "./call" {
   }
 
   interface CommandResults {
+    begin_content_install: string;
+    cancel_content_install: boolean;
+    wait_content_install: ContentInstallResult;
     get_content_target: ContentTarget;
     search_content: SearchResult;
     install_content: InstallReport;
@@ -117,7 +174,7 @@ export async function getContentTarget(id: string): Promise<ContentTarget> {
 
 export async function searchContent(
   text: string,
-  projectType: ContentType,
+  projectType: SearchContentType,
   gameVersion: string | null,
   loader: string | null,
   sort: SearchSort,
@@ -139,21 +196,24 @@ export async function installContent(
   return callCommand("install_content", { id, projectId, projectType, world, withDependencies });
 }
 
-export type FolderReport = { files: string[]; message: string };
+export type FolderSaveArgs = {
+  id: string;
+  projectId: string;
+  projectType: ContentType;
+  withDependencies: boolean;
+};
 
 declare module "./call" {
   interface CommandArgs {
-    save_content_to_folder: { id: string; projectId: string; projectType: ContentType; withDependencies: boolean };
+    begin_folder_save: FolderSaveArgs;
   }
   interface CommandResults {
-    save_content_to_folder: FolderReport | null;
+    begin_folder_save: string;
   }
 }
 
-/** 后端选文件夹；取消时返回 null，路径不经过网页 */
-export async function saveContentToFolder(
-  id: string, projectId: string, projectType: ContentType, withDependencies: boolean,
-): Promise<FolderReport | null> {
+/** 开始一次「保存到文件夹」；用户在后端弹出的原生对话框里选目录，路径不经过网页。 */
+export async function beginFolderSave(args: FolderSaveArgs): Promise<string> {
   requireDesktop();
-  return callCommand("save_content_to_folder", { id, projectId, projectType, withDependencies });
+  return callCommand("begin_folder_save", args);
 }

@@ -51,6 +51,7 @@ The project follows [Semantic Versioning](https://semver.org/) once public relea
 
 - Microsoft accounts show the player's skin head seen from the front, with the hat layer over the face (drawn on a canvas), instead of an initial; the skin comes from Mojang's public session server and `textures.minecraft.net`, and the avatar falls back to the initial when there is no skin or no network
 - Drag-and-drop install backend: dropped files are classified (`.jar` mod; `.zip` by entry names only — data pack, resource pack or shaders), staged behind a single-use token with a two-minute expiry, and installed with a never-overwriting claim-then-rename copy into the chosen instance (data packs go to the selected worlds); the paths never reach the webview (the stock webview drag-drop handler is disabled) and the confirmation dialog only ever sees names, sizes and kinds; the native listener hookup is still open, and dev builds can feed the pipeline through `AETHER_DEV_DROP` + `simulate_dev_drop` (see `docs/modules/drop-install.md`)
+- "Save to folder…" now runs through the same content-operation machinery as installs: a backend operation id, `content-install://progress` events, cooperative cancellation, the two-slot queue and a retained kept-files report; the native folder picker stays on the backend so no path crosses IPC
 
 ### Security
 
@@ -65,3 +66,8 @@ The project follows [Semantic Versioning](https://semver.org/) once public relea
 - Home greeting follows the local time of day
 - Document language set to `zh-CN`
 - Download plans reject unsafe or duplicate destination paths
+
+### Fixed
+
+- Retrying a failed install keeps the mod loader: the install job remembers the version, name and loader it was started with, so the retry on the home page no longer quietly installs plain Vanilla in place of a Forge / NeoForge / Fabric instance
+- The install progress card lists the mod loader step, so a loader install shows where it is instead of falling back to four unstarted steps while `modLoader` runs

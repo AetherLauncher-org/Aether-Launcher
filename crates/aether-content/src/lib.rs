@@ -20,6 +20,7 @@
 //! client; see `docs/modules/content-metadata.md`.
 
 pub mod browse;
+pub mod modpack;
 pub mod modrinth;
 pub mod skin;
 

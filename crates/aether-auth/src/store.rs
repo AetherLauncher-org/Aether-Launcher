@@ -9,7 +9,7 @@
 //! account secrets or their filesystem paths.
 
 use std::fs::{self, File};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -174,23 +174,29 @@ impl FileCredentialStore {
 
 impl CredentialStore for FileCredentialStore {
     fn load(&self, account: AccountId) -> Result<Option<StoredCredential>, StoreError> {
-        let bytes = match fs::read(self.path_for(account)) {
-            Ok(bytes) => bytes,
+        const MAX_METADATA_BYTES: u64 = 128 * 1024;
+        let file = match File::open(self.path_for(account)) {
+            Ok(file) => file,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(StoreError::Read(error)),
         };
-
-        // Two passes on purpose. `serde_json::from_slice` fails on malformed UTF-8 while
-        // `from_str` is infallible for the same bytes, so scanning through `from_str`
-        // guarantees the refusal below cannot be bypassed with odd bytes; the decode then
-        // runs on the scanned text. The scan is cheap relative to any I/O.
-        let text = String::from_utf8_lossy(&bytes);
-        if let Ok(value) = serde_json::from_str::<Value>(&text)
-            && !document_is_trusted(&value)
-        {
+        if !file.metadata().map_err(StoreError::Read)?.is_file() {
             return Err(StoreError::UntrustedContent);
         }
-        let wire: WireCredential = serde_json::from_str(&text).map_err(StoreError::Decode)?;
+        let mut bytes = Vec::new();
+        file.take(MAX_METADATA_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(StoreError::Read)?;
+        if bytes.len() as u64 > MAX_METADATA_BYTES {
+            return Err(StoreError::UntrustedContent);
+        }
+
+        // Decode strictly: lossy UTF-8 could silently change account metadata.
+        let value: Value = serde_json::from_slice(&bytes).map_err(StoreError::Decode)?;
+        if !document_is_trusted(&value) {
+            return Err(StoreError::UntrustedContent);
+        }
+        let wire: WireCredential = serde_json::from_slice(&bytes).map_err(StoreError::Decode)?;
 
         let stored = wire.account_id;
         if stored != account {
@@ -241,6 +247,9 @@ impl CredentialStore for FileCredentialStore {
             let Some(account) = account_from_file_name(&entry.file_name()) else {
                 continue;
             };
+            if !entry.file_type().map_err(StoreError::Read)?.is_file() {
+                continue;
+            }
             accounts.push(account);
         }
         accounts.sort_by_key(AccountId::as_uuid);

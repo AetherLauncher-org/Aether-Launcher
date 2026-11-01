@@ -9,11 +9,11 @@
 | 1 | 导航栏改到页面顶部，不在左边 | 已做（见 [ui-shell.md](ui-shell.md)） | — |
 | 2 | 原生界面：iced / egui / Slint 三个候选都做对比 | iced、egui 做完且输入法通过；Slint 在做 | — |
 | 3 | 世界可管理：能查看数据包等 | 已做（见 [instance-management.md](../modules/instance-management.md)）；启用／停用数据包没做 | — |
-| 4 | 下载页能从 Modrinth 和 CurseForge 下载模组、数据包、资源包、光影等，装进实例（或实例的世界）或选定文件夹 | Modrinth → 实例 / 世界已做（见 [content-metadata.md](../modules/content-metadata.md)）；选定文件夹已做；进度、CurseForge 没做 | CurseForge 的 key（待定） |
-| 5 | 皮肤库：选皮肤、加皮肤；换皮肤时有多个正版账户就弹卡片多选；下载页能从 NameMC / Skindex 等下皮肤，存进皮肤库或选定文件夹 | 皮肤库已做（账户页「皮肤库」标签，见 [skin-library.md](../modules/skin-library.md)）；换到账户上、下载页的皮肤来源没做 | 换肤接口（要在 aether-auth 里加二进制上传） |
-| 6 | 第三方账户登录，像 LittleSkin | 在调研协议 | authlib-injector（官方下载，带校验和） |
-| 7 | i18n | 方案见下，待做 | — |
-| 8 | 拖放安装 | 分类、令牌、复制和确认界面已做；私有原生监听器待接入，当前不能实际拖入 | 私有原生监听器 |
+| 4 | 下载页能从 Modrinth 和 CurseForge 下载模组、数据包、资源包、光影等，装进实例（或实例的世界）或选定文件夹 | Modrinth → 实例 / 世界已做（见 [content-metadata.md](../modules/content-metadata.md)）；整合包（`.mrpack`）已做（见 [modpack.md](../modules/modpack.md)）；进度和取消已做（见 [content-metadata.md](../modules/content-metadata.md)）；选定文件夹已做（走同一套进度、取消和排队，见 [content-metadata.md](../modules/content-metadata.md)「保存到所选文件夹」）；CurseForge 没做 | CurseForge 的 key（待定） |
+| 5 | 皮肤库：选皮肤、加皮肤；换皮肤时有多个正版账户就弹卡片多选；下载页能从 NameMC / Skindex 等下皮肤，存进皮肤库或选定文件夹 | 皮肤库和「换上」已做（左边导航里的独立栏目「皮肤库」，见 [skin-library.md](../modules/skin-library.md)）；下载页的皮肤来源没做 | — |
+| 6 | 第三方账户登录，像 LittleSkin | 登录、刷新、移除已做（见 [yggdrasil.md](../modules/yggdrasil.md)）；用第三方账户启动游戏（agent 下载 + `-javaagent` 参数）没做 | authlib-injector（官方下载，带校验和） |
+| 7 | i18n | 基础设施、跟随系统（中英）和导航栏已做（见 [i18n.md](i18n.md)）；其余页面分片迁移，后端错误码方案待定 | — |
+| 8 | 拖放安装 | 分类、单次令牌、流式复制、确认界面和逐项报告已做；私有原生监听器待接入，当前不能实际拖入 | 私有原生监听器 |
 
 ## 3. 世界管理
 
@@ -43,7 +43,7 @@ DatapackInfo { name, isFolder, sizeBytes, description?, packFormat?, state: enab
 
 1. **实例**：模组 → `mods/`，资源包 → `resourcepacks/`，光影 → `shaderpacks/`；
 2. **实例的某个世界**：数据包 → `saves/<世界>/datapacks/`；
-3. **选定的文件夹**：由后端开原生文件夹对话框（页面不传路径），只写这一个已校验的文件，文件名净化，已存在的文件不覆盖，报告同名冲突（folder-dnd 任务要求），见 [内容元数据](../modules/content-metadata.md)。
+3. **选定的文件夹**：由后端开原生文件夹对话框（页面不传路径），只写校验过的文件，文件名净化，已存在的文件不覆盖；与装进实例共用操作 id、进度事件、取消和两槽队列，保留文件逐项报告，见 [内容元数据](../modules/content-metadata.md)「保存到所选文件夹」。
 
 每个文件都按 API 给的哈希校验（Modrinth：sha1 + sha512；CurseForge：sha1），哈希不符就丢掉。搜索要按游戏版本、加载器、类型筛，并给出依赖。
 
@@ -59,13 +59,13 @@ DatapackInfo { name, isFolder, sizeBytes, description?, packFormat?, state: enab
 - **换皮肤**：选一张皮肤，点「换上」。如果有不止一个**正版**账户，弹出模态框，里面是账户卡片（头像用现在画的那个头），**可多选**，对选中的每个账户各换一次；只有一个正版账户就直接换。离线账户没有皮肤可换，不列出。换肤要用 Minecraft 的访问令牌，只在后端里用，不过 IPC。**已做**（`docs/modules/skin-library.md`「换上」）。与上面不同的一处：只有一个正版账户时也弹框，账户默认选中，点一次确认——换肤立刻生效，Mojang 对更换频率有限制，误点一下的代价比多点一次大。要改成直接换，改 `WearSkinDialog` 即可。
 - **下载页的皮肤**（2026-10-31 负责人定，依据调研）：只自动取**有官方接口**的来源——Mojang 官方链路（玩家名 → UUID → 会话服务器 → `textures.minecraft.net`，贴图哈希是 PNG 的 **SHA-256**，下载后校验）、LittleSkin / Ely.by（authlib-injector 体系，文档公开）。NameMC、Skindex、Planet Minecraft 没有官方接口，条款也没核实，**不自动抓取**，只放「在浏览器里打开」的按钮，用户自己保存 PNG 后加进皮肤库（走第 5 条的「从文件加」，受同样的检查）。下载的去向是「皮肤库」或「选定的文件夹」，和第 4 条的文件夹规则一样。Crafatar、Minotar、mc-heads 这类渲染服务是镜像，不是信任根，不作为皮肤文件的来源。
 
-待定：皮肤库做成导航栏里单独一页，还是放在账户页里。
+**已定（2026-11-01，负责人）**：皮肤库是左边导航里的独立栏目，放在「下载」后面，不再是账户页里的标签。皮肤是本机的一份收藏，不属于某个账户，「换上」时才选账户。
 
 ## 6. 第三方账户登录
 
-Yggdrasil 协议的外置登录服务器（LittleSkin、Ely.by、Blessing Skin 系）。启动时用 authlib-injector（`-javaagent`）。密码不存、不进日志、不过 IPC，只存令牌（系统凭据库）；jar 从官方地址下载并校验 SHA-256。
+Yggdrasil 协议的外置登录服务器（LittleSkin、Ely.by、Blessing Skin 系）。登录、刷新、移除已做，见 [yggdrasil.md](../modules/yggdrasil.md)。密码不存、不进日志、不过 IPC，只存令牌（系统凭据库）；服务器地址只允许 HTTPS 且解析到公网地址。启动时用 authlib-injector（`-javaagent`），jar 从官方地址下载并校验 SHA-256——**这一部分还没做**：官方发布的 JAR 地址和 SHA-256 清单尚未核实，核实之前不写死哈希、不实现下载。
 
-待定：协议细节和安全边界在调研；用户输入的服务器地址要怎么校验（只允许 HTTPS）；能不能通过这些服务器的接口换肤。
+待定：agent 的官方发布地址与 SHA-256 清单；能不能通过这些服务器的接口换肤。
 
 ## 7. i18n
 

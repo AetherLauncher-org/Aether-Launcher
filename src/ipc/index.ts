@@ -20,6 +20,10 @@ type CommandResults = {
   list_java_runtimes: JavaRuntimeInfo[];
 };
 
+export { installModpack } from "./modpack";
+export type { ModpackRequest } from "./modpack";
+export type { SearchContentType } from "./content";
+
 export const defaultApplicationInfo: ApplicationInfo = {
   name: "Aether Launcher",
   version: "0.1.0",
@@ -122,6 +126,14 @@ export type {
   MicrosoftAccount,
 } from "./accounts";
 
+// 第三方账户：凭据留在后端，暂不接入启动账户簿
+export {
+  beginYggdrasilLogin, finishYggdrasilLogin, cancelYggdrasilLogin,
+  listYggdrasilAccounts, refreshYggdrasilAccount, removeYggdrasilAccount,
+  describeYggdrasilError, isYggdrasilServer, yggdrasilPresets,
+} from "./yggdrasil";
+export type { YggdrasilAccount, YggdrasilLogin, YggdrasilProfile } from "./yggdrasil";
+
 // Installed game lifecycle (no arbitrary executable or paths)
 export { gameStatus, startInstalledInstance, stopInstalledInstance } from "./launch";
 export type { GameRunStatus } from "./launch";
@@ -152,10 +164,18 @@ export {
 export type { AddSkinResult, SkinEntry } from "./skinLibrary";
 
 // 内容下载：搜索 Modrinth、装进实例或世界
-export { contentTypes, getContentTarget, installContent, searchContent } from "./content";
+export {
+  beginContentInstall, beginFolderSave, cancelContentInstall, contentInstallProgressEvent, contentTypes,
+  getContentTarget, installContent, listenContentInstallProgress, searchContent, waitContentInstall,
+} from "./content";
 export type {
+  ContentInstallArgs,
+  ContentInstallPhase,
+  ContentInstallProgress,
+  ContentInstallResult,
   ContentTarget,
   ContentType,
+  FolderSaveArgs,
   InstallReport,
   InstalledFile,
   SearchHit,
@@ -220,9 +240,5 @@ export type {
   ModLoaderKind,
 } from "./modloader";
 
-export { saveContentToFolder } from "./content";
-export type { FolderReport } from "./content";
-
-// 拖放安装：后端只交出令牌和文件名单，路径不进前端
 export { installDrop } from "./drop";
 export type { DropPreview, DropReport, DroppedItem } from "./drop";

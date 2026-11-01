@@ -3,6 +3,10 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pretendBrowser, pretendDesktop, renderWithState, routeInvoke } from "../test/support";
 import type { Handlers } from "../test/support";
+import { listen } from "@tauri-apps/api/event";
+import type { Event } from "@tauri-apps/api/event";
+import type { ContentInstallProgress, ContentInstallResult } from "../ipc";
+import { contentInstallStore } from "../state/contentInstall";
 import { ContentBrowser } from "./ContentBrowser";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -43,7 +47,9 @@ function backend(overrides: Handlers = {}, instances: unknown[] = [survival]) {
     list_instances: () => ({ instances, skipped: [] }),
     get_content_target: () => ({ gameVersion: "1.21.1", loader: "fabric" }),
     search_content: () => ({ hits: [hit()], total: 1 }),
-    install_content: () => ({
+    begin_content_install: () => crypto.randomUUID(),
+    wait_content_install: (args) => ({
+      operationId: (args as { operationId: string }).operationId, status: "done", error: null,
       installed: [{ projectId: "AANobbMI", fileName: "sodium-1.0.0.jar", version: "1.0.0" }],
       skipped: [],
     }),
@@ -57,6 +63,8 @@ function backend(overrides: Handlers = {}, instances: unknown[] = [survival]) {
 }
 
 beforeEach(() => {
+  for (const task of contentInstallStore.getSnapshot()) contentInstallStore.dismiss(task.key);
+  vi.mocked(listen).mockImplementation(async () => () => undefined);
   vi.mocked(invoke).mockReset();
   pretendDesktop();
 });
@@ -155,20 +163,21 @@ describe("content browser", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "安装 Sodium" }));
 
-    await waitFor(() => expect(calls("install_content")).toHaveLength(1));
-    expect(calls("install_content")[0][1]).toEqual({
+    await waitFor(() => expect(calls("begin_content_install")).toHaveLength(1));
+    expect(calls("begin_content_install")[0][1]).toEqual({
       id: "i1",
       projectId: "AANobbMI",
       projectType: "mod",
       world: null,
       withDependencies: true,
     });
-    expect(await screen.findByText(/已装 Sodium：sodium-1.0.0.jar/)).toBeInTheDocument();
+    expect(await screen.findByText(/已装 Sodium：已保留并校验 sodium-1.0.0.jar/)).toBeInTheDocument();
   });
 
   it("reports required dependencies that could not be installed", async () => {
     backend({
-      install_content: () => ({
+      wait_content_install: () => ({
+        operationId: "result", status: "done", error: null,
         installed: [{ projectId: "AANobbMI", fileName: "sodium-1.0.0.jar", version: "1.0.0" }],
         skipped: [{ projectId: "P7dR8mSH", reason: "no version of this project fits Minecraft 1.21.1" }],
       }),
@@ -182,7 +191,7 @@ describe("content browser", () => {
 
   it("shows why an install was refused", async () => {
     backend({
-      install_content: () => {
+      begin_content_install: () => {
         throw "stop the game before installing content";
       },
     });
@@ -216,12 +225,57 @@ describe("content browser", () => {
     fireEvent.click(within(picker).getByRole("checkbox", { name: "Creative" }));
     fireEvent.click(within(picker).getByRole("button", { name: "安装" }));
 
-    await waitFor(() => expect(calls("install_content")).toHaveLength(2));
-    expect(calls("install_content").map(([, args]) => (args as { world: string }).world).sort()).toEqual([
+    await waitFor(() => expect(calls("begin_content_install")).toHaveLength(2));
+    expect(calls("begin_content_install").map(([, args]) => (args as { world: string }).world).sort()).toEqual([
       "Creative",
       "My World",
     ]);
-    expect(calls("install_content")[0][1]).toMatchObject({ projectType: "datapack", withDependencies: false });
+    expect(calls("begin_content_install")[0][1]).toMatchObject({ projectType: "datapack", withDependencies: false });
+  });
+
+  it("shows early per-file progress, survives remount, and reports retained files after cancelling", async () => {
+    let emitProgress: ((event: Event<ContentInstallProgress>) => void) | undefined;
+    const stop = vi.fn();
+    vi.mocked(listen).mockImplementation(async (name, handler) => {
+      if (name === "content-install://progress") emitProgress = handler as typeof emitProgress;
+      return stop;
+    });
+    let finish!: (result: ContentInstallResult) => void;
+    const terminal = new Promise<ContentInstallResult>((resolve) => { finish = resolve; });
+    backend({
+      begin_content_install: () => {
+        emitProgress?.({ event: "content-install://progress", id: 1, payload: {
+          operationId: "early", phase: "downloading", projectId: "AANobbMI", fileName: "sodium.jar",
+          bytesDone: 25, bytesTotal: 100, filesDone: 1, filesDiscovered: 2,
+        } });
+        return "early";
+      },
+      wait_content_install: () => terminal,
+      cancel_content_install: () => true,
+    });
+    const first = renderWithState(<ContentBrowser type="mod" />);
+    fireEvent.click(await screen.findByRole("button", { name: "安装 Sodium" }));
+    expect(await screen.findByText(/1 \/ ≥2 个文件已校验/)).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Sodium 当前文件进度" })).toHaveAttribute("aria-valuenow", "0.25");
+    expect(screen.getByRole("button", { name: "安装 Sodium" })).toBeDisabled();
+    first.unmount();
+    renderWithState(<ContentBrowser type="resourcepack" />);
+    expect(await screen.findByText(/sodium.jar ·/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "取消 Sodium" }));
+    await waitFor(() => expect(lastArgs("cancel_content_install")).toEqual({ operationId: "early" }));
+    expect(screen.getByRole("button", { name: "取消 Sodium" })).toBeDisabled();
+    finish({ operationId: "early", status: "cancelled", installed: [{ projectId: "dep", fileName: "exact-retained.jar", version: "1" }], skipped: [], error: null });
+    expect(await screen.findByText(/已取消 Sodium：已保留并校验 exact-retained.jar/)).toBeInTheDocument();
+  });
+
+  it("reports exact retained files alongside an installation failure", async () => {
+    backend({ wait_content_install: () => ({
+      operationId: "failed", status: "failed", error: "hash mismatch",
+      installed: [{ projectId: "dep", fileName: "retained-dependency.jar", version: "1" }], skipped: [],
+    }) });
+    renderWithState(<ContentBrowser type="mod" />);
+    fireEvent.click(await screen.findByRole("button", { name: "安装 Sodium" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("已保留并校验 retained-dependency.jar；hash mismatch");
   });
 
   it("opens the project page by its slug", async () => {
@@ -244,35 +298,40 @@ describe("content browser", () => {
 
 describe("native folder saves", () => {
   it("passes compatibility and dependency choice, never a path or world", async () => {
-    backend({ save_content_to_folder: () => ({ files: ["sodium.jar"], message: "已保存到所选文件夹" }) });
+    backend({ begin_folder_save: () => "folder-op" });
     renderWithState(<ContentBrowser type="mod" />);
     fireEvent.click(await screen.findByRole("button", { name: "保存 Sodium 到文件夹" }));
-    expect(await screen.findByText("已保存到所选文件夹：sodium.jar")).toBeInTheDocument();
-    expect(lastArgs("save_content_to_folder")).toEqual({ id: "i1", projectId: "AANobbMI", projectType: "mod", withDependencies: true });
-    expect(calls("install_content")).toHaveLength(0);
+    await waitFor(() => expect(calls("begin_folder_save")).toHaveLength(1));
+    expect(calls("begin_folder_save")[0][1]).toEqual({ id: "i1", projectId: "AANobbMI", projectType: "mod", withDependencies: true });
+    expect(await screen.findByText(/已保存 保存 Sodium 到文件夹：已保留并校验 sodium-1.0.0.jar/)).toBeInTheDocument();
+    expect(calls("begin_content_install")).toHaveLength(0);
   });
 
   it("honors the dependency switch", async () => {
-    backend({ save_content_to_folder: () => null });
+    backend({ begin_folder_save: () => "folder-op" });
     renderWithState(<ContentBrowser type="mod" />);
     await screen.findByText("Sodium");
     fireEvent.click(screen.getByRole("switch", { name: "同时装必需的前置" }));
     fireEvent.click(screen.getByRole("button", { name: "保存 Sodium 到文件夹" }));
-    await waitFor(() => expect(lastArgs("save_content_to_folder")).toMatchObject({ withDependencies: false }));
-    expect(screen.queryByText(/已保存到所选文件夹/)).not.toBeInTheDocument();
+    await waitFor(() => expect(calls("begin_folder_save")[0]?.[1]).toMatchObject({ withDependencies: false }));
   });
 
   it("saves datapacks without asking for an instance world", async () => {
-    backend({ save_content_to_folder: () => ({ files: ["pack.zip"], message: "已保存到所选文件夹" }) });
+    backend({ begin_folder_save: () => "folder-op" });
     renderWithState(<ContentBrowser type="datapack" />);
     fireEvent.click(await screen.findByRole("button", { name: "保存 Sodium 到文件夹" }));
-    expect(await screen.findByText("已保存到所选文件夹：pack.zip")).toBeInTheDocument();
+    await waitFor(() => expect(calls("begin_folder_save")[0]?.[1]).toMatchObject({ projectType: "datapack", withDependencies: false }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(lastArgs("save_content_to_folder")).toMatchObject({ projectType: "datapack", withDependencies: false });
   });
 
   it("reports a refused save and enables retry", async () => {
-    backend({ save_content_to_folder: () => { throw "a file with this name is already there"; } });
+    backend({
+      begin_folder_save: () => "folder-op",
+      wait_content_install: () => ({
+        operationId: "folder-op", status: "failed", error: "a file with this name is already there",
+        installed: [], skipped: [],
+      }),
+    });
     renderWithState(<ContentBrowser type="mod" />);
     fireEvent.click(await screen.findByRole("button", { name: "保存 Sodium 到文件夹" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("a file with this name is already there");

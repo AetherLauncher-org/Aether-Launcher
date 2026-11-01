@@ -11,6 +11,7 @@ import {
 import type { LoginEvent } from "../ipc/accounts";
 import { callCommand } from "../ipc/call";
 import type { InstallProgress } from "../ipc/install";
+import type { ContentInstallProgress } from "../ipc/content";
 import { installMockBackend } from "./mockBackend";
 
 beforeAll(() => {
@@ -27,6 +28,39 @@ afterEach(() => {
 });
 
 describe("the browser mock backend", () => {
+  it("streams content chunks and retains verified files when cancelled during a dependency", async () => {
+    const seen: ContentInstallProgress[] = [];
+    const stop = await listen<ContentInstallProgress>("content-install://progress", (event) => seen.push(event.payload));
+    const operationId = await callCommand("begin_content_install", {
+      id: "mock", projectId: "Sodium", projectType: "mod", world: null, withDependencies: true,
+    });
+    let finished = false;
+    const waiting = callCommand("wait_content_install", { operationId }).then((result) => { finished = true; return result; });
+    await vi.advanceTimersByTimeAsync(1700);
+    expect(finished).toBe(false);
+    expect(seen.some((event) => event.bytesDone > 0 && event.bytesDone < event.bytesTotal)).toBe(true);
+    expect(await callCommand("cancel_content_install", { operationId })).toBe(true);
+    await vi.advanceTimersByTimeAsync(500);
+    const result = await waiting;
+    expect(result.status).toBe("cancelled");
+    expect(result.installed.map((file) => file.fileName)).toEqual(["Sodium-1.0.0.jar"]);
+    expect(await callCommand("wait_content_install", { operationId })).toEqual(result);
+    expect(await callCommand("cancel_content_install", { operationId })).toBe(false);
+    stop();
+  });
+
+  it("completes mock content through resolving downloading and verifying phases", async () => {
+    const phases: string[] = [];
+    const stop = await listen<ContentInstallProgress>("content-install://progress", (event) => phases.push(event.payload.phase));
+    const operationId = await callCommand("begin_content_install", {
+      id: "mock", projectId: "Pack", projectType: "resourcepack", world: null, withDependencies: false,
+    });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect((await callCommand("wait_content_install", { operationId })).status).toBe("done");
+    expect(phases).toEqual(expect.arrayContaining(["resolving", "downloading", "verifying", "done"]));
+    stop();
+  });
+
   it("makes the frontend believe it runs in Tauri and serves the read-only commands", async () => {
     expect("__TAURI_INTERNALS__" in window).toBe(true);
 

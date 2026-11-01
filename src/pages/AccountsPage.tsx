@@ -7,8 +7,6 @@ import {
   DialogContent,
   DialogSurface,
   DialogTitle,
-  Tab,
-  TabList,
   Text,
   Tooltip,
 } from "@fluentui/react-components";
@@ -25,7 +23,7 @@ import { AccountAvatar } from "../components/AccountAvatar";
 import { AddOfflineAccountDialog } from "../components/AddOfflineAccountDialog";
 import { MicrosoftLoginDialog } from "../components/MicrosoftLoginDialog";
 import { PageHeader } from "../components/PageHeader";
-import { SkinLibrary } from "../components/SkinLibrary";
+import { YggdrasilAccounts } from "../components/YggdrasilAccounts";
 import {
   describeCommandError,
   isMicrosoftLoginAvailable,
@@ -58,7 +56,7 @@ const groups: readonly {
   {
     id: "thirdparty",
     title: "第三方账户",
-    empty: "还没有第三方账户。LittleSkin、Ely.by 这类外置登录服务器的登录还在做，暂时不能用。",
+    empty: "还没有第三方账户。添加 LittleSkin、Ely.by 等外置登录服务器的账户。",
   },
   {
     id: "offline",
@@ -80,12 +78,12 @@ function groupOf(account: Account): Group {
  */
 export function AccountsPage({ page }: AccountsPageProps) {
   const { book, active, select, remove, signInMicrosoft } = useAccounts();
-  const [tab, setTab] = useState<"accounts" | "skins">("accounts");
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<Account | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [loginAvailable, setLoginAvailable] = useState<boolean | null>(null);
+  const [thirdPartyOpen, setThirdPartyOpen] = useState(false);
 
   useEffect(() => {
     let current = true;
@@ -125,8 +123,8 @@ export function AccountsPage({ page }: AccountsPageProps) {
       >
         登录微软账户
       </Button>
-      <Tooltip content="还没做：LittleSkin、Ely.by 等外置登录服务器" relationship="description">
-        <Button appearance="secondary" icon={<Globe20Regular />} disabledFocusable>
+      <Tooltip content="LittleSkin、Ely.by 等外置登录服务器" relationship="description">
+        <Button appearance="secondary" icon={<Globe20Regular />} onClick={() => setThirdPartyOpen(true)}>
           第三方登录
         </Button>
       </Tooltip>
@@ -138,21 +136,7 @@ export function AccountsPage({ page }: AccountsPageProps) {
 
   return (
     <>
-      <PageHeader title={page.label} description={page.summary} action={tab === "accounts" ? actions : undefined} />
-
-      <TabList
-        selectedValue={tab}
-        onTabSelect={(_, data) => setTab(data.value as "accounts" | "skins")}
-        aria-label="账户和皮肤"
-      >
-        <Tab value="accounts">账户</Tab>
-        <Tab value="skins">皮肤库</Tab>
-      </TabList>
-
-      {tab === "skins" ? (
-        <SkinLibrary />
-      ) : (
-        <>
+      <PageHeader title={page.label} description={page.summary} action={actions} />
 
       {loginAvailable === false ? (
         <div className="inline-note account-note" role="status">
@@ -166,6 +150,9 @@ export function AccountsPage({ page }: AccountsPageProps) {
       ) : null}
 
       {groups.map((group) => {
+        if (group.id === "thirdparty") {
+          return <YggdrasilAccounts key={group.id} adding={thirdPartyOpen} onClose={() => setThirdPartyOpen(false)} />;
+        }
         const accounts = book.accounts.filter((account) => groupOf(account) === group.id);
         return (
           <section
@@ -315,8 +302,6 @@ export function AccountsPage({ page }: AccountsPageProps) {
           </DialogBody>
         </DialogSurface>
       </Dialog>
-        </>
-      )}
     </>
   );
 }
