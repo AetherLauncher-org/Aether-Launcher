@@ -91,6 +91,7 @@ pub fn run() {
             commands::catalog::list_minecraft_versions,
             commands::modloader::list_modloader_versions,
             commands::modloader::install_modloader_version,
+            commands::modpack::install_modpack,
             commands::install::install_vanilla_version,
             commands::install::cancel_vanilla_install,
             commands::instances::list_instances,

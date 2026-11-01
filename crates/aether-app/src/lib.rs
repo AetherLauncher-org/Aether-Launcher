@@ -25,6 +25,7 @@ pub mod launch;
 pub mod manage;
 pub mod microsoft;
 pub mod modloader;
+pub mod modpack;
 pub mod platform;
 pub mod schematics;
 pub mod skin_library;

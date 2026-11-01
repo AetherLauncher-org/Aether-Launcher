@@ -7,6 +7,7 @@ pub const MAX_FILES: usize = 10_000;
 pub const MAX_FILE_BYTES: u64 = 512 * 1024 * 1024;
 pub const MAX_TOTAL_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 pub const MAX_DEPTH: usize = 32;
+pub const MAX_PATH_DEPTH: usize = 32;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 #[error("invalid Modrinth pack: {0}")]
@@ -20,6 +21,7 @@ pub struct Index {
     pub version_id: String,
     pub name: String,
     pub summary: Option<String>,
+    #[serde(deserialize_with = "unique_dependencies")]
     pub dependencies: BTreeMap<String, String>,
     pub files: Vec<File>,
 }
@@ -54,13 +56,42 @@ pub enum Side {
     Unsupported,
 }
 
+fn unique_dependencies<'de, D>(deserializer: D) -> Result<BTreeMap<String, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct Dependencies;
+    impl<'de> serde::de::Visitor<'de> for Dependencies {
+        type Value = BTreeMap<String, String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a dependency map without duplicate keys")
+        }
+
+        fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+        where
+            M: serde::de::MapAccess<'de>,
+        {
+            let mut dependencies = BTreeMap::new();
+            while let Some((key, value)) = map.next_entry::<String, String>()? {
+                if dependencies.insert(key, value).is_some() || dependencies.len() > 2 {
+                    return Err(serde::de::Error::custom("duplicate or excess dependencies"));
+                }
+            }
+            Ok(dependencies)
+        }
+    }
+    deserializer.deserialize_map(Dependencies)
+}
+
 /// Portable paths deliberately reject Windows aliases even on Unix.
 #[must_use]
 pub fn safe_path(path: &str) -> bool {
     !path.is_empty()
         && path.len() <= 1024
+        && path.split('/').count() <= MAX_PATH_DEPTH
         && path.split('/').all(|part| {
-            let stem = part.split('.').next().unwrap_or("").to_uppercase();
+            let stem = part.split('.').next().unwrap_or("").trim_end_matches(' ').to_uppercase();
             !part.is_empty()
                 && part.len() <= 255
                 && part != "."
@@ -114,18 +145,44 @@ pub fn allowed_download(url: &str) -> bool {
             return false;
         }
     }
+    let route = path.split('?').next().unwrap_or("");
+    let parts: Vec<_> = route.split('/').collect();
+    // HTTP clients and servers can normalize escaped dot segments and separators.
+    // Validate the decoded route before applying the GitHub route allowlist.
+    if parts.iter().any(|part| !safe_url_segment(part)) {
+        return false;
+    }
     match host {
         "cdn.modrinth.com" | "raw.githubusercontent.com" | "gitlab.com" => true,
         "github.com" => {
-            let parts: Vec<_> = path.split('/').collect();
             parts.len() >= 5
-                && !parts[0].is_empty()
-                && !parts[1].is_empty()
                 && (parts[2] == "raw"
                     || (parts[2] == "releases" && parts[3] == "download" && parts.len() >= 6))
         }
         _ => false,
     }
+}
+
+fn safe_url_segment(segment: &str) -> bool {
+    let mut decoded = Vec::with_capacity(segment.len());
+    let mut bytes = segment.bytes();
+    while let Some(byte) = bytes.next() {
+        if byte == b'%' {
+            let Some(hi) = bytes.next().and_then(|b| char::from(b).to_digit(16)) else {
+                return false;
+            };
+            let Some(lo) = bytes.next().and_then(|b| char::from(b).to_digit(16)) else {
+                return false;
+            };
+            decoded.push((hi * 16 + lo) as u8);
+        } else {
+            decoded.push(byte);
+        }
+    }
+    !decoded.is_empty()
+        && decoded != b"."
+        && decoded != b".."
+        && !decoded.iter().any(|b| *b < 32 || *b == 127 || b"/\\%".contains(b))
 }
 
 fn bounded_depth(bytes: &[u8]) -> bool {
@@ -174,8 +231,9 @@ pub fn parse(bytes: &[u8]) -> Result<Index, PackError> {
         || index.game != "minecraft"
         || index.name.trim().is_empty()
         || index.name.len() > 512
-        || index.version_id.is_empty()
+        || index.version_id.trim().is_empty()
         || index.version_id.len() > 512
+        || index.summary.as_ref().is_some_and(|summary| summary.len() > 4096)
     {
         return Err(PackError("unsupported format or identity"));
     }
@@ -186,6 +244,8 @@ pub fn parse(bytes: &[u8]) -> Result<Index, PackError> {
                 key.as_str(),
                 "minecraft" | "fabric-loader" | "quilt-loader" | "forge" | "neoforge"
             ) || !crate::browse::is_game_version(value)
+                || !safe_path(value)
+                || !value.bytes().any(|b| b.is_ascii_alphanumeric())
         })
     {
         return Err(PackError("unsupported or conflicting dependencies"));
