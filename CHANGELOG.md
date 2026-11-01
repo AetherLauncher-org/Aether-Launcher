@@ -64,3 +64,8 @@ The project follows [Semantic Versioning](https://semver.org/) once public relea
 - Home greeting follows the local time of day
 - Document language set to `zh-CN`
 - Download plans reject unsafe or duplicate destination paths
+
+### Fixed
+
+- Retrying a failed install keeps the mod loader: the install job remembers the version, name and loader it was started with, so the retry on the home page no longer quietly installs plain Vanilla in place of a Forge / NeoForge / Fabric instance
+- The install progress card lists the mod loader step, so a loader install shows where it is instead of falling back to four unstarted steps while `modLoader` runs
