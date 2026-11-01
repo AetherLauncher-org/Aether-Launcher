@@ -25,10 +25,8 @@
 2. 下载整合包本身，**按平台给的 sha1 + sha512 校验**后暂存到私有文件（校验值就是信任根）。
 3. `Pack::open` 校验整个 ZIP。
 4. 装原版（和加载器，如果 `dependencies` 里有 `fabric-loader` / `forge` / `neoforge`），不建实例——复用 `install_game_files` 和 `modloader::execute::prepare_with`。
-5. **最后**建实例（`aether_storage::create_instance`，初始为「未完成」），把整合包文件写进实例自己的游戏目录，再 `activate_instance` 激活。
-6. 任何一步失败，半成品的实例目录会被删掉；已校验过的原版/加载器文件留在共享游戏树里，下次可复用。
-
-实例保持「未完成」直到整合包文件和激活都成功，失败不会留下一个指向错误内容、名字却写着整合包的实例。进度经 `Host::emit_install`（`install://progress`）发出；同一个取消令牌贯穿原版/加载器/整合包下载。
+5. **最后**建实例（`aether_storage::create_instance`，初始为「未完成」）：先在数据目录下的私有暂存目录里建，把整合包文件写进实例自己的游戏目录，再 `activate_instance` 激活，全部成功后把整个实例目录**原子改名**进 `instances/` 作为唯一发布点。
+6. 任何一步失败，暂存的实例目录会被删掉；已校验过的原版/加载器文件留在共享游戏树里，下次可复用。实例保持「未完成」直到整合包文件和激活都成功，失败不会留下一个指向错误内容、名字却写着整合包的实例。进度经 `Host::emit_install`（`install://progress`）发出；同一个取消令牌贯穿原版/加载器/整合包下载。
 
 ## 安全边界
 
