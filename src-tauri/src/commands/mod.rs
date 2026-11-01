@@ -18,3 +18,4 @@ pub mod microsoft;
 pub mod modloader;
 pub mod schematics;
 pub mod skin_library;
+pub mod yggdrasil;

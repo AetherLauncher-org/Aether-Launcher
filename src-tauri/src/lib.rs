@@ -137,6 +137,12 @@ pub fn run() {
             commands::microsoft::list_microsoft_accounts,
             commands::microsoft::account_skin,
             commands::microsoft::remove_microsoft_account,
+            commands::yggdrasil::begin_yggdrasil_login,
+            commands::yggdrasil::finish_yggdrasil_login,
+            commands::yggdrasil::cancel_yggdrasil_login,
+            commands::yggdrasil::list_yggdrasil_accounts,
+            commands::yggdrasil::refresh_yggdrasil_account,
+            commands::yggdrasil::remove_yggdrasil_account,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
