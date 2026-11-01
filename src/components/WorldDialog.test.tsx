@@ -192,4 +192,17 @@ describe("world dialog", () => {
 
     expect(calls("get_world_details")).toHaveLength(0);
   });
+
+  it("puts nothing on the page while it is closed (no stray spinner on the saves tab)", () => {
+    routeInvoke(vi.mocked(invoke), { get_world_details: () => world });
+    const { container } = renderWithState(
+      <WorldDialog instanceId="i1" world={null} locked={false} onClose={vi.fn()} onChanged={vi.fn()} />,
+    );
+
+    expect(screen.queryByText("正在读取世界…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开世界文件夹" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "关闭" })).not.toBeInTheDocument();
+    // 只剩外层的 Fluent 容器，没有任何对话框内容
+    expect(container.textContent).toBe("");
+  });
 });

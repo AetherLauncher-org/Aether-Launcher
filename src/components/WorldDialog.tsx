@@ -99,7 +99,10 @@ export function WorldDialog({ instanceId, world, locked, onClose, onChanged }: W
           ["DataVersion", data.dataVersion === null ? null : String(data.dataVersion)],
         ];
 
+  // ConfirmDialog 必须放在 <Dialog> 外面。Dialog 看到两个子节点会把第一个当成触发器，
+  // 直接渲染在页面里：对话框关着，里面的「正在读取世界…」转圈却一直挂在存档页上
   return (
+    <>
     <Dialog
       open={open}
       onOpenChange={(_, next) => {
@@ -233,18 +236,19 @@ export function WorldDialog({ instanceId, world, locked, onClose, onChanged }: W
           </DialogActions>
         </DialogBody>
       </DialogSurface>
-
-      <ConfirmDialog
-        open={removing !== null}
-        title="删除这个数据包？"
-        body={removing === null ? null : <Text>{describePackRemoval(removing.name, removing.isFolder)}</Text>}
-        confirmLabel="删除"
-        danger
-        busy={busy}
-        error={removeError}
-        onConfirm={() => void confirmRemove()}
-        onCancel={() => setRemoving(null)}
-      />
     </Dialog>
+
+    <ConfirmDialog
+      open={removing !== null}
+      title="删除这个数据包？"
+      body={removing === null ? null : <Text>{describePackRemoval(removing.name, removing.isFolder)}</Text>}
+      confirmLabel="删除"
+      danger
+      busy={busy}
+      error={removeError}
+      onConfirm={() => void confirmRemove()}
+      onCancel={() => setRemoving(null)}
+    />
+    </>
   );
 }
