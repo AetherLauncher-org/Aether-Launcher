@@ -327,9 +327,14 @@ fn copy_verified(
     let mut buffer = [0u8; 64 * 1024];
     loop {
         check_cancel(cancel)?;
-        let n = input
-            .read(&mut buffer)
-            .map_err(|_| "读取整合包文件失败".to_owned())?;
+        let n = match input.read(&mut buffer) {
+            Ok(n) => n,
+            Err(_) => {
+                check_cancel(cancel)?;
+                return Err("读取整合包文件失败".to_owned());
+            }
+        };
+        check_cancel(cancel)?;
         if n == 0 {
             break;
         }

@@ -1,40 +1,22 @@
-//! Instance transaction and backend-only source selection.
-//!
-//! A Modrinth pack is installed either from a project id (the latest compatible `.mrpack`) or
-//! from a local `.mrpack` chosen through the host's native picker. No filesystem path or URL is
-//! ever accepted from a frontend: the project id is a plain identifier and the local path stays
-//! inside this operation.
-//!
-//! The instance is created only after the vanilla game (and a loader, when the pack declares one)
-//! has installed, and is kept incomplete until every pack file is materialized and the instance
-//! is activated. A failure at any step removes the half-created instance directory again.
-
+//! Backend-only source selection and staged new-instance installation.
+use super::net::PackNet;
+use super::{FileSource, Pack, check_ancestors, check_cancel};
+use crate::Host;
+use crate::identify::{ContentNet, UreqNet};
+use crate::install::{ActiveInstall, CANCELLED, HostReporter, InstallOptions, InstallState};
+use crate::instances::InstanceSummary;
+use aether_content::{browse, modpack::Index};
+use aether_core::{InstanceId, InstanceState};
+use aether_download::CancellationToken;
+use aether_download::transport::KernelHttpTransport;
+use aether_download::transport::http::UreqKernel;
 use std::fs;
 use std::io::{Read, Seek};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use aether_content::browse;
-use aether_download::transport::http::UreqKernel;
-use aether_download::transport::KernelHttpTransport;
-use aether_download::CancellationToken;
-
-use crate::identify::{ContentNet, UreqNet};
-use crate::install::{ActiveInstall, HostReporter, InstallOptions, InstallState, CANCELLED};
-use crate::instances::InstanceSummary;
-use crate::Host;
-
-use super::net::PackNet;
-use super::{check_ancestors, FileSource, Pack};
-
-/// Install a Modrinth pack into a brand-new instance.
-///
-/// `project` names a Modrinth project whose latest `.mrpack` is fetched and verified; `None`
-/// opens the host's native file picker for a local `.mrpack`. `name` is the new instance's
-/// display name.
-///
+/// Install a new instance without accepting filesystem paths or URLs from IPC.
 /// # Errors
-/// Returns a sentence safe to show for validation, download, verification or install failures.
-/// Dismissing the picker returns [`CANCELLED`], like every other aborted install.
+/// Returns a safe install error, or `cancelled` on picker dismissal.
 pub fn install(
     host: &dyn Host,
     state: &InstallState,
@@ -45,36 +27,128 @@ pub fn install(
     let cancel = state.begin()?;
     let _active = ActiveInstall(state);
     let source = PackNet::new(cancel.clone());
-    install_with(host, &UreqNet, &source, project, name, optional, &cancel)
+    install_with(
+        &Services {
+            host,
+            net: &UreqNet,
+            source: &source,
+            game: &Game,
+        },
+        project,
+        name,
+        optional,
+        &cancel,
+    )
 }
-
-/// The testable core: the network and the payload transport are injected.
+trait GameLifecycle {
+    fn prepare(
+        &self,
+        host: &dyn Host,
+        base: &Path,
+        index: &Index,
+        name: &str,
+        cancel: &CancellationToken,
+    ) -> Result<String, String>;
+    fn activate(&self, store: &Path, game: &Path, id: InstanceId) -> Result<(), String>;
+}
+struct Game;
+impl GameLifecycle for Game {
+    fn prepare(
+        &self,
+        host: &dyn Host,
+        base: &Path,
+        index: &Index,
+        name: &str,
+        cancel: &CancellationToken,
+    ) -> Result<String, String> {
+        let game = index
+            .dependencies
+            .get("minecraft")
+            .ok_or_else(|| "整合包没有声明 Minecraft 版本".to_owned())?;
+        let transport = KernelHttpTransport::new(UreqKernel::new());
+        let reporter = HostReporter(host);
+        match index
+            .dependencies
+            .iter()
+            .find(|(key, _)| key.as_str() != "minecraft")
+        {
+            Some((loader, loader_version)) => {
+                let kind =
+                    crate::modloader::parse_kind(loader.strip_suffix("-loader").unwrap_or(loader))
+                        .ok_or_else(|| "整合包使用了不支持的加载器".to_owned())?;
+                crate::modloader::execute::prepare_with(
+                    &transport,
+                    crate::modloader::execute::InstallRequest {
+                        base,
+                        kind,
+                        game_version: game,
+                        loader_version,
+                        name,
+                    },
+                    cancel,
+                    &reporter,
+                )
+            }
+            None => {
+                crate::install::install_game_files(
+                    &transport,
+                    base,
+                    game,
+                    InstallOptions::default(),
+                    cancel,
+                    &reporter,
+                )?;
+                Ok(game.clone())
+            }
+        }
+    }
+    fn activate(&self, store: &Path, game: &Path, id: InstanceId) -> Result<(), String> {
+        crate::launch::activate_instance(store, game, id)
+    }
+}
+struct Services<'a> {
+    host: &'a dyn Host,
+    net: &'a dyn ContentNet,
+    source: &'a dyn FileSource,
+    game: &'a dyn GameLifecycle,
+}
 fn install_with(
-    host: &dyn Host,
-    net: &dyn ContentNet,
-    source: &dyn FileSource,
+    services: &Services<'_>,
     project: Option<&str>,
     name: &str,
     optional: bool,
     cancel: &CancellationToken,
 ) -> Result<InstanceSummary, String> {
-    let base = host.data_dir()?;
+    check_cancel(cancel)?;
+    let base = services.host.data_dir()?;
     fs::create_dir_all(&base).map_err(|_| "无法准备数据目录".to_owned())?;
+    check_ancestors(&base)?;
     crate::install::check_instance_name(&base, name)?;
-
     match project {
         Some(project) => {
-            let (archive, staging) = fetch_archive(net, source, project, &base, cancel)?;
-            let result = install_pack(host, Pack::open(archive)?, source, name, optional, cancel);
-            // The staging file stays open for the Pack's lifetime (overrides are read from it);
-            // only now is it safe to remove it, and only on a best-effort basis.
-            let _ = fs::remove_file(staging);
-            result
+            let (archive, staging) =
+                fetch_archive(services.net, services.source, project, &base, cancel)?;
+            // Include Pack::open failures; the reader closes before Windows cleanup.
+            let result =
+                (|| install_pack(services, Pack::open(archive)?, name, optional, cancel))();
+            let cleanup = fs::remove_file(staging).map_err(|_| "无法清理整合包暂存文件".to_owned());
+            match result {
+                Ok(value) => {
+                    let _ = cleanup;
+                    Ok(value)
+                }
+                Err(error) => {
+                    cleanup?;
+                    Err(error)
+                }
+            }
         }
         None => {
-            let path = host
+            let path = services
+                .host
                 .pick_file("Modrinth 整合包", &["mrpack"])?
                 .ok_or_else(|| CANCELLED.to_owned())?;
+            check_cancel(cancel)?;
             let meta = fs::symlink_metadata(&path).map_err(|_| "无法读取所选整合包".to_owned())?;
             if !meta.is_file()
                 || meta.file_type().is_symlink()
@@ -85,29 +159,34 @@ fn install_with(
             {
                 return Err("请选择普通 .mrpack 文件".to_owned());
             }
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::MetadataExt;
+                if meta.file_attributes() & 0x400 != 0 {
+                    return Err("请选择普通 .mrpack 文件".to_owned());
+                }
+            }
             let file = fs::File::open(path).map_err(|_| "无法读取所选整合包".to_owned())?;
-            install_pack(host, Pack::open(file)?, source, name, optional, cancel)
+            install_pack(services, Pack::open(file)?, name, optional, cancel)
         }
     }
 }
-
-/// Fetch the latest `.mrpack` for `project`, spool it to a private file and verify it against the
-/// hashes the platform listed, before handing it back to be inspected as a ZIP. Returns the open
-/// handle (rewound) together with the staging path, which the caller removes once the `Pack` that
-/// owns the handle is dropped.
+/// Caller closes the returned reader before deleting its staging path.
 fn fetch_archive(
     net: &dyn ContentNet,
     source: &dyn FileSource,
     project: &str,
     base: &Path,
     cancel: &CancellationToken,
-) -> Result<(fs::File, std::path::PathBuf), String> {
+) -> Result<(fs::File, PathBuf), String> {
+    check_cancel(cancel)?;
     let url = browse::versions_url(project, None, &[]).map_err(|error| error.to_string())?;
-    let versions = browse::parse_versions(&net.get_text(&url)?).map_err(|error| error.to_string())?;
-    let (_version, file) = browse::pick_modpack_version(&versions)
+    let versions =
+        browse::parse_versions(&net.get_text(&url)?).map_err(|error| error.to_string())?;
+    check_cancel(cancel)?;
+    let (_, file) = browse::pick_modpack_version(&versions)
         .ok_or_else(|| "项目没有带完整哈希的 mrpack 文件".to_owned())?;
-
-    // The index's hash is the trust anchor: the archive is checked against it before parsing.
+    // The official platform response anchors the archive, not the index inside it.
     let spec = aether_content::modpack::File {
         path: file.filename.clone(),
         file_size: file.size,
@@ -115,14 +194,16 @@ fn fetch_archive(
         env: None,
         hashes: aether_content::modpack::Hashes {
             sha1: file.sha1.clone(),
-            sha512: file.sha512.clone().ok_or_else(|| "缺少 SHA-512".to_owned())?,
+            sha512: file
+                .sha512
+                .clone()
+                .ok_or_else(|| "缺少 SHA-512".to_owned())?,
         },
     };
     if spec.file_size > super::MAX_ARCHIVE_BYTES {
         return Err("整合包超过大小上限".to_owned());
     }
-
-    let staging = base.join(format!(".mrpack-{}", aether_core::InstanceId::new()));
+    let staging = base.join(format!(".mrpack-{}", InstanceId::new()));
     check_ancestors(base)?;
     let mut output = fs::OpenOptions::new()
         .create_new(true)
@@ -130,111 +211,101 @@ fn fetch_archive(
         .read(true)
         .open(&staging)
         .map_err(|_| "无法暂存整合包".to_owned())?;
-
     let result = (|| {
         super::copy_verified(source.open(&file.url)?, &mut output, &spec, cancel)?;
-        output
-            .rewind()
-            .map_err(|_| "无法读取整合包".to_owned())?;
-        Ok(())
+        output.rewind().map_err(|_| "无法读取整合包".to_owned())?;
+        check_cancel(cancel)
     })();
-
     match result {
         Ok(()) => Ok((output, staging)),
         Err(error) => {
             drop(output);
-            let _ = fs::remove_file(&staging);
+            fs::remove_file(staging).map_err(|_| "无法清理整合包暂存文件".to_owned())?;
             Err(error)
         }
     }
 }
-
-/// Install a validated pack into a fresh instance: game + loader first, then pack files, then
-/// activation. The instance directory is removed again if anything after its creation fails.
 fn install_pack<R: Read + Seek>(
-    host: &dyn Host,
+    services: &Services<'_>,
     mut pack: Pack<R>,
-    source: &dyn FileSource,
     name: &str,
     optional: bool,
     cancel: &CancellationToken,
 ) -> Result<InstanceSummary, String> {
-    let base = host.data_dir()?;
-    let index = pack.index();
-    let game = index
-        .dependencies
-        .get("minecraft")
-        .ok_or_else(|| "整合包没有声明 Minecraft 版本".to_owned())?;
-    let transport = KernelHttpTransport::new(UreqKernel::new());
-    let reporter = HostReporter(host);
-
-    let version = match index
-        .dependencies
-        .iter()
-        .find(|(key, _)| key.as_str() != "minecraft")
-    {
-        Some((loader, loader_version)) => {
-            let kind = crate::modloader::parse_kind(
-                loader.strip_suffix("-loader").unwrap_or(loader),
-            )
-            .ok_or_else(|| "整合包使用了不支持的加载器".to_owned())?;
-            crate::modloader::execute::prepare_with(
-                &transport,
-                crate::modloader::execute::InstallRequest {
-                    base: &base,
-                    kind,
-                    game_version: game,
-                    loader_version,
-                    name,
-                },
-                cancel,
-                &reporter,
-            )?
-        }
-        None => {
-            crate::install::install_game_files(
-                &transport,
-                &base,
-                game,
-                InstallOptions::default(),
-                cancel,
-                &reporter,
-            )?;
-            game.clone()
-        }
-    };
-    if cancel.is_cancelled() {
-        return Err(CANCELLED.to_owned());
-    }
-
-    // Create the instance last, still incomplete, so a later failure never leaves a
-    // ready-but-broken instance behind.
-    let instance = aether_storage::create_instance(&base, name, &version)
-        .map_err(|_| "无法创建整合包实例".to_owned())?;
-    let root = instance.root.clone();
-
+    check_cancel(cancel)?;
+    let base = services.host.data_dir()?;
+    let version = services
+        .game
+        .prepare(services.host, &base, pack.index(), name, cancel)?;
+    check_cancel(cancel)?;
+    check_ancestors(&base)?;
+    let staging = base.join(format!(".mrpack-instance-{}", InstanceId::new()));
+    fs::create_dir(&staging).map_err(|_| "无法准备整合包实例".to_owned())?;
     let result = (|| {
+        // Defaults and the incomplete record stay outside the visible instance store.
+        let instance = aether_storage::create_instance(&staging, name, &version)
+            .map_err(|_| "无法创建整合包实例".to_owned())?;
         let game_dir = aether_storage::manage::game_directory(&instance);
-        // The skeleton wrote a default `options.txt`; the pack owns the directory from here on.
-        fs::remove_dir(&game_dir).map_err(|_| "新实例目录不是空目录".to_owned())?;
-        pack.materialize(&game_dir, source, optional)?;
-        if cancel.is_cancelled() {
-            return Err(CANCELLED.to_owned());
+        let packed = instance.root.join("pack");
+        pack.materialize_with_cancel(&packed, services.source, optional, cancel)?;
+        let options = packed.join("options.txt");
+        if !options
+            .try_exists()
+            .map_err(|_| "无法读取整合包设置".to_owned())?
+        {
+            fs::rename(game_dir.join("options.txt"), &options)
+                .map_err(|_| "无法保留实例默认设置".to_owned())?;
         }
-        crate::launch::activate_instance(&base, &base.join("game"), instance.id)?;
-        let ready = aether_storage::InstanceStore::open(&base)
+        // Only transaction-owned directories are replaced; pack settings take priority.
+        check_ancestors(&game_dir)?;
+        fs::remove_dir_all(&game_dir).map_err(|_| "无法替换新实例目录".to_owned())?;
+        fs::rename(&packed, &game_dir).map_err(|_| "无法保存整合包文件".to_owned())?;
+        check_cancel(cancel)?;
+        services
+            .game
+            .activate(&staging, &base.join("game"), instance.id)?;
+        check_cancel(cancel)?;
+        let mut ready = aether_storage::InstanceStore::open(&staging)
             .and_then(|store| store.load(instance.id))
             .map_err(|_| "无法读取新实例".to_owned())?;
+        if ready.state != InstanceState::Ready {
+            return Err("整合包实例未激活".to_owned());
+        }
+        crate::install::check_instance_name(&base, name)?;
+        let instances = base.join("instances");
+        fs::create_dir_all(&instances).map_err(|_| "无法准备实例目录".to_owned())?;
+        check_ancestors(&instances)?;
+        let destination = fs::canonicalize(&instances)
+            .map_err(|_| "无法读取实例目录".to_owned())?
+            .join(instance.id.to_string());
+        if destination
+            .try_exists()
+            .map_err(|_| "无法检查实例目录".to_owned())?
+        {
+            return Err("实例目录已存在".to_owned());
+        }
+        ready.root = destination.clone();
+        aether_storage::write_instance_atomic(&instance.root, &ready)
+            .map_err(|_| "无法保存新实例".to_owned())?;
+        check_cancel(cancel)?;
+        // Single publication point; do not turn success into cancellation after rename.
+        fs::rename(&instance.root, destination).map_err(|_| "无法发布整合包实例".to_owned())?;
         Ok(InstanceSummary::from_instance(&ready))
     })();
-
-    if result.is_err() {
-        check_ancestors(&root)?;
-        fs::remove_dir_all(root).map_err(|_| "安装失败，半成品实例清理失败".to_owned())?;
+    let cleanup = check_ancestors(&staging).and_then(|()| {
+        fs::remove_dir_all(&staging).map_err(|_| "整合包临时目录清理失败".to_owned())
+    });
+    match result {
+        Ok(summary) => {
+            let _ = cleanup;
+            Ok(summary)
+        }
+        Err(error) => {
+            cleanup?;
+            Err(error)
+        }
     }
-    result
 }
-
 #[cfg(test)]
 #[path = "install_tests.rs"]
 mod install_tests;

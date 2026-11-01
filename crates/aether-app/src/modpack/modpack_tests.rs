@@ -90,6 +90,56 @@ fn modpack_rejects_traversal_aliases_and_collisions() {
     assert!(Pack::open(archive(&[("overrides/A", b"a"), ("overrides/a", b"b")])).is_err());
 }
 #[test]
+fn modpack_checks_both_hashes_independently() {
+    for hash in ["sha1", "sha512"] {
+        let mut value: serde_json::Value = serde_json::from_slice(&index()).unwrap();
+        let len = if hash == "sha1" { 40 } else { 128 };
+        value["files"][0]["hashes"][hash] = "0".repeat(len).into();
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        writer
+            .start_file("modrinth.index.json", SimpleFileOptions::default())
+            .unwrap();
+        writer
+            .write_all(&serde_json::to_vec(&value).unwrap())
+            .unwrap();
+        let mut pack = Pack::open(writer.finish().unwrap()).unwrap();
+        let tmp = Temp::new();
+        let root = tmp.0.join("new");
+        assert!(
+            pack.materialize(&root, &Net(b"abc"), false).is_err(),
+            "{hash}"
+        );
+        assert!(!root.exists());
+    }
+}
+
+#[test]
+fn modpack_cancellation_during_read_rolls_back_and_stays_cancelled() {
+    struct CancelSource(CancellationToken);
+    struct CancelRead(CancellationToken);
+    impl FileSource for CancelSource {
+        fn open(&self, _: &str) -> Result<Box<dyn Read>, String> {
+            Ok(Box::new(CancelRead(self.0.clone())))
+        }
+    }
+    impl Read for CancelRead {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            self.0.cancel();
+            Err(std::io::Error::other("cancelled"))
+        }
+    }
+    let cancel = CancellationToken::new();
+    let tmp = Temp::new();
+    let root = tmp.0.join("new");
+    let mut pack = Pack::open(archive(&[])).unwrap();
+    let error = pack
+        .materialize_with_cancel(&root, &CancelSource(cancel.clone()), false, &cancel)
+        .unwrap_err();
+    assert_eq!(error, crate::install::CANCELLED);
+    assert!(!root.exists());
+}
+
+#[test]
 fn modpack_rejects_zip_symlinks() {
     let mut writer = zip::ZipWriter::new(archive(&[]));
     writer
