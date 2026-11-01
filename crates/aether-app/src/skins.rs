@@ -19,6 +19,7 @@ use aether_content::skin::{
     MAX_PROFILE_BYTES, MAX_SKIN_BYTES, TEXTURE_HOST, is_player_name, is_uuid, name_lookup_url,
     parse_name_lookup, profile_url, skin_from_profile, skin_url_from_profile, validate_skin_png,
 };
+use sha2::{Digest as _, Sha256};
 
 use crate::host::Host;
 
@@ -53,8 +54,11 @@ pub fn is_allowed_url(url: &str) -> bool {
 pub struct UreqSkinNet;
 
 impl UreqSkinNet {
-    fn get(url: &str) -> Result<ureq::http::Response<ureq::Body>, String> {
-        if !is_allowed_url(url) {
+    fn get_on(
+        url: &str,
+        allowed: fn(&str) -> bool,
+    ) -> Result<ureq::http::Response<ureq::Body>, String> {
+        if !allowed(url) {
             return Err("that address is not one the launcher contacts".to_owned());
         }
         let config = ureq::config::Config::builder()
@@ -74,11 +78,15 @@ impl UreqSkinNet {
                 _ => "the skin service cannot be reached".to_owned(),
             })
     }
-}
 
-impl SkinNet for UreqSkinNet {
-    fn get_text(&self, url: &str, limit: usize) -> Result<String, String> {
-        Self::get(url)?
+    /// [`get_on`] for the download page's sources, which may talk to a wider (still fixed)
+    /// set of documented hosts than the avatar lookup does.
+    pub(crate) fn get_text_on(
+        url: &str,
+        limit: usize,
+        allowed: fn(&str) -> bool,
+    ) -> Result<String, String> {
+        Self::get_on(url, allowed)?
             .body_mut()
             .with_config()
             .limit(limit as u64)
@@ -86,13 +94,63 @@ impl SkinNet for UreqSkinNet {
             .map_err(|_| "the skin service sent something unusable".to_owned())
     }
 
-    fn get_bytes(&self, url: &str, limit: usize) -> Result<Vec<u8>, String> {
-        Self::get(url)?
+    /// A `POST` with a JSON body, bounded like every other skin request.
+    pub(crate) fn post_json_on(
+        url: &str,
+        body: &str,
+        limit: usize,
+        allowed: fn(&str) -> bool,
+    ) -> Result<String, String> {
+        if !allowed(url) {
+            return Err("that address is not one the launcher contacts".to_owned());
+        }
+        let config = ureq::config::Config::builder()
+            .max_redirects(0)
+            .user_agent(concat!(
+                "AetherLauncher/",
+                env!("CARGO_PKG_VERSION"),
+                " (+https://github.com/AetherLauncher-org/Aether-Launcher)"
+            ))
+            .timeout_global(Some(REQUEST_TIMEOUT))
+            .build();
+        let mut response = ureq::Agent::new_with_config(config)
+            .post(url)
+            .header("content-type", "application/json")
+            .send(body)
+            .map_err(|error| match error {
+                ureq::Error::StatusCode(code) => format!("the skin service answered {code}"),
+                _ => "the skin service cannot be reached".to_owned(),
+            })?;
+        response
+            .body_mut()
+            .with_config()
+            .limit(limit as u64)
+            .read_to_string()
+            .map_err(|_| "the skin service sent something unusable".to_owned())
+    }
+
+    /// [`get_on`] for a texture, bounded to a skin's size.
+    pub(crate) fn get_bytes_on(
+        url: &str,
+        limit: usize,
+        allowed: fn(&str) -> bool,
+    ) -> Result<Vec<u8>, String> {
+        Self::get_on(url, allowed)?
             .body_mut()
             .with_config()
             .limit(limit as u64)
             .read_to_vec()
             .map_err(|_| "the skin service sent something unusable".to_owned())
+    }
+}
+
+impl SkinNet for UreqSkinNet {
+    fn get_text(&self, url: &str, limit: usize) -> Result<String, String> {
+        Self::get_text_on(url, limit, is_allowed_url)
+    }
+
+    fn get_bytes(&self, url: &str, limit: usize) -> Result<Vec<u8>, String> {
+        Self::get_bytes_on(url, limit, is_allowed_url)
     }
 }
 
@@ -150,12 +208,25 @@ pub(crate) fn download_by_name(net: &dyn SkinNet, name: &str) -> Result<PlayerSk
         .map_err(|error| error.to_string())?
         .ok_or("this player has no custom skin")?;
     let bytes = net.get_bytes(&skin.url, MAX_SKIN_BYTES)?;
+    verify_texture_hash(&skin.url, &bytes)?;
     validate_skin_png(&bytes).map_err(|error| error.to_string())?;
     Ok(PlayerSkin {
         name: real_name,
         bytes,
         slim: skin.slim,
     })
+}
+
+/// Checks the SHA-256 named by a Mojang texture URL against the exact PNG bytes.
+pub(crate) fn verify_texture_hash(url: &str, bytes: &[u8]) -> Result<(), String> {
+    let expected = url
+        .strip_prefix("https://textures.minecraft.net/texture/")
+        .filter(|hash| hash.len() == 64)
+        .ok_or("the skin service sent an invalid texture hash")?;
+    if format!("{:x}", Sha256::digest(bytes)) != expected {
+        return Err("the skin does not match its texture hash".to_owned());
+    }
+    Ok(())
 }
 
 fn fetch(net: &dyn SkinNet, uuid: &str) -> Result<Option<Vec<u8>>, String> {
