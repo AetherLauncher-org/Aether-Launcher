@@ -222,3 +222,7 @@ export type {
 
 export { saveContentToFolder } from "./content";
 export type { FolderReport } from "./content";
+
+// 拖放安装：后端只交出令牌和文件名单，路径不进前端
+export { installDrop } from "./drop";
+export type { DropPreview, DropReport, DroppedItem } from "./drop";
