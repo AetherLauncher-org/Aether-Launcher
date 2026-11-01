@@ -2471,20 +2471,28 @@
   margin-top: 4px;
 }
 
+/* 来源、玩家名、搜索按钮始终在一行；放不下时是「添加皮肤文件」换到下一行，不是按钮 */
 .skin-source-controls {
   display: flex;
-  flex-wrap: wrap;
+  flex: 1 1 380px;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
 .skin-source-controls .fui-Select {
-  width: 150px;
+  flex: 0 0 auto;
+  width: 130px;
+}
+
+.skin-source-controls .fui-Button {
+  flex: 0 0 auto;
 }
 
 .skin-player-search {
-  min-width: min(280px, 100%);
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .skin-source-file {
