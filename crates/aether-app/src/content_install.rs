@@ -575,12 +575,16 @@ fn install_controlled_inner(
                 report.installed.push(file);
                 control.committed();
                 if with_dependencies && depth < MAX_DEPENDENCY_DEPTH {
+                    let known = discovered.len();
                     for dependency in dependencies {
                         if discovered.insert(dependency.clone()) {
                             queue.push((dependency, depth + 1));
                         }
                     }
-                    control.discovered(discovered.len());
+                    // only report the lower bound when it actually moves
+                    if discovered.len() != known {
+                        control.discovered(discovered.len());
+                    }
                 }
             }
             Err(reason) if is_main || reason == CANCELLED => return Err(reason),

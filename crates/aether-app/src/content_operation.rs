@@ -348,3 +348,7 @@ impl InstallControl for OperationControl<'_> {
         self.update(false, |p| p.files_done += 1);
     }
 }
+
+#[cfg(test)]
+#[path = "content_operation_tests.rs"]
+mod tests;
