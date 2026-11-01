@@ -21,6 +21,9 @@ pub struct LaunchOptions {
     pub natives_directory: PathBuf,
     /// May contain account secrets; never log.
     pub variables: BTreeMap<String, String>,
+    /// Extra JVM arguments appended before the main class, e.g. the authlib-injector
+    /// `-javaagent`. Values may contain account roots or tokens; never log.
+    pub jvm_args: Vec<String>,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -213,6 +216,9 @@ pub fn build_launch_plan(
         let expanded = substitute(&arg, &variables)?;
         arguments.push(redirect_scratch(expanded, &natives_path, &scratch_path));
     }
+    // Caller-supplied JVM arguments (e.g. `-javaagent:<jar>=<root>`) come after the version
+    // manifest's own options but before the classpath and main class.
+    arguments.extend(options.jvm_args.iter().cloned());
     if !classpath_provided {
         arguments.extend(["-cp".to_owned(), classpath]);
     }

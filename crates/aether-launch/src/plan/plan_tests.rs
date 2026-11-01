@@ -36,6 +36,7 @@ impl Fixture {
                     ("auth_player_name".to_owned(), "Alex".to_owned()),
                     ("auth_access_token".to_owned(), "secret-token".to_owned()),
                 ]),
+                jvm_args: Vec::new(),
             },
             root,
         }
@@ -76,6 +77,23 @@ fn environment() -> Environment {
         os_name: "windows".to_owned(),
         ..Environment::default()
     }
+}
+
+#[test]
+fn authlib_agent_is_one_jvm_argument_before_main_class() {
+    let mut f = Fixture::new();
+    let agent = "-javaagent:C:\\game data\\authlib-injector-1.2.8.jar=https://littleskin.cn/api/yggdrasil/";
+    f.options.jvm_args.push(agent.to_owned());
+    let manifest = parse_version_manifest(r#"{"id":"test","mainClass":"Main","javaVersion":{"component":"java-runtime-delta","majorVersion":21},"arguments":{"game":["--accessToken","${auth_access_token}"]}}"#).unwrap();
+    let plan = build_launch_plan(&request(), &manifest, &runtime(), &environment(), &f.options).unwrap();
+    let position = plan.arguments.iter().position(|arg| arg == agent).unwrap();
+    let main = plan.arguments.iter().position(|arg| arg == "Main").unwrap();
+    assert!(position < main);
+    assert_eq!(plan.arguments.iter().filter(|arg| arg.starts_with("-javaagent:")).count(), 1);
+    // The agent argument carries the API root, not the account token; the token appears only
+    // where the manifest's game argument substituted it (log redaction is the process layer's job).
+    assert!(!agent.contains("secret-token"));
+    assert_eq!(plan.arguments.iter().filter(|arg| arg.contains("secret-token")).count(), 1);
 }
 
 #[test]

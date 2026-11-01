@@ -99,7 +99,7 @@ impl Fixture {
 
     fn prepare(&self) -> Result<crate::LaunchPlan, CoordinatorError> {
         self.coordinator()
-            .prepare(self.id, 4096, &self.runtimes(), &Self::env(), &Self::vars())
+            .prepare(self.id, 4096, &self.runtimes(), &Self::env(), &Self::vars(), &[])
     }
 }
 
@@ -153,12 +153,12 @@ fn missing_java_or_auth_data_produces_explicit_errors() {
     let f = Fixture::new();
     assert!(matches!(
         f.coordinator()
-            .prepare(f.id, 4096, &[], &Fixture::env(), &Fixture::vars()),
+            .prepare(f.id, 4096, &[], &Fixture::env(), &Fixture::vars(), &[]),
         Err(CoordinatorError::Java(_))
     ));
     assert!(matches!(
         f.coordinator()
-            .prepare(f.id, 4096, &f.runtimes(), &Fixture::env(), &BTreeMap::new()),
+            .prepare(f.id, 4096, &f.runtimes(), &Fixture::env(), &BTreeMap::new(), &[]),
         Err(CoordinatorError::Build(_))
     ));
 }
@@ -177,7 +177,8 @@ fn rejects_unready_or_unknown_instances() {
             4096,
             &f.runtimes(),
             &Fixture::env(),
-            &Fixture::vars()
+            &Fixture::vars(),
+            &[]
         ),
         Err(CoordinatorError::Instance(_))
     ));
@@ -283,7 +284,7 @@ fn prepares_missing_natives_once_and_verifies_them_before_reuse() {
 
     let plan = f
         .coordinator()
-        .prepare_and_install(f.id, 4096, &f.runtimes(), &Fixture::env(), &Fixture::vars())
+        .prepare_and_install(f.id, 4096, &f.runtimes(), &Fixture::env(), &Fixture::vars(), &[])
         .unwrap();
     let native_dir = f.game.join("natives").join(f.id.to_string());
     assert_eq!(fs::read(native_dir.join("native.dll")).unwrap(), b"good");
@@ -319,7 +320,8 @@ fn prepares_missing_natives_once_and_verifies_them_before_reuse() {
             4096,
             &f.runtimes(),
             &Fixture::env(),
-            &Fixture::vars()
+            &Fixture::vars(),
+            &[]
         ),
         Err(CoordinatorError::NativeInstall(_))
     ));

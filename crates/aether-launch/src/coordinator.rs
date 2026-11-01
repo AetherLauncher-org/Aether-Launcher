@@ -93,6 +93,7 @@ impl InstanceLaunchCoordinator {
         runtimes: &[JavaRuntime],
         environment: &Environment,
         account_variables: &BTreeMap<String, String>,
+        jvm_args: &[String],
     ) -> Result<LaunchPlan, CoordinatorError> {
         self.prepare_internal(
             instance_id,
@@ -100,6 +101,7 @@ impl InstanceLaunchCoordinator {
             runtimes,
             environment,
             account_variables,
+            jvm_args,
             false,
         )
     }
@@ -114,6 +116,7 @@ impl InstanceLaunchCoordinator {
         runtimes: &[JavaRuntime],
         environment: &Environment,
         account_variables: &BTreeMap<String, String>,
+        jvm_args: &[String],
     ) -> Result<LaunchPlan, CoordinatorError> {
         self.prepare_internal(
             instance_id,
@@ -121,10 +124,14 @@ impl InstanceLaunchCoordinator {
             runtimes,
             environment,
             account_variables,
+            jvm_args,
             true,
         )
     }
 
+    /// The argument list stays flat because the public `start` below is a narrow boundary:
+    /// grouping the launch inputs into a struct would ripple through every caller and test.
+    #[allow(clippy::too_many_arguments)]
     fn prepare_internal(
         &self,
         instance_id: InstanceId,
@@ -132,6 +139,7 @@ impl InstanceLaunchCoordinator {
         runtimes: &[JavaRuntime],
         environment: &Environment,
         account_variables: &BTreeMap<String, String>,
+        jvm_args: &[String],
         install_natives: bool,
     ) -> Result<LaunchPlan, CoordinatorError> {
         let instance = self.store.load(instance_id)?;
@@ -207,6 +215,7 @@ impl InstanceLaunchCoordinator {
             client_jar,
             natives_directory,
             variables: account_variables.clone(),
+            jvm_args: jvm_args.to_vec(),
         };
         let request = LaunchRequest {
             instance_id,
@@ -250,6 +259,7 @@ impl InstanceLaunchCoordinator {
 
     /// Only a prepared trusted plan can reach the process registry. On a
     /// preparation failure, no new child process is started.
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         &mut self,
         instance_id: InstanceId,
@@ -257,6 +267,7 @@ impl InstanceLaunchCoordinator {
         runtimes: &[JavaRuntime],
         environment: &Environment,
         account_variables: &BTreeMap<String, String>,
+        jvm_args: &[String],
         redactions: &[String],
     ) -> Result<InstanceProcessStatus, CoordinatorError> {
         // Reject duplicate launches before performing file inspection.
@@ -273,6 +284,7 @@ impl InstanceLaunchCoordinator {
             runtimes,
             environment,
             account_variables,
+            jvm_args,
         )?;
         Ok(self.processes.start(instance_id, &plan, redactions)?)
     }
