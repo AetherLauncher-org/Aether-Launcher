@@ -2471,6 +2471,14 @@
   margin-top: 4px;
 }
 
+/* 内容浏览：分类标签，一排可换行的小按钮 */
+.tag-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 /* 来源、玩家名、搜索按钮始终在一行；放不下时是「添加皮肤文件」换到下一行，不是按钮 */
 .skin-source-controls {
   display: flex;

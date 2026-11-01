@@ -28,7 +28,7 @@ export function ModpackBrowser() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const { job, start, cancel, dismiss } = useInstall();
-  const load = useCallback(() => searchContent(text, "modpack", null, null, sort, offset), [text, sort, offset]);
+  const load = useCallback(() => searchContent(text, "modpack", null, null, [], sort, offset), [text, sort, offset]);
   const results = useQuery(load);
   const running = job?.status === "running";
   const packJob = job?.modpack ? job : null;

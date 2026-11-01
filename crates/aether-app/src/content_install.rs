@@ -180,6 +180,8 @@ pub struct SearchRequest<'a> {
     pub game_version: Option<&'a str>,
     /// A mod loader; only used for mods and modpacks.
     pub loader: Option<&'a str>,
+    /// Category tags the project must carry (all of them), like `optimization`.
+    pub categories: &'a [String],
     /// `relevance`, `downloads`, `newest` or `updated`.
     pub sort: &'a str,
     pub offset: u32,
@@ -199,6 +201,7 @@ pub fn search(
 ) -> Result<SearchResult, String> {
     let project_type = ProjectType::parse(request.project_type).ok_or("unknown content type")?;
     let sort = Sort::parse(request.sort).ok_or("unknown sort order")?;
+    let categories: Vec<&str> = request.categories.iter().map(String::as_str).collect();
     let url = browse::search_url(&SearchQuery {
         text: request.text,
         project_type,
@@ -207,6 +210,7 @@ pub fn search(
         loader: request
             .loader
             .filter(|_| matches!(project_type, ProjectType::Mod | ProjectType::ModPack)),
+        categories: &categories,
         sort,
         offset: request.offset,
         limit: 20,

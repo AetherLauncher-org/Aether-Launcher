@@ -778,6 +778,30 @@ fn a_project_with_no_version_for_this_game_is_an_error() {
 }
 
 #[test]
+fn search_passes_category_tags_on_and_refuses_one_that_is_not_a_tag() {
+    let net = FakeNet::new();
+    let request = |categories| SearchRequest {
+        text: "",
+        project_type: "datapack",
+        game_version: None,
+        loader: None,
+        categories,
+        sort: "downloads",
+        offset: 0,
+    };
+    let tags = ["optimization".to_owned(), "adventure".to_owned()];
+
+    search(&net, &FakeHost::new(), &request(&tags)).unwrap();
+
+    let asked = net.asked.lock().unwrap()[0].clone();
+    assert!(asked.contains("categories%3Aoptimization"), "{asked}");
+    assert!(asked.contains("categories%3Aadventure"), "{asked}");
+
+    let bad = ["x\"]".to_owned()];
+    assert!(search(&net, &FakeHost::new(), &request(&bad)).is_err());
+}
+
+#[test]
 fn search_asks_for_the_type_and_drops_the_loader_where_it_does_not_apply() {
     let mut net = FakeNet::new();
     net.search_answer =
@@ -793,6 +817,7 @@ fn search_asks_for_the_type_and_drops_the_loader_where_it_does_not_apply() {
             project_type: "mod",
             game_version: Some("1.21.1"),
             loader: Some("fabric"),
+            categories: &[],
             sort: "downloads",
             offset: 0,
         },
@@ -810,6 +835,7 @@ fn search_asks_for_the_type_and_drops_the_loader_where_it_does_not_apply() {
             project_type: "resourcepack",
             game_version: Some("1.21.1"),
             loader: Some("fabric"),
+            categories: &[],
             sort: "relevance",
             offset: 0,
         },
@@ -826,6 +852,7 @@ fn search_asks_for_the_type_and_drops_the_loader_where_it_does_not_apply() {
                 project_type: "plugin",
                 game_version: None,
                 loader: None,
+                categories: &[],
                 sort: "downloads",
                 offset: 0
             }
@@ -841,6 +868,7 @@ fn search_asks_for_the_type_and_drops_the_loader_where_it_does_not_apply() {
                 project_type: "mod",
                 game_version: None,
                 loader: None,
+                categories: &[],
                 sort: "popular",
                 offset: 0
             }
@@ -875,6 +903,7 @@ fn search_results_come_with_their_icons_and_a_missing_icon_is_not_an_error() {
             project_type: "mod",
             game_version: None,
             loader: None,
+            categories: &[],
             sort: "downloads",
             offset: 0,
         },
@@ -908,6 +937,7 @@ fn search_results_come_with_their_icons_and_a_missing_icon_is_not_an_error() {
             project_type: "mod",
             game_version: None,
             loader: None,
+            categories: &[],
             sort: "downloads",
             offset: 0,
         },

@@ -119,10 +119,16 @@ pub struct SearchQuery<'a> {
     pub game_version: Option<&'a str>,
     /// One of [`LOADERS`]; only meaningful for mods and modpacks.
     pub loader: Option<&'a str>,
+    /// Category tags (`optimization`, `adventure`, …) the project must carry, all of them.
+    /// At most [`MAX_CATEGORY_FILTERS`].
+    pub categories: &'a [&'a str],
     pub sort: Sort,
     pub offset: u32,
     pub limit: u32,
 }
+
+/// How many category tags one search may ask for.
+pub const MAX_CATEGORY_FILTERS: usize = 8;
 
 /// `true` for a game version id as Mojang names them: `1.21.1`, `24w14a`, `1.20.5-rc1`.
 #[must_use]
@@ -149,7 +155,7 @@ fn percent_encode(text: &str) -> String {
 ///
 /// # Errors
 ///
-/// [`ContentError::InvalidId`] for a game version or loader that is not one.
+/// [`ContentError::InvalidId`] for a game version, loader or category tag that is not one.
 pub fn search_url(query: &SearchQuery<'_>) -> Result<String, ContentError> {
     let mut facets = vec![format!("[\"project_type:{}\"]", query.project_type.facet())];
     if let Some(version) = query.game_version {
@@ -163,6 +169,16 @@ pub fn search_url(query: &SearchQuery<'_>) -> Result<String, ContentError> {
             return Err(ContentError::InvalidId);
         }
         facets.push(format!("[\"categories:{loader}\"]"));
+    }
+    if query.categories.len() > MAX_CATEGORY_FILTERS {
+        return Err(ContentError::InvalidId);
+    }
+    for tag in query.categories {
+        // a tag is a short slug: nothing here can close the facet's quotes
+        if !is_slug(tag) || tag.len() > 32 {
+            return Err(ContentError::InvalidId);
+        }
+        facets.push(format!("[\"categories:{tag}\"]"));
     }
     let text = clean_text(query.text, MAX_QUERY_CHARS);
     Ok(format!(

@@ -15,6 +15,8 @@ import {
   Select,
   Spinner,
   Switch,
+  Tab,
+  TabList,
   Text,
 } from "@fluentui/react-components";
 import {
@@ -33,13 +35,16 @@ import {
   searchContent,
 } from "../ipc";
 import type { ContentType, SearchHit, SearchSort } from "../ipc";
+import { loadCatalog } from "../lib/catalogCache";
 import {
   cannotInstallReason,
   categoryLabel,
+  categoryOptions,
   contentTypeLabels,
   describeSide,
   describeTarget,
   describeVersionRange,
+  filterLoaders,
   formatDownloads,
   formatUpdated,
   loaderLabels,
@@ -59,13 +64,24 @@ const PAGE = 20;
 /**
  * 在 Modrinth 上找模组、数据包、资源包和光影，装进实例（数据包装进选定的世界，可以多选）。
  *
- * 搜索默认按所选实例的游戏版本和加载器筛。装之前不选文件：后端取最新的合适版本，按 Modrinth
- * 给的哈希校验，已有同名文件不覆盖。这里只传实例 id、项目 id、内容类型和世界文件夹名。
+ * 两种筛法，都可以再叠加分类标签：
+ * - 按实例：选一个实例，按它的游戏版本和加载器筛，可以直接安装进去。
+ * - 自选条件：自己选加载器、游戏版本；只用来浏览，不装进任何实例。
+ *
+ * 装之前不选文件：后端取最新的合适版本，按 Modrinth 给的哈希校验，已有同名文件不覆盖。
+ * 这里只传实例 id、项目 id、内容类型和世界文件夹名。
  */
 type ContentBrowserProps = {
   /** 搜索哪一类：由下载页顶上的标签决定 */
   type: ContentType;
 };
+
+type Mode = "instance" | "manual";
+
+/** 选过的标签里，这一类内容有的那些（换了内容类型，上一类的标签不再适用）。 */
+function tagsFor(type: ContentType, picked: readonly string[]): string[] {
+  return picked.filter((tag) => categoryOptions[type].includes(tag));
+}
 
 export function ContentBrowser({ type }: ContentBrowserProps) {
   const { instances } = useInstances();
@@ -73,7 +89,10 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
   const [draft, setDraft] = useState("");
   const [text, setText] = useState("");
   const [sort, setSort] = useState<SearchSort>("downloads");
-  const [filterByInstance, setFilterByInstance] = useState(true);
+  const [mode, setMode] = useState<Mode>("instance");
+  const [manualVersion, setManualVersion] = useState<string | null>(null);
+  const [manualLoader, setManualLoader] = useState<string | null>(null);
+  const [pickedTags, setPickedTags] = useState<readonly string[]>([]);
   const [withDependencies, setWithDependencies] = useState(true);
   const [offset, setOffset] = useState(0);
 
@@ -91,13 +110,24 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
   );
   const target = useQuery(loadTarget, currentId !== null);
 
-  const gameVersion = filterByInstance ? (target.data?.gameVersion ?? null) : null;
-  const loader = filterByInstance && type === "mod" ? (target.data?.loader ?? null) : null;
-  const loadResults = useCallback(
-    () => searchContent(text, type, gameVersion, loader, sort, offset),
-    [text, type, gameVersion, loader, sort, offset],
+  // 自选条件下的游戏版本：官方版本目录里的正式版（只在自选条件下读）
+  const loadReleases = useCallback(
+    async () => (await loadCatalog()).versions.filter((version) => version.type === "release").map((version) => version.id),
+    [],
   );
-  const results = useQuery(loadResults, currentId !== null && (target.data !== null || !filterByInstance));
+  const releases = useQuery(loadReleases, mode === "manual");
+
+  const byInstance = mode === "instance";
+  const gameVersion = byInstance ? (target.data?.gameVersion ?? null) : manualVersion;
+  const loader = type !== "mod" ? null : byInstance ? (target.data?.loader ?? null) : manualLoader;
+  // 切换内容类型后，上一类的标签不再适用
+  const tagChoices = categoryOptions[type];
+  const tags = tagsFor(type, pickedTags);
+  const loadResults = useCallback(
+    () => searchContent(text, type, gameVersion, loader, tagsFor(type, pickedTags), sort, offset),
+    [text, type, gameVersion, loader, pickedTags, sort, offset],
+  );
+  const results = useQuery(loadResults, byInstance ? currentId !== null && target.data !== null : true);
 
   // 换了搜索条件就回到第一页
   const refine = <T,>(set: (value: T) => void) => (value: T) => {
@@ -106,10 +136,17 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
   };
   const chooseInstance = refine(setInstanceId);
   const chooseSort = refine(setSort);
-  const chooseFilter = refine(setFilterByInstance);
+  const chooseMode = refine(setMode);
+  const chooseVersion = refine(setManualVersion);
+  const chooseLoader = refine(setManualLoader);
+  const chooseTags = refine(setPickedTags);
   const submit = refine(setText);
+  const toggleTag = (tag: string) =>
+    chooseTags(tags.includes(tag) ? tags.filter((item) => item !== tag) : [...tags, tag]);
 
-  const blocked = cannotInstallReason(type, target.data);
+  const blocked = byInstance
+    ? cannotInstallReason(type, target.data)
+    : "自选条件下只能浏览。要安装，请切到「按实例」，选一个实例。";
 
   const install = (hit: SearchHit, world: string | null) => {
     if (currentId === null) return;
@@ -148,26 +185,67 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
 
   return (
     <section className="content-browser" aria-label="内容">
+      <TabList
+        aria-label="筛选方式"
+        size="small"
+        selectedValue={mode}
+        onTabSelect={(_, data) => chooseMode(data.value as Mode)}
+      >
+        <Tab value="instance">按实例</Tab>
+        <Tab value="manual">自选条件</Tab>
+      </TabList>
+
       <div className="toolbar">
-        <div className="toolbar-actions">
-          <Select
-            aria-label="装进哪个实例"
-            value={current.id}
-            onChange={(_, data) => chooseInstance(data.value)}
-          >
-            {instances.map((instance) => (
-              <option key={instance.id} value={instance.id}>
-                {instance.name}
-              </option>
-            ))}
-          </Select>
-          {target.data ? <Badge appearance="tint">{describeTarget(target.data)}</Badge> : null}
-          <Switch
-            label="只看适合这个实例的"
-            checked={filterByInstance}
-            onChange={(_, data) => chooseFilter(data.checked)}
-          />
-        </div>
+        {byInstance ? (
+          <div className="toolbar-actions">
+            <Select
+              aria-label="装进哪个实例"
+              value={current.id}
+              onChange={(_, data) => chooseInstance(data.value)}
+            >
+              {instances.map((instance) => (
+                <option key={instance.id} value={instance.id}>
+                  {instance.name}
+                </option>
+              ))}
+            </Select>
+            {target.data ? <Badge appearance="tint">{describeTarget(target.data)}</Badge> : null}
+          </div>
+        ) : (
+          <div className="toolbar-actions">
+            {type === "mod" ? (
+              <Select
+                aria-label="模组加载器"
+                value={manualLoader ?? ""}
+                onChange={(_, data) => chooseLoader(data.value === "" ? null : data.value)}
+              >
+                <option value="">加载器不限</option>
+                {filterLoaders.map((value) => (
+                  <option key={value} value={value}>
+                    {loaderLabels[value] ?? value}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
+            <Select
+              aria-label="游戏版本"
+              value={manualVersion ?? ""}
+              onChange={(_, data) => chooseVersion(data.value === "" ? null : data.value)}
+            >
+              <option value="">游戏版本不限</option>
+              {(releases.data ?? []).map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </Select>
+            {releases.status === "error" ? (
+              <Text size={200} className="muted">
+                没读到版本列表
+              </Text>
+            ) : null}
+          </div>
+        )}
         <div className="toolbar-actions">
           <Select aria-label="排序" value={sort} onChange={(_, data) => chooseSort(data.value as SearchSort)}>
             {searchSorts.map((value) => (
@@ -206,8 +284,28 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
         </div>
       </div>
 
+      <div className="tag-filter" role="group" aria-label="分类标签">
+        {tagChoices.map((tag) => (
+          <Button
+            key={tag}
+            size="small"
+            shape="circular"
+            appearance={tags.includes(tag) ? "primary" : "outline"}
+            aria-pressed={tags.includes(tag)}
+            onClick={() => toggleTag(tag)}
+          >
+            {categoryLabel(tag)}
+          </Button>
+        ))}
+        {tags.length > 0 ? (
+          <Button size="small" appearance="subtle" onClick={() => chooseTags([])}>
+            清除标签
+          </Button>
+        ) : null}
+      </div>
+
       {blocked ? (
-        <MessageBar intent="warning" className="page-notice">
+        <MessageBar intent={byInstance ? "warning" : "info"} className="page-notice">
           <MessageBarBody>{blocked}</MessageBarBody>
         </MessageBar>
       ) : null}
@@ -231,7 +329,7 @@ export function ContentBrowser({ type }: ContentBrowserProps) {
           <Spinner label="正在搜索…" />
         </div>
       ) : hits.length === 0 ? (
-        <EmptyState title="没有找到" body="换个关键词，或者关掉「只看适合这个实例的」试试。" />
+        <EmptyState title="没有找到" body="换个关键词，或者去掉一些标签、换到「自选条件」放宽版本试试。" />
       ) : (
         <>
           <ul className="search-results">

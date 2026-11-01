@@ -26,9 +26,11 @@ pub async fn search_content(
     project_type: String,
     game_version: Option<String>,
     loader: Option<String>,
+    categories: Option<Vec<String>>,
     sort: String,
     offset: u32,
 ) -> Result<SearchResult, String> {
+    let categories = categories.unwrap_or_default();
     run(app, move |host| {
         content_install::search_modrinth(
             host,
@@ -37,6 +39,7 @@ pub async fn search_content(
                 project_type: &project_type,
                 game_version: game_version.as_deref(),
                 loader: loader.as_deref(),
+                categories: &categories,
                 sort: &sort,
                 offset,
             },

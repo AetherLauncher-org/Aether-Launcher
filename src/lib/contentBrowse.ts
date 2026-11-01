@@ -7,6 +7,38 @@ export const contentTypeLabels: Record<ContentType, string> = {
   shader: "光影",
 };
 
+const gameplayTags = [
+  "adventure",
+  "decoration",
+  "economy",
+  "equipment",
+  "food",
+  "game-mechanics",
+  "library",
+  "magic",
+  "management",
+  "minigame",
+  "mobs",
+  "optimization",
+  "social",
+  "storage",
+  "technology",
+  "transportation",
+  "utility",
+  "worldgen",
+];
+
+/** 每类内容在 Modrinth 上常用的分类标签，给筛选用；同时选几个，项目要全部带有才算。 */
+export const categoryOptions: Record<ContentType, readonly string[]> = {
+  mod: gameplayTags,
+  datapack: gameplayTags,
+  resourcepack: ["combat", "cartoon", "fantasy", "realistic", "simplistic", "themed", "tweaks", "utility", "vanilla-like"],
+  shader: ["cartoon", "fantasy", "realistic", "semi-realistic", "vanilla-like"],
+};
+
+/** 自选条件里能选的模组加载器。 */
+export const filterLoaders: readonly string[] = ["fabric", "forge", "neoforge", "quilt"];
+
 export const sortLabels: Record<SearchSort, string> = {
   relevance: "相关度",
   downloads: "下载量",
@@ -83,6 +115,7 @@ const categoryLabels: Record<string, string> = {
   utility: "实用",
   worldgen: "世界生成",
   realistic: "写实",
+  "semi-realistic": "半写实",
   simplistic: "简约",
   fantasy: "奇幻",
   vanilla: "原版风格",

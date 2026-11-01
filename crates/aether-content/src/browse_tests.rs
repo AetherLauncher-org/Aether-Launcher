@@ -10,6 +10,7 @@ fn query<'a>() -> SearchQuery<'a> {
         project_type: ProjectType::Mod,
         game_version: Some("1.21.1"),
         loader: Some("fabric"),
+        categories: &[],
         sort: Sort::Downloads,
         offset: 20,
         limit: 10,
@@ -147,6 +148,34 @@ fn server_platforms_show_as_platforms_and_the_datapack_marker_is_not_a_tag() {
 
     assert_eq!(hit.loaders, ["bukkit", "spigot", "paper", "folia"]);
     assert_eq!(hit.categories, ["utility", "adventure"]);
+}
+
+#[test]
+fn category_tags_become_one_facet_each_so_all_of_them_must_match() {
+    let mut q = query();
+    q.loader = None;
+    q.game_version = None;
+    q.categories = &["optimization", "game-mechanics"];
+
+    let url = search_url(&q).unwrap();
+
+    // [["project_type:mod"],["categories:optimization"],["categories:game-mechanics"]]
+    assert!(url.contains("%5B%5B%22project_type%3Amod%22%5D%2C%5B%22categories%3Aoptimization%22%5D%2C%5B%22categories%3Agame-mechanics%22%5D%5D"));
+}
+
+#[test]
+fn a_category_tag_cannot_break_out_of_its_facet_and_there_are_not_too_many() {
+    for bad in ["x\"]", "a b", "", "../x", &"t".repeat(33)] {
+        let tags = [bad];
+        let mut q = query();
+        q.categories = &tags;
+        assert_eq!(search_url(&q), Err(ContentError::InvalidId), "{bad:?}");
+    }
+    let mut q = query();
+    q.categories = &["a"; MAX_CATEGORY_FILTERS + 1];
+    assert_eq!(search_url(&q), Err(ContentError::InvalidId));
+    q.categories = &["a"; MAX_CATEGORY_FILTERS];
+    assert!(search_url(&q).is_ok());
 }
 
 #[test]

@@ -85,6 +85,7 @@ describe("content browser", () => {
       projectType: "mod",
       gameVersion: "1.21.1",
       loader: "fabric",
+      categories: [],
       sort: "downloads",
       offset: 0,
     });
@@ -119,16 +120,84 @@ describe("content browser", () => {
     expect(card.querySelector("img")).toBeNull();
   });
 
-  it("can search without the instance's filters", async () => {
-    backend();
+  const releases = {
+    latest: { release: "1.21.1", snapshot: "24w40a" },
+    versions: [
+      { id: "24w40a", type: "snapshot", url: "u", sha1: "s", releaseTime: "t" },
+      { id: "1.21.1", type: "release", url: "u", sha1: "s", releaseTime: "t" },
+      { id: "1.20.1", type: "release", url: "u", sha1: "s", releaseTime: "t" },
+    ],
+  };
+
+  it("has a manual mode where the loader and game version are picked by hand", async () => {
+    backend({ list_minecraft_versions: () => releases });
     renderWithState(<ContentBrowser type="mod" />);
     await screen.findByText("Sodium");
 
-    fireEvent.click(screen.getByRole("switch", { name: "只看适合这个实例的" }));
+    fireEvent.click(screen.getByRole("tab", { name: "自选条件" }));
 
     await waitFor(() =>
       expect(lastArgs("search_content")).toMatchObject({ gameVersion: null, loader: null }),
     );
+    // only releases are offered
+    expect(await screen.findByRole("option", { name: "1.20.1" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "24w40a" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "游戏版本" }), { target: { value: "1.20.1" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "模组加载器" }), { target: { value: "forge" } });
+
+    await waitFor(() =>
+      expect(lastArgs("search_content")).toMatchObject({ gameVersion: "1.20.1", loader: "forge" }),
+    );
+    // no instance is involved: the instance picker is gone
+    expect(screen.queryByRole("combobox", { name: "装进哪个实例" })).not.toBeInTheDocument();
+  });
+
+  it("only browses in manual mode: nothing can be installed without an instance", async () => {
+    backend({ list_minecraft_versions: () => releases });
+    renderWithState(<ContentBrowser type="mod" />);
+    await screen.findByText("Sodium");
+
+    fireEvent.click(screen.getByRole("tab", { name: "自选条件" }));
+
+    expect(await screen.findByText(/自选条件下只能浏览/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "安装 Sodium" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "在 Modrinth 打开 Sodium" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("tab", { name: "按实例" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "安装 Sodium" })).toBeEnabled());
+  });
+
+  it("narrows by category tags in either mode, all chosen tags at once", async () => {
+    backend({ list_minecraft_versions: () => releases });
+    renderWithState(<ContentBrowser type="mod" />);
+    await screen.findByText("Sodium");
+
+    const group = screen.getByRole("group", { name: "分类标签" });
+    fireEvent.click(within(group).getByRole("button", { name: "优化" }));
+    await waitFor(() => expect(lastArgs("search_content")).toMatchObject({ categories: ["optimization"] }));
+    fireEvent.click(within(group).getByRole("button", { name: "冒险" }));
+    await waitFor(() =>
+      expect(lastArgs("search_content")).toMatchObject({ categories: ["optimization", "adventure"] }),
+    );
+    expect(within(group).getByRole("button", { name: "优化" })).toHaveAttribute("aria-pressed", "true");
+
+    // the tags stay when switching to manual mode, and clearing removes them
+    fireEvent.click(screen.getByRole("tab", { name: "自选条件" }));
+    await waitFor(() => expect(lastArgs("search_content")).toMatchObject({ gameVersion: null }));
+    expect((lastArgs("search_content") as { categories: string[] }).categories).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "清除标签" }));
+    await waitFor(() => expect(lastArgs("search_content")).toMatchObject({ categories: [] }));
+  });
+
+  it("offers each type its own tags", async () => {
+    backend();
+    renderWithState(<ContentBrowser type="shader" />);
+    await screen.findByText("Sodium");
+
+    const group = screen.getByRole("group", { name: "分类标签" });
+
+    expect(within(group).getByRole("button", { name: "写实" })).toBeInTheDocument();
+    expect(within(group).queryByRole("button", { name: "冒险" })).not.toBeInTheDocument();
   });
 
   it("searches for the typed words when asked, not on every key", async () => {

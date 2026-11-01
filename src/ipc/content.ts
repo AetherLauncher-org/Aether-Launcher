@@ -139,6 +139,8 @@ declare module "./call" {
       projectType: SearchContentType;
       gameVersion: string | null;
       loader: string | null;
+      /** 项目必须同时带有的分类标签，比如 optimization、adventure */
+      categories: string[];
       sort: SearchSort;
       offset: number;
     };
@@ -177,11 +179,20 @@ export async function searchContent(
   projectType: SearchContentType,
   gameVersion: string | null,
   loader: string | null,
+  categories: readonly string[],
   sort: SearchSort,
   offset: number,
 ): Promise<SearchResult> {
   requireDesktop();
-  return callCommand("search_content", { text, projectType, gameVersion, loader, sort, offset });
+  return callCommand("search_content", {
+    text,
+    projectType,
+    gameVersion,
+    loader,
+    categories: [...categories],
+    sort,
+    offset,
+  });
 }
 
 /** 装一个项目的最新合适版本；`world` 只有数据包用。运行中的实例装不了。 */
