@@ -9,6 +9,7 @@ import { loadMotionPreference, saveMotionPreference } from "./lib/motion";
 import type { MotionPreference } from "./lib/motion";
 import { detectMica } from "./lib/platform";
 import { useTheme } from "./lib/useTheme";
+import { I18nProvider } from "./i18n/I18nProvider";
 import { findPage } from "./navigation";
 import type { PageId } from "./navigation";
 import { AccountsPage } from "./pages/AccountsPage";
@@ -89,7 +90,8 @@ function App() {
 
   return (
     <FluentProvider theme={resolved === "dark" ? aetherDarkTheme : aetherLightTheme} className="app-root">
-      <NavigationContext.Provider value={navigation}>
+      <I18nProvider>
+        <NavigationContext.Provider value={navigation}>
         <AccountsProvider>
           <InstancesProvider>
             <InstallProvider>
@@ -127,6 +129,7 @@ function App() {
           </InstancesProvider>
         </AccountsProvider>
       </NavigationContext.Provider>
+      </I18nProvider>
     </FluentProvider>
   );
 }

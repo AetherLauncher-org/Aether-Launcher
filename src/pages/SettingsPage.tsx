@@ -1,9 +1,12 @@
-import { Radio, RadioGroup, Switch, Text } from "@fluentui/react-components";
+import { Radio, RadioGroup, Select, Switch, Text } from "@fluentui/react-components";
 import type { ReactNode } from "react";
 import { JavaRuntimeSection } from "../components/JavaRuntimeSection";
 import { LoginMethodSection } from "../components/LoginMethodSection";
 import { MemorySection } from "../components/MemorySection";
 import { PageHeader } from "../components/PageHeader";
+import { useT } from "../i18n/context";
+import { localeDisplayNames, locales } from "../i18n/catalogs";
+import { isLocale } from "../i18n/locale";
 import { isThemePreference } from "../lib/theme";
 import type { ThemePreference } from "../lib/theme";
 import type { MotionPreference } from "../lib/motion";
@@ -47,6 +50,7 @@ export function SettingsPage({
   onMotionChange,
   version,
 }: SettingsPageProps) {
+  const { locale, setLocale, t } = useT();
   return (
     <>
       <PageHeader title={page.label} description={page.summary} />
@@ -78,6 +82,26 @@ export function SettingsPage({
             onChange={(_, data) => onMotionChange(data.checked ? "full" : "reduced")}
             label={motion === "full" ? "开" : "关"}
           />
+        </SettingRow>
+        <SettingRow
+          title={t("settings.language.title")}
+          description={t("settings.language.description")}
+        >
+          <Select
+            aria-label={t("settings.language.aria")}
+            value={locale}
+            onChange={(_, data) => {
+              if (isLocale(data.value)) {
+                setLocale(data.value);
+              }
+            }}
+          >
+            {locales.map((item) => (
+              <option key={item} value={item}>
+                {localeDisplayNames[item]}
+              </option>
+            ))}
+          </Select>
         </SettingRow>
       </section>
 
