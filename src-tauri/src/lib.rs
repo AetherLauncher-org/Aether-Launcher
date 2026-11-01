@@ -83,6 +83,7 @@ pub fn run() {
         .manage(aether_app::install::InstallState::default())
         .manage(aether_app::import::ImportState::default())
         .manage(aether_app::microsoft::MicrosoftLoginState::default())
+        .manage(aether_app::skin_sources::SkinDownloadState::default())
         .invoke_handler(tauri::generate_handler![
             application_info,
             list_java_runtimes,
@@ -129,6 +130,10 @@ pub fn run() {
             commands::skin_library::set_skin_model,
             commands::skin_library::remove_skin,
             commands::skin_library::wear_skin,
+            commands::skin_library::search_skin,
+            commands::skin_library::add_downloaded_skin,
+            commands::skin_library::save_downloaded_skin,
+            commands::skin_library::open_skin_site,
             commands::microsoft::microsoft_login_available,
             commands::microsoft::begin_microsoft_login,
             commands::microsoft::begin_microsoft_browser_login,

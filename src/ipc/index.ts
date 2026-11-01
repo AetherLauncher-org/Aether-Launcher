@@ -142,6 +142,10 @@ export type {
 export {
   addSkinFromFile,
   addSkinFromPlayer,
+  addDownloadedSkin,
+  searchSkin,
+  saveDownloadedSkin,
+  openSkinSite,
   getSkinImage,
   listSkins,
   removeSkin,
@@ -149,7 +153,7 @@ export {
   setSkinModel,
   wearSkin,
 } from "./skinLibrary";
-export type { AddSkinResult, SkinEntry } from "./skinLibrary";
+export type { AddSkinResult, SkinEntry, SkinPreview, SkinSource, SkinSite, SavedSkin } from "./skinLibrary";
 
 // 内容下载：搜索 Modrinth、装进实例或世界
 export { contentTypes, getContentTarget, installContent, searchContent } from "./content";

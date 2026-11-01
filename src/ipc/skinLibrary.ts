@@ -27,6 +27,28 @@ export type AddSkinResult = {
   added: boolean;
 };
 
+/** 下载页自动取皮肤的来源：都有官方公开接口。 */
+export type SkinSource = "mojang" | "littleskin" | "elyby";
+
+/** 没有官方接口、只能「在浏览器里打开」的皮肤站。 */
+export type SkinSite = "namemc" | "skindex" | "planetminecraft";
+
+/** 一次搜索的结果：预览图和后端保存这次结果的不透明令牌。 */
+export type SkinPreview = {
+  /** 只在本会话里有效；不是路径，也不是下载地址 */
+  token: string;
+  source: SkinSource;
+  name: string;
+  slim: boolean;
+  /** 已验过的 `data:` PNG */
+  image: string;
+};
+
+/** 保存到选定文件夹的结果：只有文件名，没有路径。 */
+export type SavedSkin = {
+  fileName: string;
+};
+
 declare module "./call" {
   interface CommandArgs {
     list_skins: void;
@@ -37,6 +59,10 @@ declare module "./call" {
     set_skin_model: { id: string; slim: boolean };
     remove_skin: { id: string };
     wear_skin: { id: string; accountId: string };
+    search_skin: { source: SkinSource; name: string };
+    add_downloaded_skin: { token: string };
+    save_downloaded_skin: { token: string };
+    open_skin_site: { site: SkinSite };
   }
 
   interface CommandResults {
@@ -48,6 +74,10 @@ declare module "./call" {
     set_skin_model: SkinEntry;
     remove_skin: null;
     wear_skin: null;
+    search_skin: SkinPreview;
+    add_downloaded_skin: AddSkinResult;
+    save_downloaded_skin: SavedSkin | null;
+    open_skin_site: null;
   }
 }
 
@@ -78,6 +108,33 @@ export async function addSkinFromFile(): Promise<AddSkinResult | null> {
 export async function addSkinFromPlayer(name: string): Promise<AddSkinResult> {
   requireDesktop();
   return callCommand("add_skin_from_player", { name });
+}
+
+/**
+ * 在下载页按玩家名找一个皮肤。来源只限有官方接口的 Mojang / LittleSkin / Ely.by；
+ * 地址在后端按来源拼好，返回的令牌只在本会话里有效。
+ */
+export async function searchSkin(source: SkinSource, name: string): Promise<SkinPreview> {
+  requireDesktop();
+  return callCommand("search_skin", { source, name });
+}
+
+/** 把搜索到的皮肤加进皮肤库，来源记为「下载」。 */
+export async function addDownloadedSkin(token: string): Promise<AddSkinResult> {
+  requireDesktop();
+  return callCommand("add_downloaded_skin", { token });
+}
+
+/** 保存到用户选的文件夹；取消返回 null，文件夹路径不进前端。 */
+export async function saveDownloadedSkin(token: string): Promise<SavedSkin | null> {
+  requireDesktop();
+  return callCommand("save_downloaded_skin", { token });
+}
+
+/** 用系统浏览器打开 NameMC / Skindex / Planet Minecraft 的固定首页，不抓取它们。 */
+export async function openSkinSite(site: SkinSite): Promise<void> {
+  requireDesktop();
+  await callCommand("open_skin_site", { site });
 }
 
 export async function renameSkin(id: string, name: string): Promise<SkinEntry> {
