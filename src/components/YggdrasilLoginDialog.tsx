@@ -79,7 +79,7 @@ export function YggdrasilLoginDialog({ onClose, onAdded }: {
           <DialogBody>
             <DialogTitle>{login ? "选择角色" : "添加第三方账户"}</DialogTitle>
             <DialogContent className="dialog-content">
-              <Text className="muted">第三方账户可在此保存和管理，暂不能用于启动游戏。</Text>
+              <Text className="muted">登录后将使用所选角色启动游戏，凭据仅保存在系统凭据库。</Text>
               {login ? (
                 <Field label="角色" required>
                   <RadioGroup value={profileId} onChange={(_, data) => setProfileId(data.value)} disabled={busy}>

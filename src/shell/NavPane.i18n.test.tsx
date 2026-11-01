@@ -13,6 +13,8 @@ const emptyAccounts: AccountsApi = {
   add: () => undefined,
   remove: () => undefined,
   signInMicrosoft: () => undefined,
+  signInYggdrasil: () => undefined,
+  syncYggdrasil: () => undefined,
   select: () => undefined,
 };
 

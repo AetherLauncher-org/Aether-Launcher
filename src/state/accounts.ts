@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { Account, AccountBook, MicrosoftAccountEntry, OfflineAccount } from "../lib/accounts";
+import type { Account, AccountBook, MicrosoftAccountEntry, YggdrasilAccountEntry, OfflineAccount } from "../lib/accounts";
 
 export type AccountsApi = {
   book: AccountBook;
@@ -9,6 +9,8 @@ export type AccountsApi = {
   remove: (id: string) => void;
   /** 刚登录了一个微软账户：加进列表并设为当前账户 */
   signInMicrosoft: (account: MicrosoftAccountEntry) => void;
+  signInYggdrasil: (account: YggdrasilAccountEntry) => void;
+  syncYggdrasil: (accounts: YggdrasilAccountEntry[]) => void;
   select: (id: string) => void;
 };
 

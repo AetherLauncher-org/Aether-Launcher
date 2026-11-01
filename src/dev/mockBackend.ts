@@ -196,7 +196,11 @@ function startGame(id: string, accountId: string | null): GameRunStatus {
   if (!instances.some((instance) => instance.id === id)) {
     throw "unknown instance";
   }
-  if (accountId !== null && !accounts().some((account) => account.id === accountId)) {
+  if (
+    accountId !== null
+    && !accounts().some((account) => account.id === accountId)
+    && !yggdrasilAccounts().some((account) => account.id === accountId)
+  ) {
     throw "microsoft-sign-in-required";
   }
   const status: GameRunStatus = {

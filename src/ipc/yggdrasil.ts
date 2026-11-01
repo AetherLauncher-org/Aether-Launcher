@@ -1,4 +1,5 @@
 import { callCommand } from "./call";
+import { isTauri } from "./index";
 
 export type YggdrasilProfile = { id: string; name: string };
 export type YggdrasilLogin = { id: string; profiles: YggdrasilProfile[] };
@@ -44,11 +45,31 @@ export const beginYggdrasilLogin = (server: string, username: string, password: 
 export const finishYggdrasilLogin = (id: string, profileId: string) =>
   callCommand("finish_yggdrasil_login", { id, profileId });
 export const cancelYggdrasilLogin = (id: string) => callCommand("cancel_yggdrasil_login", { id });
-export const listYggdrasilAccounts = () => callCommand("list_yggdrasil_accounts");
+/**
+ * 本机已登录的第三方账户。读不到（浏览器预览、后端出错）时返回 null，而不是空数组：
+ * 调用方据此区分「确实没有账户」和「不知道」，不会因为一次读取失败就清空账户簿。
+ */
+export async function listYggdrasilAccounts(): Promise<YggdrasilAccount[] | null> {
+  if (!isTauri()) {
+    return null;
+  }
+  try {
+    return await callCommand("list_yggdrasil_accounts");
+  } catch {
+    return null;
+  }
+}
 export const refreshYggdrasilAccount = (id: string) => callCommand("refresh_yggdrasil_account", { id });
 export const removeYggdrasilAccount = (id: string) => callCommand("remove_yggdrasil_account", { id });
 
 const errors: Record<string, string> = {
+  "authlib-java-required": "第三方账户需要 Java 8 或更新版本，请选择兼容的游戏版本。",
+  "authlib-invalid-path": "认证代理的缓存路径无法用于启动，请检查应用数据目录。",
+  "authlib-network-error": "无法获取认证代理（authlib-injector），请检查网络后重试。",
+  "authlib-download-error": "没有可用的认证代理下载源，请稍后重试。",
+  "authlib-cache-invalid": "本地认证代理文件校验失败，请删除后重新下载。",
+  "authlib-cache-conflict": "已存在同版本但内容不同的认证代理文件，请清理应用数据目录后重试。",
+  "authlib-storage-error": "无法写入认证代理缓存，请检查应用数据目录权限。",
   "yggdrasil-storage-error": "无法访问系统凭据库，请检查系统凭据管理后重试。",
   "yggdrasil-network-error": "连接不上认证服务器，请检查网络后重试。",
   "yggdrasil-busy": "已有账户操作正在进行，请稍后重试。",
@@ -67,5 +88,5 @@ const errors: Record<string, string> = {
 
 export function describeYggdrasilError(error: unknown): string {
   const code = typeof error === "string" ? error : error instanceof Error ? error.message : "";
-  return code in errors ? errors[code] : "第三方账户操作失败，请稍后重试。";
+  return Object.prototype.hasOwnProperty.call(errors, code) ? errors[code] : "第三方账户操作失败，请稍后重试。";
 }

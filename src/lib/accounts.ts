@@ -4,7 +4,7 @@
  * 规则与 Java 版用户名一致：3–16 位，只允许字母、数字和下划线。
  * 离线账户没有任何秘密：只有玩家名和 UUID，所以可以明文存在 `localStorage`。
  * 微软账户在这里只有身份（名字和 UUID），令牌不经过这里：它们由后端保管，
- * 真正的账户列表以后端为准，启动时用 `syncMicrosoftAccounts` 对齐。
+ * 真正的账户列表以后端为准，启动时用 `syncRemoteAccounts` 对齐。
  */
 
 export const minPlayerNameLength = 3;
@@ -124,7 +124,15 @@ export type MicrosoftAccountEntry = {
   uuid: string;
 };
 
-export type Account = OfflineAccount | MicrosoftAccountEntry;
+export type YggdrasilAccountEntry = {
+  id: string;
+  kind: "yggdrasil";
+  name: string;
+  uuid: string;
+  server: string;
+};
+
+export type Account = OfflineAccount | MicrosoftAccountEntry | YggdrasilAccountEntry;
 
 export type AccountDraft = {
   name: string;
@@ -236,16 +244,17 @@ export function activeAccount(book: AccountBook): Account | null {
   return book.accounts.find((account) => account.id === book.activeId) ?? null;
 }
 
-/** 把后端的账户列表对齐到账户簿：后端没有的微软账户删掉，新的加进来，名字以后端为准。 */
-export function syncMicrosoftAccounts(
+/** 把后端的一类远程账户（微软或第三方）对齐到账户簿：后端没有的删掉，新的加进来，名字以后端为准。 */
+export function syncRemoteAccounts(
   book: AccountBook,
-  signedIn: readonly MicrosoftAccountEntry[],
+  signedIn: readonly (MicrosoftAccountEntry | YggdrasilAccountEntry)[],
+  kind: "microsoft" | "yggdrasil" = "microsoft",
 ): AccountBook {
   const byId = new Map(signedIn.map((account) => [account.id, account]));
   const kept: Account[] = [];
   const seen = new Set<string>();
   for (const account of book.accounts) {
-    if (account.kind !== "microsoft") {
+    if (account.kind !== kind) {
       kept.push(account);
     } else {
       const fresh = byId.get(account.id);
@@ -267,10 +276,10 @@ export function syncMicrosoftAccounts(
   return { accounts: kept, activeId };
 }
 
-/** 添加或更新一个刚登录的微软账户，并把它设为当前账户。 */
+/** 添加或更新一个刚登录的在线账户（微软或第三方），并把它设为当前账户。 */
 export function signInMicrosoftAccount(
   book: AccountBook,
-  account: MicrosoftAccountEntry,
+  account: MicrosoftAccountEntry | YggdrasilAccountEntry,
 ): AccountBook {
   const others = book.accounts.filter((existing) => existing.id !== account.id);
   return { accounts: [...others, account], activeId: account.id };
@@ -281,6 +290,15 @@ function parseAccount(value: unknown): Account | null {
     return null;
   }
   const record = value as Record<string, unknown>;
+  if (record.kind === "yggdrasil") {
+    const uuid = typeof record.uuid === "string" ? normalizeUuid(record.uuid) : null;
+    if (typeof record.id !== "string" || !record.id || typeof record.name !== "string" || !record.name || !uuid || typeof record.server !== "string") return null;
+    try {
+      const server = new URL(record.server);
+      if (server.protocol !== "https:" || server.username || server.password || server.search || server.hash) return null;
+      return { id: record.id, kind: "yggdrasil", name: record.name, uuid, server: server.href };
+    } catch { return null; }
+  }
   if (record.kind === "microsoft") {
     const uuid = typeof record.uuid === "string" ? normalizeUuid(record.uuid) : null;
     if (
