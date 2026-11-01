@@ -73,16 +73,23 @@ API 根地址（返回 `skinDomains` 和 `signaturePublickey`）本身也是一�
 | `refresh_yggdrasil_account {id}` | 刷新并轮换令牌 |
 | `remove_yggdrasil_account {id}` | 退出账户 |
 
-界面里的第三方账户**和启动用的账户簿分开**：现在不能拿第三方账户启动游戏，卡片上标了「暂不能用于启动」。
+界面里的第三方账户进入同一个启动账户簿，登录后可直接选中。启动 IPC 只传账户 ID，后端从已保存的账户元数据识别类型，调用者不能指定 agent 路径或额外 JVM 参数。
 
-## 还没做（启动接线，明确留白）
+## 启动和 agent 缓存
 
-登录、刷新、移除都已完成；**用第三方账户启动游戏**留作后续项，原因是它牵涉两个尚未解决的部分：
+启动先调用 `validate`。只有令牌失效（401/403）才调用 `refresh`，角色 ID 必须一致，轮换令牌成功写入系统凭据库后才继续；网络或服务错误直接停止。游戏变量使用第三方角色名字、UUID、访问令牌和 `user_type=mojang`，访问令牌只进入后端启动计划和游戏参数，不进入 IPC。
 
-1. **authlib-injector agent JAR 的下载与校验**。启动要用 `-javaagent:authlib-injector.jar=<API 根地址>`，agent JAR 必须来自官方发布。官方发布地址和 SHA-256 清单**尚未核实**——AGENTS.md 规定「哈希必须来自官方清单，镜像不是信任根」，在没有拿到官方清单里的 SHA-256 之前不写死任何哈希或镜像地址，也不实现下载。要做时：从官方发布取 JAR 和它的校验和清单，校验 SHA-256，存到受管理的相对路径，再拼 JVM 参数。
-2. **启动参数里的 agent 参数**。`aether-launch` 现在按实例 ID 组装启动计划，第三方账户要额外注入 `-javaagent` 和对应的 `--accessToken`/`--uuid`/`--username` 变量，且访问令牌只进游戏进程 argv、不进日志/IPC/持久化（和微软账户同一套规则，见 [启动与进程](../design/launch-and-process.md)）。
+agent 信任根是官方 HTTPS 清单 `https://authlib-injector.yushi.moe/artifact/latest.json`（历史版本为 `artifact/<build>.json`）。下载时限制清单 8 KiB，验证正整数构建号、2–4 段纯数字版本和 64 位小写十六进制 SHA-256。忽略清单里的 `download_url`，按以下顺序在本地拼出候选 URL：
 
-这两个做完之前，第三方账户只做「登录 + 刷新 + 管理」，不接进启动流程，避免界面承诺了「会启动」但后端没有。
+1. `https://authlib-injector.yushi.moe/artifact/{build}/authlib-injector-{ver}.jar`
+2. `https://github.com/yushijinhun/authlib-injector/releases/download/v{ver}/authlib-injector-{ver}.jar`
+3. `https://bmclapi2.bangbang93.com/mirrors/authlib-injector/artifact/{build}/authlib-injector-{ver}.jar`
+
+每份 JAR 最多 4 MiB，必须匹配官方 SHA-256；失败就尝试下一个来源。清单不跟随重定向；JAR 的有限次数重定向仅允许 HTTPS，每次连接仍执行公网 DNS 检查。当前没有地区或镜像偏好设置，候选顺序固定。
+
+校验成功后保存在 `app_data/authlib-injector/authlib-injector-<ver>.jar`，小型 `verified.json` 索引保存构建号、版本和哈希。每次启动重新校验文件，拒绝符号链接和异常缓存形状，不覆盖已有不同内容的同版本文件。官方清单获取失败时，仅允许使用通过索引格式检查且重新校验哈希的本地 JAR；这不代表登录服务器也可离线，令牌仍需验证。缓存和索引不能抵御拥有同一用户写权限的攻击者同时篡改两者。
+
+后端将 `-javaagent:<JAR 路径>=<规范 API 根地址>` 作为单个参数插在主类前，含空格路径无需 shell 引号；路径中无法无歧义编码的 `=` 会被拒绝。第三方启动仅使用 Java 8 及以上运行时。Fabric/Forge/NeoForge 的参数沿用原启动计划；离线测试覆盖参数位置，实际游戏与各加载器版本的兼容性仍需实机验证。
 
 ## 参考
 
