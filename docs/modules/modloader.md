@@ -17,6 +17,8 @@
 
 实例放在最后建：中途失败（网络、installer 报错、取消）不会留下一个指向原版、名字却写着加载器的实例。进度事件的阶段是 `metadata`、`files`、`assets`、`modLoader`、`finalize`，进度条单调向前。
 
+前端的安装任务记下自己装的版本、实例名和加载器（`InstallJob.loader`）。进度条因此能列出五步，加载器那一步进行时也有当前步骤；「重试」沿用同一份目标，所以装了一半的 Forge 重试之后还是 Forge，不会变成只有一个原版实例。
+
 ## Forge / NeoForge：不再把 installer 当黑盒运行
 
 以前是 `java -jar installer.jar --installClient`：把下载来的程序整个交出去执行，它下载什么、写什么、改哪个文件启动器都管不到，还要求目录里已经有官方启动器写的 `launcher_profiles.json`。现在 `profile_install.rs` 读 installer 里的安装描述，**自己执行**：

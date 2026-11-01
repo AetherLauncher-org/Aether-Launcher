@@ -5,7 +5,7 @@ import {
   formatBytes,
   formatRemaining,
   formatSpeed,
-  installStages,
+  installSteps,
   overallFraction,
   stageFraction,
 } from "../lib/install";
@@ -20,7 +20,10 @@ type InstallProgressCardProps = {
 export function InstallProgressCard({ job, onCancel }: InstallProgressCardProps) {
   const progress = job.progress;
   const currentStage = progress?.stage ?? "metadata";
-  const currentIndex = installStages.indexOf(currentStage);
+  // 装加载器的那次安装多一步。也认后端已经报上来的阶段，这样即使 job 没记下来，
+  // 当前步骤也不会对不上。
+  const steps = installSteps(job.loader !== null || currentStage === "modLoader");
+  const currentIndex = steps.indexOf(currentStage);
   const percent = Math.round(overallFraction(progress) * 100);
   const bytesLeft = progress ? Math.max(0, progress.bytesTotal - progress.bytesDone) : 0;
   const remaining = formatRemaining(bytesLeft, job.speed);
@@ -37,7 +40,7 @@ export function InstallProgressCard({ job, onCancel }: InstallProgressCardProps)
       </div>
 
       <ol className="install-steps">
-        {installStages.map((stage, index) => {
+        {steps.map((stage, index) => {
           const state = index < currentIndex ? "done" : index === currentIndex ? "current" : "pending";
           return (
             <li key={stage} className={`install-step ${state}`} aria-current={state === "current" ? "step" : undefined}>
