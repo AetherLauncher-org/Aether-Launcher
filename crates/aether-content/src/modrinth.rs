@@ -60,10 +60,14 @@ pub fn is_sha1(text: &str) -> bool {
     text.len() == 40 && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// `true` for a Modrinth id: a short base-62 string.
+/// `true` for a Modrinth id: a short base-62 string. A Windows device name (`CON`, `NUL`,
+/// `COM1`…) is refused too: an id becomes a file name in the icon cache, and a file named
+/// like a device would open the device, not a file.
 #[must_use]
 pub fn is_project_id(text: &str) -> bool {
-    (1..=32).contains(&text.len()) && text.bytes().all(|b| b.is_ascii_alphanumeric())
+    (1..=32).contains(&text.len())
+        && text.bytes().all(|b| b.is_ascii_alphanumeric())
+        && crate::browse::is_safe_filename(text)
 }
 
 /// `true` for a slug: letters, digits, `-`, `_` and `.` (some older slugs have one), never

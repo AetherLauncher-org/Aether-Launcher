@@ -44,6 +44,9 @@ const MAX_FILES: usize = 500;
 const MAX_HASHED_BYTES: u64 = 512 * 1024 * 1024;
 /// Icons fetched per call; the rest come on the next visit.
 const MAX_NEW_ICONS: usize = 60;
+/// How long a search waits for icons before it stops starting new batches. With the 6 s limit
+/// of one icon request a search is held for about this plus 6 s at the very worst.
+const ICON_BUDGET: std::time::Duration = std::time::Duration::from_secs(8);
 /// Icons wider or taller than this many pixels (by their header) are not kept.
 const MAX_ICON_SIDE: u32 = 1024;
 /// How long a found file is trusted without asking again, in seconds.
@@ -357,7 +360,13 @@ pub(crate) fn icons_for(
         .filter(|(id, _)| icon_path(cache_dir, id).is_some_and(|path| !path.exists()))
         .take(MAX_NEW_ICONS)
         .collect();
+    let started = std::time::Instant::now();
     for batch in missing.chunks(6) {
+        // a slow CDN must not hold the results for batch after batch; what is missing shows a
+        // placeholder now and is fetched by a later search
+        if started.elapsed() > ICON_BUDGET {
+            break;
+        }
         std::thread::scope(|scope| {
             for (id, url) in batch.iter().copied() {
                 scope.spawn(move || fetch_icon(net, cache_dir, id, url));
