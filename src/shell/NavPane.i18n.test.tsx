@@ -52,6 +52,7 @@ describe("NavPane i18n", () => {
     expect(screen.getByRole("button", { name: "Home" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Instances" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Skins" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Current account Steve" })).toBeInTheDocument();
     expect(screen.getByText("Offline account")).toBeInTheDocument();
@@ -63,6 +64,7 @@ describe("NavPane i18n", () => {
 
     expect(screen.getByRole("navigation")).toHaveAttribute("aria-label", "主要导航");
     expect(screen.getByRole("button", { name: "主页" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "皮肤库" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "还没有账户" })).toBeInTheDocument();
     expect(screen.getByText("添加账户")).toBeInTheDocument();
   });

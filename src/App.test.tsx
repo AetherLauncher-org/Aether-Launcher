@@ -124,7 +124,7 @@ describe("navigation bar", () => {
       item.getAttribute("aria-label"),
     );
 
-    expect(names).toEqual(["主页", "实例", "下载", "还没有账户", "设置"]);
+    expect(names).toEqual(["主页", "实例", "下载", "皮肤库", "还没有账户", "设置"]);
   });
 
   it("has nothing to collapse any more", () => {

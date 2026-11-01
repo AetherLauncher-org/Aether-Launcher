@@ -17,6 +17,7 @@ import { DownloadPage } from "./pages/DownloadPage";
 import { HomePage } from "./pages/HomePage";
 import { InstancesPage } from "./pages/InstancesPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { SkinsPage } from "./pages/SkinsPage";
 import { NavPane } from "./shell/NavPane";
 import { TitleBar } from "./shell/TitleBar";
 import { AccountsProvider } from "./state/AccountsProvider";
@@ -108,6 +109,8 @@ function App() {
                           <InstancesPage page={page} />
                         ) : page.id === "download" ? (
                           <DownloadPage page={page} />
+                        ) : page.id === "skins" ? (
+                          <SkinsPage page={page} />
                         ) : page.id === "accounts" ? (
                           <AccountsPage page={page} />
                         ) : (

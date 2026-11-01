@@ -16,6 +16,8 @@
   "page.instances.label": "实例",
   "page.download.label": "下载",
   "page.accounts.label": "账户",
+  "page.skins.label": "皮肤库",
+  "page.skins.summary": "本机保存的皮肤，换到你的微软账户上",
   "page.settings.label": "设置",
   "titlebar.install.aria": "正在安装 {version}，{percent}%，点击查看",
   "titlebar.install.text": "安装 {version} · {percent}%",

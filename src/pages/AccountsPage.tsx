@@ -7,8 +7,6 @@ import {
   DialogContent,
   DialogSurface,
   DialogTitle,
-  Tab,
-  TabList,
   Text,
   Tooltip,
 } from "@fluentui/react-components";
@@ -25,7 +23,6 @@ import { AccountAvatar } from "../components/AccountAvatar";
 import { AddOfflineAccountDialog } from "../components/AddOfflineAccountDialog";
 import { MicrosoftLoginDialog } from "../components/MicrosoftLoginDialog";
 import { PageHeader } from "../components/PageHeader";
-import { SkinLibrary } from "../components/SkinLibrary";
 import { YggdrasilAccounts } from "../components/YggdrasilAccounts";
 import {
   describeCommandError,
@@ -81,7 +78,6 @@ function groupOf(account: Account): Group {
  */
 export function AccountsPage({ page }: AccountsPageProps) {
   const { book, active, select, remove, signInMicrosoft } = useAccounts();
-  const [tab, setTab] = useState<"accounts" | "skins">("accounts");
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<Account | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -140,21 +136,7 @@ export function AccountsPage({ page }: AccountsPageProps) {
 
   return (
     <>
-      <PageHeader title={page.label} description={page.summary} action={tab === "accounts" ? actions : undefined} />
-
-      <TabList
-        selectedValue={tab}
-        onTabSelect={(_, data) => setTab(data.value as "accounts" | "skins")}
-        aria-label="账户和皮肤"
-      >
-        <Tab value="accounts">账户</Tab>
-        <Tab value="skins">皮肤库</Tab>
-      </TabList>
-
-      {tab === "skins" ? (
-        <SkinLibrary />
-      ) : (
-        <>
+      <PageHeader title={page.label} description={page.summary} action={actions} />
 
       {loginAvailable === false ? (
         <div className="inline-note account-note" role="status">
@@ -320,8 +302,6 @@ export function AccountsPage({ page }: AccountsPageProps) {
           </DialogBody>
         </DialogSurface>
       </Dialog>
-        </>
-      )}
     </>
   );
 }

@@ -16,6 +16,8 @@
   "page.instances.label": "Instances",
   "page.download.label": "Download",
   "page.accounts.label": "Accounts",
+  "page.skins.label": "Skins",
+  "page.skins.summary": "Skins kept on this computer, to wear on your Microsoft account",
   "page.settings.label": "Settings",
   "titlebar.install.aria": "Installing {version}, {percent}%, click to view",
   "titlebar.install.text": "Install {version} · {percent}%",

@@ -5,6 +5,7 @@ export const pageLabelKeys: Readonly<Record<PageId, MessageKey>> = {
   home: "page.home.label",
   instances: "page.instances.label",
   download: "page.download.label",
+  skins: "page.skins.label",
   accounts: "page.accounts.label",
   settings: "page.settings.label",
 };
