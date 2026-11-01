@@ -77,7 +77,7 @@ Yggdrasil 协议的外置登录服务器（LittleSkin、Ely.by、Blessing Skin �
 
 分类、短期单次令牌、流式复制、实例及多世界选择和逐项报告已实现，详见 [拖放安装](../modules/drop-install.md)。目前没有原生拖放入口：Tauri 2 的默认处理器把路径发给网页，已禁用。`NativeDropListener` 是占位接口；待通过 Tauri 上游提供仅 Rust 可见的回调，或实现 Windows 原生拖放钩子，再把文件路径交给后端并只向网页发送令牌与文件信息。不要启用 `tauri://drag-drop`。
 
-浏览器开发预览可用 `?mock=drop` 模拟事件；Rust 测试直接调用 `stage`，无需把路径传过 IPC。
+浏览器开发预览可用 `?mock=drop` 模拟事件；Rust 测试直接调用 `stage`，无需把路径传过 IPC。桌面开发构建可用 `simulate_dev_drop` 命令（配合 `AETHER_DEV_DROP` 环境变量）走完整流程，见 [拖放安装](../modules/drop-install.md)。
 
 ## 顺序
 

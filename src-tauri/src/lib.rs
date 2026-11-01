@@ -125,6 +125,7 @@ pub fn run() {
             commands::content::install_content,
             commands::content::save_content_to_folder,
             commands::drop::install_drop,
+            commands::drop::simulate_dev_drop,
             commands::schematics::read_instance_schematic,
             commands::schematics::convert_instance_schematic,
             commands::schematics::schematic_conversion_targets,
