@@ -346,7 +346,7 @@ fn a_controlled_lifecycle_emits_monotonic_progress_ending_in_a_terminal_phase() 
     }
     let last = events.last().unwrap();
     assert_eq!(last.files_done, 1);
-    assert_eq!(last.resolving, false);
+    assert!(!last.resolving);
     assert_eq!(last.file_name.as_deref(), Some("main.jar"));
 }
 
