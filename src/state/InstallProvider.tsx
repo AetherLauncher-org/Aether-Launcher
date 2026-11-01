@@ -4,16 +4,25 @@ import {
   cancelVanillaInstall,
   describeCommandError,
   installModLoaderVersion,
+  installModpack,
   isInstallCancelled,
   listenInstallProgress,
   startVanillaInstall,
 } from "../ipc";
-import type { InstallProgress, ModLoaderKind } from "../ipc";
+import type { InstallProgress } from "../ipc";
 import { emptySpeedSample, nextSpeed } from "../lib/install";
 import type { SpeedSample } from "../lib/install";
 import { InstallContext } from "./install";
-import type { InstallApi, InstallJob } from "./install";
+import type { InstallApi, InstallJob, InstallLoader, InstallModpack } from "./install";
 import { useInstances } from "./instances";
+
+/** 一次安装的目标。重试沿用的就是这一份，所以加载器和整合包也算在里面。 */
+type InstallAttempt = {
+  version: string;
+  name: string;
+  loader: InstallLoader | null;
+  modpack?: InstallModpack;
+};
 
 /**
  * 安装任务放在应用层：用户可以在安装过程中切到别的页面，回来时进度还在，
@@ -24,6 +33,8 @@ export function InstallProvider({ children }: { children: ReactNode }) {
   const [job, setJob] = useState<InstallJob | null>(null);
   const running = useRef(false);
   const sample = useRef<SpeedSample>(emptySpeedSample);
+  /** 上一次安装的目标：重试用它，不用调用方手里的状态。 */
+  const attempt = useRef<InstallAttempt | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,20 +70,18 @@ export function InstallProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const start = useCallback(
-    async (
-      version: string,
-      name: string,
-      loader: { kind: string; version: string } | null = null,
-    ) => {
+  const run = useCallback(
+    async (target: InstallAttempt) => {
       if (running.current) {
         return;
       }
       running.current = true;
       sample.current = emptySpeedSample;
       setJob({
-        version,
-        name,
+        version: target.version,
+        name: target.name,
+        loader: target.loader,
+        ...(target.modpack ? { modpack: target.modpack } : {}),
         status: "running",
         progress: null,
         speed: 0,
@@ -80,16 +89,17 @@ export function InstallProvider({ children }: { children: ReactNode }) {
         error: null,
       });
       try {
-        // 选了加载器就走加载器那条链（后端会先装原版），否则只装原版。
-        const instance =
-          loader === null
-            ? await startVanillaInstall(version, name)
+        // 整合包走整合包那条链；选了加载器就走加载器那条链（后端会先装原版），否则只装原版。
+        const instance = target.modpack
+          ? await installModpack(target.modpack.projectId, target.name, target.modpack.optional)
+          : target.loader === null
+            ? await startVanillaInstall(target.version, target.name)
             : (
                 await installModLoaderVersion(
-                  loader.kind as ModLoaderKind,
-                  version,
-                  loader.version,
-                  name,
+                  target.loader.kind,
+                  target.version,
+                  target.loader.version,
+                  target.name,
                 )
               ).instance;
         setJob((current) =>
@@ -114,6 +124,26 @@ export function InstallProvider({ children }: { children: ReactNode }) {
     [reload],
   );
 
+  const start = useCallback(
+    (version: string, name: string, loader: InstallLoader | null = null, modpack?: InstallModpack) => {
+      // 后端一次只允许一个安装。已有安装时连「上一次的目标」也不改，免得重试装成别的。
+      if (running.current) {
+        return Promise.resolve();
+      }
+      const target: InstallAttempt = { version, name, loader, ...(modpack ? { modpack } : {}) };
+      attempt.current = target;
+      return run(target);
+    },
+    [run],
+  );
+
+  const retry = useCallback(() => {
+    const target = attempt.current;
+    if (target !== null) {
+      void run(target);
+    }
+  }, [run]);
+
   const cancel = useCallback(() => {
     void cancelVanillaInstall();
   }, []);
@@ -125,8 +155,8 @@ export function InstallProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const api = useMemo<InstallApi>(
-    () => ({ job, start, cancel, dismiss }),
-    [job, start, cancel, dismiss],
+    () => ({ job, start, retry, cancel, dismiss }),
+    [job, start, retry, cancel, dismiss],
   );
 
   return <InstallContext.Provider value={api}>{children}</InstallContext.Provider>;

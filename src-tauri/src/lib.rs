@@ -81,6 +81,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(aether_app::launch::LaunchState::default())
         .manage(aether_app::install::InstallState::default())
+        .manage(aether_app::content_operation::ContentInstallState::default())
         .manage(aether_app::import::ImportState::default())
         .manage(aether_app::microsoft::MicrosoftLoginState::default())
         .manage(aether_app::skin_sources::SkinDownloadState::default())
@@ -92,6 +93,7 @@ pub fn run() {
             commands::catalog::list_minecraft_versions,
             commands::modloader::list_modloader_versions,
             commands::modloader::install_modloader_version,
+            commands::modpack::install_modpack,
             commands::install::install_vanilla_version,
             commands::install::cancel_vanilla_install,
             commands::instances::list_instances,
@@ -119,6 +121,9 @@ pub fn run() {
             commands::content::get_content_target,
             commands::content::search_content,
             commands::content::install_content,
+            commands::content::begin_content_install,
+            commands::content::cancel_content_install,
+            commands::content::wait_content_install,
             commands::schematics::read_instance_schematic,
             commands::schematics::convert_instance_schematic,
             commands::schematics::schematic_conversion_targets,

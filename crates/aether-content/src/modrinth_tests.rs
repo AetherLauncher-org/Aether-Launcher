@@ -179,3 +179,14 @@ fn the_page_url_is_only_built_from_a_slug() {
         assert_eq!(project_page_url(bad), None, "{bad:?}");
     }
 }
+
+#[test]
+fn a_project_id_is_never_a_windows_device_name() {
+    for id in ["AANobbMI", "P7dR8mSH", "a", "x".repeat(32).as_str()] {
+        assert!(is_project_id(id), "{id}");
+    }
+    for id in ["CON", "con", "NUL", "Aux", "PRN", "COM1", "lpt9", "", "has-dash", "a b", "../x"] {
+        assert!(!is_project_id(id), "{id:?}");
+    }
+    assert!(!is_project_id(&"x".repeat(33)));
+}

@@ -30,7 +30,7 @@ import type {
   WorldDetails,
 } from "../ipc/manage";
 import type { BrowserLoginInfo, DeviceCodeInfo, LoginEvent, MicrosoftAccount } from "../ipc/accounts";
-import type { SearchResult } from "../ipc/content";
+import type { ContentInstallArgs, ContentInstallProgress, ContentInstallResult, SearchResult } from "../ipc/content";
 import type { SkinEntry, SkinPreview } from "../ipc/skinLibrary";
 import type { SystemMemory } from "../ipc/system";
 import type { ConversionResult, SchematicFormat } from "../ipc/schematics";
@@ -59,6 +59,62 @@ function emit(event: string, payload: unknown) {
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
+type MockContentOperation = {
+  cancelled: boolean;
+  finished: boolean;
+  result: Promise<ContentInstallResult>;
+};
+const contentOperations = new Map<string, MockContentOperation>();
+
+function beginMockContentInstall(args: ContentInstallArgs): string {
+  if ([...contentOperations.values()].filter((operation) => !operation.finished).length >= 2) {
+    throw "two content installs are already running";
+  }
+  const operationId = uuid();
+  const operation: MockContentOperation = { cancelled: false, finished: false, result: Promise.resolve(null!) };
+  const installed: ContentInstallResult["installed"] = [];
+  const count = args.withDependencies ? 2 : 1;
+  let progress: ContentInstallProgress = {
+    operationId, projectId: args.projectId, phase: "resolving", fileName: null,
+    bytesDone: 0, bytesTotal: 0, filesDone: 0, filesDiscovered: 1,
+  };
+  const report = (update: Partial<ContentInstallProgress>) => {
+    progress = { ...progress, ...update };
+    emit("content-install://progress", progress);
+  };
+  const finish = (status: ContentInstallResult["status"], error: string | null = null): ContentInstallResult => {
+    operation.finished = true;
+    report({ phase: status });
+    return { operationId, status, installed: [...installed], skipped: [], error };
+  };
+  contentOperations.set(operationId, operation);
+  operation.result = (async () => {
+    report({});
+    await sleep(300);
+    if (operation.cancelled) return finish("cancelled");
+    for (let index = 0; index < count; index += 1) {
+      const projectId = index === 0 ? args.projectId : `${args.projectId}Dependency`;
+      const fileName = `${projectId}-1.0.0.${args.projectType === "mod" ? "jar" : "zip"}`;
+      report({ phase: "resolving", projectId, filesDiscovered: index + 1, fileName: null, bytesDone: 0, bytesTotal: 0 });
+      await sleep(200);
+      if (operation.cancelled) return finish("cancelled");
+      for (let chunk = 0; chunk <= 4; chunk += 1) {
+        report({ phase: "downloading", fileName, bytesDone: chunk * 262144, bytesTotal: 1048576 });
+        await sleep(180);
+        if (operation.cancelled) return finish("cancelled");
+      }
+      report({ phase: "verifying" });
+      await sleep(250);
+      if (operation.cancelled) return finish("cancelled");
+      if (mode === "content-failed" && index === count - 1) return finish("failed", "模拟下载校验失败");
+      installed.push({ projectId, fileName, version: "1.0.0" });
+      report({ filesDone: installed.length });
+    }
+    return finish("done");
+  })();
+  return operationId;
+}
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -180,6 +236,50 @@ async function install(version: string, name: string): Promise<InstanceSummary> 
     progress("finalize", 1, 1, 0);
     await sleep(200);
     const created: InstanceSummary = { id: uuid(), name, version, state: "ready" };
+    instances = [...instances, created];
+    saveInstances();
+    return created;
+  } finally {
+    installing = false;
+  }
+}
+
+// 整合包安装：和原版共用 installing 标志，进度一样经 install://progress 发出。
+async function installModpack(projectId: string | null, name: string): Promise<InstanceSummary> {
+  if (installing) {
+    throw "an installation is already running";
+  }
+  if (instances.some((instance) => instance.name.toLowerCase() === name.toLowerCase())) {
+    throw "an instance with this name already exists";
+  }
+  installing = true;
+  installCancelled = false;
+  try {
+    const label = projectId === null ? "本地整合包" : `整合包 ${projectId}`;
+    for (let step = 0; step <= 12; step += 1) {
+      if (installCancelled) {
+        throw "cancelled";
+      }
+      emit("install://progress", {
+        version: label,
+        stage: "files",
+        filesDone: step,
+        filesTotal: 12,
+        bytesDone: step * 8_000_000,
+        bytesTotal: 96_000_000,
+      } satisfies InstallProgress);
+      await sleep(70);
+    }
+    emit("install://progress", {
+      version: label,
+      stage: "finalize",
+      filesDone: 1,
+      filesTotal: 1,
+      bytesDone: 0,
+      bytesTotal: 0,
+    } satisfies InstallProgress);
+    await sleep(200);
+    const created: InstanceSummary = { id: uuid(), name, version: label, state: "ready" };
     instances = [...instances, created];
     saveInstances();
     return created;
@@ -690,6 +790,11 @@ async function handle(command: string, args: Args): Promise<unknown> {
       return { instances, skipped: [] };
     case "install_vanilla_version":
       return install(String(args?.version), String(args?.name));
+    case "install_modpack":
+      return installModpack(
+        (args?.projectId as string | null) ?? null,
+        String(args?.name),
+      );
     case "cancel_vanilla_install":
       installCancelled = installing;
       return installing;
@@ -857,6 +962,19 @@ async function handle(command: string, args: Args): Promise<unknown> {
     case "search_content":
       await sleep(300);
       return mockSearch(String(args?.text ?? ""), String(args?.projectType));
+    case "begin_content_install":
+      return beginMockContentInstall(args as ContentInstallArgs);
+    case "cancel_content_install": {
+      const operation = contentOperations.get(String(args?.operationId));
+      if (!operation || operation.finished) return false;
+      operation.cancelled = true;
+      return true;
+    }
+    case "wait_content_install": {
+      const operation = contentOperations.get(String(args?.operationId));
+      if (!operation) throw "unknown content operation";
+      return operation.result;
+    }
     case "install_content":
       await sleep(600);
       return { installed: [{ projectId: String(args?.projectId), fileName: "mock-1.0.0.jar", version: "1.0.0" }], skipped: [] };

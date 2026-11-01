@@ -15,6 +15,7 @@
 mod cachefile;
 pub mod catalog;
 pub mod content_install;
+pub mod content_operation;
 pub mod host;
 pub mod identify;
 pub mod import;
@@ -25,6 +26,7 @@ pub mod launch;
 pub mod manage;
 pub mod microsoft;
 pub mod modloader;
+pub mod modpack;
 pub mod platform;
 pub mod schematics;
 pub mod skin_library;

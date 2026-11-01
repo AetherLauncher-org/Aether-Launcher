@@ -355,13 +355,14 @@ describe("DownloadPage version detail", () => {
 });
 
 describe("DownloadPage skin sources", () => {
-  it("places the skin tab after shaders and mounts the source browser", async () => {
+  it("keeps the modpack tab and puts the skin tab after it", async () => {
     backend();
     renderWithState(<DownloadPage page={page} />);
     await screen.findByText("最新正式版");
 
     const tabs = within(screen.getByRole("tablist", { name: "下载什么" })).getAllByRole("tab");
-    expect(tabs[tabs.length - 2]).toBe(screen.getByRole("tab", { name: "光影" }));
+    expect(tabs[tabs.length - 3]).toBe(screen.getByRole("tab", { name: "光影" }));
+    expect(tabs[tabs.length - 2]).toBe(screen.getByRole("tab", { name: "整合包" }));
     expect(tabs[tabs.length - 1]).toBe(screen.getByRole("tab", { name: "皮肤" }));
 
     fireEvent.click(screen.getByRole("tab", { name: "皮肤" }));

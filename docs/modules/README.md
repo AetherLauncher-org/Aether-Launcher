@@ -11,6 +11,7 @@
 | [账户与凭据](auth.md)                 | `aether-auth`                   | 微软设备码登录的步骤、令牌链各段的失败含义、凭据文件存了什么          |
 | [下载引擎](download-engine.md)        | `aether-download::engine`       | 传输 trait 的边界、`.part` 与原子 rename 的写盘协议、续传与重试的取舍 |
 | [模组加载器安装](modloader.md) | `aether-modloader`、`src-tauri` | 装 Forge / NeoForge / Fabric 的流程、下载怎么校验、哪些还没做 |
+| [整合包安装](modpack.md) | `aether-content`、`aether-app`、`src-tauri` | 从 Modrinth 装 `.mrpack` 成新实例、ZIP 与下载的校验边界、哪些还没做 |
 | [微软账户登录](microsoft-login.md) | `aether-auth`、`src-tauri` | 设备码登录怎么走、令牌放在哪、怎么申请 Azure 应用和 Mojang 审核 |
 | [第三方账户登录](yggdrasil.md) | `aether-auth`、`aether-app`、`src-tauri` | Yggdrasil / authlib-injector 登录、服务器地址与内网校验、agent 启动接线留白 |
 | [实例生命周期](instance-lifecycle.md) | `aether-storage`、`aether-core` | 实例目录长什么样、写入怎么保证不残缺、导入为什么只补缺失文件          |

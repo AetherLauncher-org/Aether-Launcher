@@ -7,6 +7,7 @@ import {
   formatRemaining,
   formatSpeed,
   installStages,
+  installSteps,
   nextSpeed,
   overallFraction,
   stageFraction,
@@ -150,5 +151,25 @@ describe("formatting", () => {
     for (const stage of installStages) {
       expect(describeStage(stage).length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("installSteps", () => {
+  it("is the vanilla order when no loader is installed", () => {
+    expect(installSteps(false)).toEqual(installStages);
+  });
+
+  it("puts the mod loader between the assets and the instance", () => {
+    expect(installSteps(true)).toEqual(["metadata", "files", "assets", "modLoader", "finalize"]);
+  });
+
+  it("contains every stage the backend can report", () => {
+    const all: InstallStage[] = ["metadata", "files", "assets", "modLoader", "finalize"];
+    for (const stage of all) {
+      // 每个阶段都要能在某一份列表里找到，否则进度条上会出现「没有当前步骤」。
+      expect(installSteps(true)).toContain(stage);
+    }
+    // 原版安装不会报 modLoader，其余四个都在。
+    expect(installSteps(false).filter((stage) => stage !== "modLoader")).toHaveLength(all.length - 1);
   });
 });

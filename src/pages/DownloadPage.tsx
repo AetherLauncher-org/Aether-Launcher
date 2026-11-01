@@ -1,6 +1,7 @@
 import { Spinner, Tab, TabList } from "@fluentui/react-components";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ContentBrowser } from "../components/ContentBrowser";
+import { ModpackBrowser } from "../components/ModpackBrowser";
 import { PageHeader } from "../components/PageHeader";
 import { DesktopOnlyNotice, ErrorState } from "../components/PageState";
 import { SkinSources } from "../components/SkinSources";
@@ -15,8 +16,8 @@ import type { PageDefinition } from "../navigation";
 import { useInstall } from "../state/install";
 import { useInstances } from "../state/instances";
 
-/** 顶上的标签：Minecraft 本体，然后是各类内容。 */
-type DownloadTab = "versions" | ContentType | "skins";
+/** 顶上的标签：Minecraft 本体、各类内容、整合包，最后是皮肤。 */
+type DownloadTab = "versions" | ContentType | "modpack" | "skins";
 
 type DownloadPageProps = {
   page: PageDefinition;
@@ -87,10 +88,13 @@ export function DownloadPage({ page }: DownloadPageProps) {
             {contentTypeLabels[type]}
           </Tab>
         ))}
+        <Tab value="modpack">整合包</Tab>
         <Tab value="skins">皮肤</Tab>
       </TabList>
 
-      {tab === "skins" ? (
+      {tab === "modpack" ? (
+        <ModpackBrowser />
+      ) : tab === "skins" ? (
         <SkinSources />
       ) : tab !== "versions" ? (
         <ContentBrowser type={tab} />

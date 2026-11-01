@@ -20,6 +20,10 @@ type CommandResults = {
   list_java_runtimes: JavaRuntimeInfo[];
 };
 
+export { installModpack } from "./modpack";
+export type { ModpackRequest } from "./modpack";
+export type { SearchContentType } from "./content";
+
 export const defaultApplicationInfo: ApplicationInfo = {
   name: "Aether Launcher",
   version: "0.1.0",
@@ -164,8 +168,15 @@ export {
 export type { AddSkinResult, SkinEntry, SkinPreview, SkinSource, SkinSite, SavedSkin } from "./skinLibrary";
 
 // 内容下载：搜索 Modrinth、装进实例或世界
-export { contentTypes, getContentTarget, installContent, searchContent } from "./content";
+export {
+  beginContentInstall, cancelContentInstall, contentInstallProgressEvent, contentTypes,
+  getContentTarget, installContent, listenContentInstallProgress, searchContent, waitContentInstall,
+} from "./content";
 export type {
+  ContentInstallArgs,
+  ContentInstallPhase,
+  ContentInstallProgress,
+  ContentInstallResult,
   ContentTarget,
   ContentType,
   InstallReport,
