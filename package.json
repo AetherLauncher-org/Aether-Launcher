@@ -16,7 +16,8 @@
     "site:dev": "vite --config site/vite.config.ts",
     "site:build": "tsc --noEmit -p site && vite build --config site/vite.config.ts",
     "site:preview": "vite preview --config site/vite.config.ts --port 5191",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "node scripts/tauri-dev.mjs"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.74.10",

@@ -3,6 +3,9 @@ import react from "@vitejs/plugin-react";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
+// 1420 是 tauri.conf.json 里的端口。Windows 会保留一些端口段（重启后 Hyper-V / WinNAT 随机占），
+// 落在里面的端口绑不上（EACCES）。`npm run tauri:dev` 会挑一个能用的并通过这个变量告诉 Vite。
+const devPort = Number(process.env.AETHER_DEV_PORT) || 1420;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
@@ -22,14 +25,14 @@ export default defineConfig(() => ({
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
-    port: 1420,
+    port: devPort,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1421,
+          port: devPort + 1,
         }
       : undefined,
     watch: {

@@ -66,6 +66,8 @@ npm ci
 npm run tauri dev
 ```
 
+Windows 重启后，系统可能把 1420 所在的端口段保留掉（Hyper-V / WinNAT），Vite 会报 `listen EACCES ... :1420`，用 `netsh int ipv4 show excludedportrange protocol=tcp` 能看到。这时改用 `npm run tauri:dev`：1420 能绑就照旧，不能就自动换到下一个能用的端口，并把 Vite 和 Tauri 的 `devUrl` 一起对上。`node scripts/tauri-dev.mjs --dry-run` 只打印会用哪个端口；`AETHER_DEV_PORT` 可以指定起始端口。
+
 提交前运行：
 
 ```powershell
