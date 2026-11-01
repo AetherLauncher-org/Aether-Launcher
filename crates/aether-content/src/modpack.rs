@@ -91,7 +91,12 @@ pub fn safe_path(path: &str) -> bool {
         && path.len() <= 1024
         && path.split('/').count() <= MAX_PATH_DEPTH
         && path.split('/').all(|part| {
-            let stem = part.split('.').next().unwrap_or("").trim_end_matches(' ').to_uppercase();
+            let stem = part
+                .split('.')
+                .next()
+                .unwrap_or("")
+                .trim_end_matches(' ')
+                .to_uppercase();
             !part.is_empty()
                 && part.len() <= 255
                 && part != "."
@@ -182,7 +187,9 @@ fn safe_url_segment(segment: &str) -> bool {
     !decoded.is_empty()
         && decoded != b"."
         && decoded != b".."
-        && !decoded.iter().any(|b| *b < 32 || *b == 127 || b"/\\%".contains(b))
+        && !decoded
+            .iter()
+            .any(|b| *b < 32 || *b == 127 || b"/\\%".contains(b))
 }
 
 fn bounded_depth(bytes: &[u8]) -> bool {
@@ -233,7 +240,10 @@ pub fn parse(bytes: &[u8]) -> Result<Index, PackError> {
         || index.name.len() > 512
         || index.version_id.trim().is_empty()
         || index.version_id.len() > 512
-        || index.summary.as_ref().is_some_and(|summary| summary.len() > 4096)
+        || index
+            .summary
+            .as_ref()
+            .is_some_and(|summary| summary.len() > 4096)
     {
         return Err(PackError("unsupported format or identity"));
     }
@@ -353,6 +363,29 @@ mod tests {
         v["files"][1]["path"] = "MODS".into();
         assert!(!valid(&v));
     }
+    #[test]
+    fn modpack_rejects_duplicate_dependencies_and_encoded_traversal() {
+        let text = String::from_utf8(serde_json::to_vec(&sample()).unwrap()).unwrap();
+        let duplicate = text.replace(
+            "\"minecraft\":\"1.21.1\"",
+            "\"minecraft\":\"1.21.1\",\"minecraft\":\"1.20.1\"",
+        );
+        assert_ne!(text, duplicate);
+        assert!(parse(duplicate.as_bytes()).is_err());
+        for path in ["CON .txt", "a/COM².json", "a/NUL .ini"] {
+            assert!(!safe_path(path), "{path}");
+        }
+        assert!(!safe_path(&vec!["a"; MAX_PATH_DEPTH + 1].join("/")));
+        for segment in ["%2e%2e", "%2E", "%2f", "%5c", "%252e", "%00"] {
+            assert!(!allowed_download(&format!(
+                "https://cdn.modrinth.com/{segment}/file"
+            )));
+        }
+        let mut value = sample();
+        value["summary"] = "x".repeat(4097).into();
+        assert!(!valid(&value));
+    }
+
     #[test]
     fn modpack_urls_and_limits() {
         for url in [
