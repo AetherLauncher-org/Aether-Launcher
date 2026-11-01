@@ -33,8 +33,7 @@ pub(crate) fn upload(
             "Minecraft services did not accept this skin".to_owned()
         }
         MinecraftError::UnexpectedStatus { status: 429 } => {
-            "Minecraft services asks you to wait a little before changing the skin again"
-                .to_owned()
+            "Minecraft services asks you to wait a little before changing the skin again".to_owned()
         }
         _ => "Minecraft services could not change the skin; try again later".to_owned(),
     })

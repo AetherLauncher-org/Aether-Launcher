@@ -111,7 +111,10 @@ impl<R: Read + Seek> Pack<R> {
             modpack::parse(&bytes).map_err(|e| e.to_string())?
         };
         let download_total: u64 = index.files.iter().map(|file| file.file_size).sum();
-        if total.checked_add(download_total).is_none_or(|size| size > MAX_TOTAL_BYTES) {
+        if total
+            .checked_add(download_total)
+            .is_none_or(|size| size > MAX_TOTAL_BYTES)
+        {
             return Err(invalid());
         }
         // Resolve the specified client layer before touching disk, never overwrite a file.
@@ -242,9 +245,13 @@ impl<R: Read + Seek> Pack<R> {
             loop {
                 check_cancel(cancel)?;
                 let count = input.read(&mut buffer).map_err(|_| invalid())?;
-                if count == 0 { break; }
+                if count == 0 {
+                    break;
+                }
                 copied += count as u64;
-                if copied > size { return Err(invalid()); }
+                if copied > size {
+                    return Err(invalid());
+                }
                 output.write_all(&buffer[..count]).map_err(|_| invalid())?;
             }
             total = total.checked_add(copied).ok_or_else(invalid)?;

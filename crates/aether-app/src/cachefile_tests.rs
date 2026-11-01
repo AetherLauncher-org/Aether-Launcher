@@ -24,7 +24,11 @@ fn a_file_is_written_whole_and_replaced() {
         .unwrap()
         .map(|entry| entry.unwrap().file_name())
         .collect();
-    assert_eq!(left, vec![std::ffi::OsString::from("a.png")], "no temporary file is left");
+    assert_eq!(
+        left,
+        vec![std::ffi::OsString::from("a.png")],
+        "no temporary file is left"
+    );
     let _ = fs::remove_dir_all(dir);
 }
 
@@ -55,7 +59,10 @@ fn writers_of_the_same_file_never_share_a_temporary_file() {
 
     // the file is always one writer's whole payload, never a mix, and nothing is left behind
     let bytes = fs::read(&path).unwrap();
-    assert!(bytes == first || bytes == second, "the file is one whole payload");
+    assert!(
+        bytes == first || bytes == second,
+        "the file is one whole payload"
+    );
     assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
     let _ = fs::remove_dir_all(dir);
 }

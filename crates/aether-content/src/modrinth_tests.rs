@@ -185,7 +185,9 @@ fn a_project_id_is_never_a_windows_device_name() {
     for id in ["AANobbMI", "P7dR8mSH", "a", "x".repeat(32).as_str()] {
         assert!(is_project_id(id), "{id}");
     }
-    for id in ["CON", "con", "NUL", "Aux", "PRN", "COM1", "lpt9", "", "has-dash", "a b", "../x"] {
+    for id in [
+        "CON", "con", "NUL", "Aux", "PRN", "COM1", "lpt9", "", "has-dash", "a b", "../x",
+    ] {
         assert!(!is_project_id(id), "{id:?}");
     }
     assert!(!is_project_id(&"x".repeat(33)));

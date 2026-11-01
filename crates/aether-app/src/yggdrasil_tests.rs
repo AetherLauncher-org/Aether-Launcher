@@ -1,7 +1,7 @@
 use super::*;
-use std::cell::{Cell, RefCell};
 use aether_auth::http::HttpError;
 use aether_auth::store::StoreError;
+use std::cell::{Cell, RefCell};
 
 const PROFILE: &str = "0123456789abcdef0123456789abcdef";
 const OTHER: &str = "1123456789abcdef0123456789abcdef";
@@ -12,11 +12,20 @@ struct Store {
 }
 impl CredentialStore for Store {
     fn load(&self, id: AccountId) -> Result<Option<StoredCredential>, StoreError> {
-        Ok(self.values.borrow().iter().find(|v| v.account_id == id).cloned())
+        Ok(self
+            .values
+            .borrow()
+            .iter()
+            .find(|v| v.account_id == id)
+            .cloned())
     }
     fn save(&self, value: &StoredCredential) -> Result<(), StoreError> {
-        if self.fail_save.get() { return Err(StoreError::ProtectedStoreUnavailable); }
-        self.values.borrow_mut().retain(|v| v.account_id != value.account_id);
+        if self.fail_save.get() {
+            return Err(StoreError::ProtectedStoreUnavailable);
+        }
+        self.values
+            .borrow_mut()
+            .retain(|v| v.account_id != value.account_id);
         self.values.borrow_mut().push(value.clone());
         Ok(())
     }
@@ -35,15 +44,30 @@ struct Transport {
     validate_status: u16,
 }
 impl Transport {
-    fn new() -> Self { Self { requests: RefCell::new(Vec::new()), fail: false, wrong_profile: false, validate_status: 204 } }
+    fn new() -> Self {
+        Self {
+            requests: RefCell::new(Vec::new()),
+            fail: false,
+            wrong_profile: false,
+            validate_status: 204,
+        }
+    }
 }
 impl HttpTransport for Transport {
     fn execute(&self, request: &HttpRequest) -> Result<HttpResponse, HttpError> {
         self.requests.borrow_mut().push(request.clone());
-        if self.fail { return Err(HttpError::transport(&request.url)); }
-        if request.url.ends_with("/authserver/validate") { return Ok(HttpResponse::new(self.validate_status, "")); }
-        if request.url.ends_with("/authserver/invalidate") { return Ok(HttpResponse::new(204, "")); }
-        if request.url.ends_with("/authserver/authenticate") || request.url.ends_with("/authserver/refresh") {
+        if self.fail {
+            return Err(HttpError::transport(&request.url));
+        }
+        if request.url.ends_with("/authserver/validate") {
+            return Ok(HttpResponse::new(self.validate_status, ""));
+        }
+        if request.url.ends_with("/authserver/invalidate") {
+            return Ok(HttpResponse::new(204, ""));
+        }
+        if request.url.ends_with("/authserver/authenticate")
+            || request.url.ends_with("/authserver/refresh")
+        {
             let body: serde_json::Value = serde_json::from_str(request.body().unwrap()).unwrap();
             let mut response = serde_json::json!({"accessToken":"access-secret-rotated", "clientToken":body["clientToken"], "availableProfiles":[{"id":PROFILE,"name":"Player"},{"id":OTHER,"name":"Other"}]});
             if request.url.ends_with("/refresh") {
@@ -51,13 +75,24 @@ impl HttpTransport for Transport {
             }
             return Ok(HttpResponse::new(200, response.to_string()));
         }
-        Ok(HttpResponse::new(200, r#"{"signaturePublickey":"-----BEGIN PUBLIC KEY-----\nYWJj\n-----END PUBLIC KEY-----","skinDomains":[]}"#))
+        Ok(HttpResponse::new(
+            200,
+            r#"{"signaturePublickey":"-----BEGIN PUBLIC KEY-----\nYWJj\n-----END PUBLIC KEY-----","skinDomains":[]}"#,
+        ))
     }
 }
 fn pending() -> (Option<Pending>, Transport, Challenge) {
     let transport = Transport::new();
     let mut pending = None;
-    let challenge = begin_with(&mut pending, &transport, protocol::LITTLE_SKIN, "user", "password-secret", Instant::now()).unwrap();
+    let challenge = begin_with(
+        &mut pending,
+        &transport,
+        protocol::LITTLE_SKIN,
+        "user",
+        "password-secret",
+        Instant::now(),
+    )
+    .unwrap();
     (pending, transport, challenge)
 }
 #[test]
@@ -65,7 +100,15 @@ fn yggdrasil_login_binds_profile_and_returns_identity_only() {
     let (mut pending, transport, challenge) = pending();
     assert_eq!(challenge.profiles.len(), 2);
     let store = Store::default();
-    let account = finish_with(&mut pending, &store, &transport, &challenge.id, PROFILE, Instant::now()).unwrap();
+    let account = finish_with(
+        &mut pending,
+        &store,
+        &transport,
+        &challenge.id,
+        PROFILE,
+        Instant::now(),
+    )
+    .unwrap();
     assert!(pending.is_none());
     let json = serde_json::to_string(&account).unwrap();
     assert!(!json.contains("secret"));
@@ -73,26 +116,67 @@ fn yggdrasil_login_binds_profile_and_returns_identity_only() {
     let request = transport.requests.borrow().last().unwrap().clone();
     let body: serde_json::Value = serde_json::from_str(request.body().unwrap()).unwrap();
     assert_eq!(body["selectedProfile"]["id"], PROFILE);
-    assert_eq!(Tokens::from_vault(store.values.borrow()[0].refresh.as_ref().unwrap()).unwrap().access(), "access-secret-rotated");
+    assert_eq!(
+        Tokens::from_vault(store.values.borrow()[0].refresh.as_ref().unwrap())
+            .unwrap()
+            .access(),
+        "access-secret-rotated"
+    );
 }
 #[test]
 fn yggdrasil_save_retry_does_not_refresh_rotated_token_again() {
     let (mut pending, transport, challenge) = pending();
     let store = Store::default();
     store.fail_save.set(true);
-    assert_eq!(finish_with(&mut pending, &store, &transport, &challenge.id, PROFILE, Instant::now()).err().as_deref(), Some(STORAGE));
+    assert_eq!(
+        finish_with(
+            &mut pending,
+            &store,
+            &transport,
+            &challenge.id,
+            PROFILE,
+            Instant::now()
+        )
+        .err()
+        .as_deref(),
+        Some(STORAGE)
+    );
     let count = transport.requests.borrow().len();
     store.fail_save.set(false);
-    finish_with(&mut pending, &store, &transport, &challenge.id, PROFILE, Instant::now()).unwrap();
+    finish_with(
+        &mut pending,
+        &store,
+        &transport,
+        &challenge.id,
+        PROFILE,
+        Instant::now(),
+    )
+    .unwrap();
     assert_eq!(transport.requests.borrow().len(), count);
 }
 #[test]
 fn yggdrasil_relogin_updates_same_server_profile() {
     let store = Store::default();
     let (mut first, transport, challenge) = pending();
-    let one = finish_with(&mut first, &store, &transport, &challenge.id, PROFILE, Instant::now()).unwrap();
+    let one = finish_with(
+        &mut first,
+        &store,
+        &transport,
+        &challenge.id,
+        PROFILE,
+        Instant::now(),
+    )
+    .unwrap();
     let (mut second, transport, challenge) = pending();
-    let two = finish_with(&mut second, &store, &transport, &challenge.id, PROFILE, Instant::now()).unwrap();
+    let two = finish_with(
+        &mut second,
+        &store,
+        &transport,
+        &challenge.id,
+        PROFILE,
+        Instant::now(),
+    )
+    .unwrap();
     assert_eq!(one.id, two.id);
     assert_eq!(store.values.borrow().len(), 1);
 }
@@ -101,10 +185,32 @@ fn yggdrasil_rejects_unoffered_and_substituted_profiles() {
     let (mut pending, mut transport, challenge) = pending();
     let store = Store::default();
     let count = transport.requests.borrow().len();
-    assert!(finish_with(&mut pending, &store, &transport, &challenge.id, "bad", Instant::now()).is_err());
+    assert!(
+        finish_with(
+            &mut pending,
+            &store,
+            &transport,
+            &challenge.id,
+            "bad",
+            Instant::now()
+        )
+        .is_err()
+    );
     assert_eq!(transport.requests.borrow().len(), count);
     transport.wrong_profile = true;
-    assert_eq!(finish_with(&mut pending, &store, &transport, &challenge.id, PROFILE, Instant::now()).err().as_deref(), Some("yggdrasil-invalid-profile"));
+    assert_eq!(
+        finish_with(
+            &mut pending,
+            &store,
+            &transport,
+            &challenge.id,
+            PROFILE,
+            Instant::now()
+        )
+        .err()
+        .as_deref(),
+        Some("yggdrasil-invalid-profile")
+    );
     assert!(store.values.borrow().is_empty());
 }
 #[test]
@@ -114,20 +220,51 @@ fn yggdrasil_cancel_and_expiry_discard_pending_credentials() {
     assert!(login.is_some());
     cancel_with(&mut login, &transport, &challenge.id);
     assert!(login.is_none());
-    assert!(transport.requests.borrow().last().unwrap().url.ends_with("/invalidate"));
+    assert!(
+        transport
+            .requests
+            .borrow()
+            .last()
+            .unwrap()
+            .url
+            .ends_with("/invalidate")
+    );
     let (mut login, transport, challenge) = pending();
-    assert_eq!(finish_with(&mut login, &Store::default(), &transport, &challenge.id, PROFILE, Instant::now() + LOGIN_TTL).err().as_deref(), Some("yggdrasil-login-expired"));
+    assert_eq!(
+        finish_with(
+            &mut login,
+            &Store::default(),
+            &transport,
+            &challenge.id,
+            PROFILE,
+            Instant::now() + LOGIN_TTL
+        )
+        .err()
+        .as_deref(),
+        Some("yggdrasil-login-expired")
+    );
     assert!(login.is_none());
 }
 #[test]
 fn yggdrasil_refresh_checks_identity_and_remove_works_offline() {
     let (mut login, mut transport, challenge) = pending();
     let store = Store::default();
-    let account = finish_with(&mut login, &store, &transport, &challenge.id, PROFILE, Instant::now()).unwrap();
+    let account = finish_with(
+        &mut login,
+        &store,
+        &transport,
+        &challenge.id,
+        PROFILE,
+        Instant::now(),
+    )
+    .unwrap();
     let id = AccountId::parse(&account.id).unwrap();
     refresh_with(&store, &transport, id).unwrap();
     transport.wrong_profile = true;
-    assert_eq!(refresh_with(&store, &transport, id).unwrap_err(), "yggdrasil-invalid-profile");
+    assert_eq!(
+        refresh_with(&store, &transport, id).unwrap_err(),
+        "yggdrasil-invalid-profile"
+    );
     transport.fail = true;
     remove_with(&store, &transport, id).unwrap();
     assert!(store.values.borrow().is_empty());
@@ -135,7 +272,15 @@ fn yggdrasil_refresh_checks_identity_and_remove_works_offline() {
 fn launch_fixture() -> (Store, Transport, AccountId) {
     let (mut pending, transport, challenge) = pending();
     let store = Store::default();
-    let account = finish_with(&mut pending, &store, &transport, &challenge.id, PROFILE, Instant::now()).unwrap();
+    let account = finish_with(
+        &mut pending,
+        &store,
+        &transport,
+        &challenge.id,
+        PROFILE,
+        Instant::now(),
+    )
+    .unwrap();
     transport.requests.borrow_mut().clear();
     (store, transport, AccountId::parse(&account.id).unwrap())
 }
@@ -164,10 +309,20 @@ fn yggdrasil_launch_refreshes_and_requires_vault_save() {
     assert!(!format!("{:?}", requests[1]).contains("access-secret-rotated"));
     drop(requests);
     store.fail_save.set(true);
-    assert_eq!(credentials_for_launch(&store, &transport, id).err().as_deref(), Some(STORAGE));
+    assert_eq!(
+        credentials_for_launch(&store, &transport, id)
+            .err()
+            .as_deref(),
+        Some(STORAGE)
+    );
     store.fail_save.set(false);
     transport.wrong_profile = true;
-    assert_eq!(credentials_for_launch(&store, &transport, id).err().as_deref(), Some("yggdrasil-invalid-profile"));
+    assert_eq!(
+        credentials_for_launch(&store, &transport, id)
+            .err()
+            .as_deref(),
+        Some("yggdrasil-invalid-profile")
+    );
 }
 
 #[test]
@@ -185,15 +340,59 @@ fn yggdrasil_launch_does_not_refresh_network_or_service_failures() {
 #[test]
 fn yggdrasil_invalid_input_never_contacts_server() {
     let transport = Transport::new();
-    assert!(begin_with(&mut None, &transport, protocol::LITTLE_SKIN, "user", "", Instant::now()).is_err());
+    assert!(
+        begin_with(
+            &mut None,
+            &transport,
+            protocol::LITTLE_SKIN,
+            "user",
+            "",
+            Instant::now()
+        )
+        .is_err()
+    );
     assert!(transport.requests.borrow().is_empty());
 }
 #[test]
 fn yggdrasil_network_policy_rejects_private_and_transition_addresses() {
-    for ip in ["127.0.0.1", "10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "192.0.2.1", "198.51.100.1", "203.0.113.1", "198.18.0.1", "224.0.0.1", "0.0.0.0", "240.0.0.1", "::1", "::ffff:127.0.0.1", "fc00::1", "fe80::1", "2001:db8::1", "2002:7f00:1::", "3fff::1", "2001::1", "2001:2::1", "2001:10::1", "2001:20::1", "2002::1", "64:ff9b::1"] {
+    for ip in [
+        "127.0.0.1",
+        "10.0.0.1",
+        "172.16.0.1",
+        "192.168.1.1",
+        "169.254.169.254",
+        "100.64.0.1",
+        "192.0.2.1",
+        "198.51.100.1",
+        "203.0.113.1",
+        "198.18.0.1",
+        "224.0.0.1",
+        "0.0.0.0",
+        "240.0.0.1",
+        "::1",
+        "::ffff:127.0.0.1",
+        "fc00::1",
+        "fe80::1",
+        "2001:db8::1",
+        "2002:7f00:1::",
+        "3fff::1",
+        "2001::1",
+        "2001:2::1",
+        "2001:10::1",
+        "2001:20::1",
+        "2002::1",
+        "64:ff9b::1",
+    ] {
         assert!(!transport::public_ip(ip.parse().unwrap()), "{ip}");
     }
-    for ip in ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111", "2606:4700::1111", "2001:4860:4860::8888", "2400:cb00::1"] {
+    for ip in [
+        "8.8.8.8",
+        "1.1.1.1",
+        "2606:4700:4700::1111",
+        "2606:4700::1111",
+        "2001:4860:4860::8888",
+        "2400:cb00::1",
+    ] {
         assert!(transport::public_ip(ip.parse().unwrap()), "{ip}");
     }
 }

@@ -1,13 +1,17 @@
 //! Private native drop bridge. No command accepts a filesystem path.
-use std::path::PathBuf;
-use aether_app::drop::{self, DropState, NativeDropListener, NoNativeDropListener, Report};
-use tauri::{Emitter, Manager};
 use super::host::run;
+use aether_app::drop::{self, DropState, NativeDropListener, NoNativeDropListener, Report};
+use std::path::PathBuf;
+use tauri::{Emitter, Manager};
 
 fn stage_and_emit(app: &tauri::AppHandle, state: &DropState, paths: Vec<PathBuf>) {
     match drop::stage(state, paths) {
-        Ok(preview) => { let _ = app.emit("drop://staged", preview); },
-        Err(message) => { let _ = app.emit("drop://rejected", message); },
+        Ok(preview) => {
+            let _ = app.emit("drop://staged", preview);
+        }
+        Err(message) => {
+            let _ = app.emit("drop://rejected", message);
+        }
     }
 }
 
@@ -26,7 +30,10 @@ pub fn start(app: tauri::AppHandle) {
 /// can be exercised without a platform hook. No path crosses IPC — the backend
 /// resolves the folder from the developer's own environment. Release builds refuse.
 #[tauri::command]
-pub async fn simulate_dev_drop(app: tauri::AppHandle, state: tauri::State<'_, DropState>) -> Result<(), String> {
+pub async fn simulate_dev_drop(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DropState>,
+) -> Result<(), String> {
     #[cfg(not(debug_assertions))]
     {
         let _ = (&app, &state);
@@ -54,7 +61,16 @@ pub async fn simulate_dev_drop(app: tauri::AppHandle, state: tauri::State<'_, Dr
 }
 
 #[tauri::command]
-pub async fn install_drop(app: tauri::AppHandle, state: tauri::State<'_, DropState>, token: String, id: String, worlds: Vec<String>) -> Result<Report, String> {
+pub async fn install_drop(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DropState>,
+    token: String,
+    id: String,
+    worlds: Vec<String>,
+) -> Result<Report, String> {
     let state = state.inner().clone();
-    run(app, move |host| drop::install(host, &state, &token, &id, &worlds)).await
+    run(app, move |host| {
+        drop::install(host, &state, &token, &id, &worlds)
+    })
+    .await
 }

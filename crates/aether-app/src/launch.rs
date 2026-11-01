@@ -164,7 +164,9 @@ pub fn start(
         Some(account) if crate::yggdrasil::is_yggdrasil_account(host, account)? => {
             let credentials = crate::yggdrasil::launch_credentials_for(host, account)?;
             let jar = crate::authlib::ensure_agent_production(host)?;
-            let jar_path = jar.to_str().filter(|path| !path.contains('=') && !path.chars().any(char::is_control))
+            let jar_path = jar
+                .to_str()
+                .filter(|path| !path.contains('=') && !path.chars().any(char::is_control))
                 .ok_or("authlib-invalid-path")?;
             let agent = format!("-javaagent:{jar_path}={}", credentials.server_root);
             jvm_args.push(agent);

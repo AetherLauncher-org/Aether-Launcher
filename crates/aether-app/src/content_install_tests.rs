@@ -957,11 +957,26 @@ fn folder_save_uses_picker_and_same_verified_version_without_instance_writes() {
     let folder = host.dir.join("chosen");
     fs::create_dir(&folder).unwrap();
     *host.selected.lock().unwrap() = Some(folder.clone());
-    let net = FakeNet::new().project("AAAAAAAA", "mod.jar", b"verified", "\"fabric\"", &["BBBBBBBB"])
+    let net = FakeNet::new()
+        .project(
+            "AAAAAAAA",
+            "mod.jar",
+            b"verified",
+            "\"fabric\"",
+            &["BBBBBBBB"],
+        )
         .project("BBBBBBBB", "dep.jar", b"dependency", "\"fabric\"", &[]);
-    let report = save_to_folder_with_control(&net, &host, &instance.id.to_string(), "AAAAAAAA", "mod", false, &NoCancel)
-        .unwrap()
-        .unwrap();
+    let report = save_to_folder_with_control(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AAAAAAAA",
+        "mod",
+        false,
+        &NoCancel,
+    )
+    .unwrap()
+    .unwrap();
     assert_eq!(report.installed.len(), 1);
     assert_eq!(report.installed[0].file_name, "mod.jar");
     assert_eq!(fs::read(folder.join("mod.jar")).unwrap(), b"verified");
@@ -969,8 +984,16 @@ fn folder_save_uses_picker_and_same_verified_version_without_instance_writes() {
     assert!(!host.game(&instance).join("mods/mod.jar").exists());
     let json = serde_json::to_string(&report).unwrap();
     assert!(!json.contains(&folder.to_string_lossy().to_string()));
-    let (reason, _) = save_to_folder_with_control(&net, &host, &instance.id.to_string(), "AAAAAAAA", "mod", false, &NoCancel)
-        .unwrap_err();
+    let (reason, _) = save_to_folder_with_control(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AAAAAAAA",
+        "mod",
+        false,
+        &NoCancel,
+    )
+    .unwrap_err();
     assert_eq!(reason, "a file with this name is already there");
     assert_eq!(fs::read(folder.join("mod.jar")).unwrap(), b"verified");
 }
@@ -982,11 +1005,26 @@ fn folder_save_dependencies_share_destination_only_when_enabled() {
     let folder = host.dir.join("chosen");
     fs::create_dir(&folder).unwrap();
     *host.selected.lock().unwrap() = Some(folder.clone());
-    let net = FakeNet::new().project("AAAAAAAA", "mod.jar", b"verified", "\"fabric\"", &["BBBBBBBB"])
+    let net = FakeNet::new()
+        .project(
+            "AAAAAAAA",
+            "mod.jar",
+            b"verified",
+            "\"fabric\"",
+            &["BBBBBBBB"],
+        )
         .project("BBBBBBBB", "dep.jar", b"dependency", "\"fabric\"", &[]);
-    let report = save_to_folder_with_control(&net, &host, &instance.id.to_string(), "AAAAAAAA", "mod", true, &NoCancel)
-        .unwrap()
-        .unwrap();
+    let report = save_to_folder_with_control(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AAAAAAAA",
+        "mod",
+        true,
+        &NoCancel,
+    )
+    .unwrap()
+    .unwrap();
     assert_eq!(report.installed.len(), 2);
     assert_eq!(fs::read(folder.join("dep.jar")).unwrap(), b"dependency");
 }
@@ -1000,12 +1038,26 @@ fn folder_save_discards_wrong_checksum_without_touching_other_files() {
     fs::write(folder.join("existing.jar"), b"keep").unwrap();
     *host.selected.lock().unwrap() = Some(folder.clone());
     let mut net = FakeNet::new().project("AAAAAAAA", "mod.jar", b"good", "\"fabric\"", &[]);
-    net.files.insert("https://cdn.modrinth.com/data/AAAAAAAA/mod.jar".to_owned(), b"evil".to_vec());
+    net.files.insert(
+        "https://cdn.modrinth.com/data/AAAAAAAA/mod.jar".to_owned(),
+        b"evil".to_vec(),
+    );
 
-    let (reason, _) = save_to_folder_with_control(&net, &host, &instance.id.to_string(), "AAAAAAAA", "mod", false, &NoCancel)
-        .unwrap_err();
+    let (reason, _) = save_to_folder_with_control(
+        &net,
+        &host,
+        &instance.id.to_string(),
+        "AAAAAAAA",
+        "mod",
+        false,
+        &NoCancel,
+    )
+    .unwrap_err();
     assert!(reason.contains("checksum"), "{reason}");
-    let names = fs::read_dir(&folder).unwrap().map(|entry| entry.unwrap().file_name()).collect::<Vec<_>>();
+    let names = fs::read_dir(&folder)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect::<Vec<_>>();
     assert_eq!(names, ["existing.jar"]);
     assert_eq!(fs::read(folder.join("existing.jar")).unwrap(), b"keep");
 }
@@ -1015,9 +1067,19 @@ fn folder_save_cancellation_does_not_contact_network() {
     let host = FakeHost::new();
     let instance = host.instance("1.21.1");
     let net = FakeNet::new();
-    assert!(save_to_folder_with_control(&net, &host, &instance.id.to_string(), "AAAAAAAA", "datapack", false, &NoCancel)
+    assert!(
+        save_to_folder_with_control(
+            &net,
+            &host,
+            &instance.id.to_string(),
+            "AAAAAAAA",
+            "datapack",
+            false,
+            &NoCancel
+        )
         .unwrap()
-        .is_none());
+        .is_none()
+    );
     assert!(net.asked.lock().unwrap().is_empty());
 }
 

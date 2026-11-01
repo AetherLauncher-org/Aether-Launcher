@@ -127,7 +127,10 @@ pub async fn remove_world_datapack(
     world: String,
     name: String,
 ) -> Result<(), String> {
-    run(app, move |host| world::remove_datapack(host, &id, &world, &name)).await
+    run(app, move |host| {
+        world::remove_datapack(host, &id, &world, &name)
+    })
+    .await
 }
 
 /// Opens a world's folder in the file manager.

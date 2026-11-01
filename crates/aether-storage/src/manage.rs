@@ -319,7 +319,11 @@ fn existing_item(game_dir: &Path, kind: ContentKind, name: &str) -> Result<PathB
 /// # Errors
 ///
 /// [`ManageError::InvalidName`], [`ManageError::NotFound`] and [`ManageError::NotAllowed`].
-pub fn content_file(game_dir: &Path, kind: ContentKind, name: &str) -> Result<PathBuf, ManageError> {
+pub fn content_file(
+    game_dir: &Path,
+    kind: ContentKind,
+    name: &str,
+) -> Result<PathBuf, ManageError> {
     let path = existing_item(game_dir, kind, name)?;
     if !fs::symlink_metadata(&path)?.is_file() {
         return Err(ManageError::NotAllowed);

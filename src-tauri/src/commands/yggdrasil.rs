@@ -1,13 +1,25 @@
 //! Thin Tauri boundary; passwords are input-only and never instrumented.
-use aether_app::yggdrasil::{self, Account, Challenge};
 use super::host::run;
+use aether_app::yggdrasil::{self, Account, Challenge};
 
 #[tauri::command]
-pub async fn begin_yggdrasil_login(app: tauri::AppHandle, server: String, username: String, password: String) -> Result<Challenge, String> {
-    run(app, move |host| yggdrasil::begin(host, &server, &username, &password)).await
+pub async fn begin_yggdrasil_login(
+    app: tauri::AppHandle,
+    server: String,
+    username: String,
+    password: String,
+) -> Result<Challenge, String> {
+    run(app, move |host| {
+        yggdrasil::begin(host, &server, &username, &password)
+    })
+    .await
 }
 #[tauri::command]
-pub async fn finish_yggdrasil_login(app: tauri::AppHandle, id: String, profile_id: String) -> Result<Account, String> {
+pub async fn finish_yggdrasil_login(
+    app: tauri::AppHandle,
+    id: String,
+    profile_id: String,
+) -> Result<Account, String> {
     run(app, move |host| yggdrasil::finish(host, &id, &profile_id)).await
 }
 #[tauri::command]

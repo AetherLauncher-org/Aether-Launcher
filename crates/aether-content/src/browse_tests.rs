@@ -32,7 +32,13 @@ fn search_text_cannot_break_out_of_its_parameter() {
     q.text = "a&index=newest#x y\n\"é";
     let url = search_url(&q).unwrap();
 
-    let text = url.split("query=").nth(1).unwrap().split("&facets=").next().unwrap();
+    let text = url
+        .split("query=")
+        .nth(1)
+        .unwrap()
+        .split("&facets=")
+        .next()
+        .unwrap();
     assert_eq!(text, "a%26index%3Dnewest%23x%20y%20%22%C3%A9");
     assert_eq!(url.matches("&index=").count(), 1);
 }
@@ -43,13 +49,22 @@ fn only_real_game_versions_and_loaders_are_put_in_an_address() {
         let mut q = query();
         q.game_version = Some(bad);
         assert_eq!(search_url(&q), Err(ContentError::InvalidId), "{bad:?}");
-        assert_eq!(versions_url("AANobbMI", Some(bad), &[]), Err(ContentError::InvalidId));
+        assert_eq!(
+            versions_url("AANobbMI", Some(bad), &[]),
+            Err(ContentError::InvalidId)
+        );
     }
     let mut q = query();
     q.loader = Some("fabric\"]");
     assert_eq!(search_url(&q), Err(ContentError::InvalidId));
-    assert_eq!(versions_url("AANobbMI", None, &["evil"]), Err(ContentError::InvalidId));
-    assert_eq!(versions_url("../x", None, &[]), Err(ContentError::InvalidId));
+    assert_eq!(
+        versions_url("AANobbMI", None, &["evil"]),
+        Err(ContentError::InvalidId)
+    );
+    assert_eq!(
+        versions_url("../x", None, &[]),
+        Err(ContentError::InvalidId)
+    );
 }
 
 #[test]
@@ -122,11 +137,17 @@ fn a_hit_carries_loaders_tags_versions_and_sides_apart() {
 
 #[test]
 fn a_hit_with_no_tags_or_versions_is_still_a_hit() {
-    let page = parse_search(r#"{"hits":[{"project_id":"AANobbMI","title":"Sodium","project_type":"mod"}]}"#).unwrap();
+    let page = parse_search(
+        r#"{"hits":[{"project_id":"AANobbMI","title":"Sodium","project_type":"mod"}]}"#,
+    )
+    .unwrap();
 
     let hit = &page.hits[0];
     assert!(hit.loaders.is_empty() && hit.categories.is_empty());
-    assert_eq!((hit.oldest_version.clone(), hit.newest_version.clone()), (None, None));
+    assert_eq!(
+        (hit.oldest_version.clone(), hit.newest_version.clone()),
+        (None, None)
+    );
     assert_eq!(hit.client_side, "unknown");
     assert_eq!(hit.follows, 0);
 }
@@ -208,18 +229,48 @@ fn a_file_the_launcher_could_not_check_or_trust_is_not_offered() {
 
 #[test]
 fn file_names_are_safe_on_every_system() {
-    for good in ["sodium-0.6.0.jar", "Faithful 32x.zip", "世界.zip", "a.b.c.jar"] {
+    for good in [
+        "sodium-0.6.0.jar",
+        "Faithful 32x.zip",
+        "世界.zip",
+        "a.b.c.jar",
+    ] {
         assert!(is_safe_filename(good), "{good}");
     }
     for bad in [
-        "", ".", "..", "a/b", "a\\b", "C:x", "a*b", "a?b", "a<b", "a|b", "a\"b", "a\nb", "x.jar.", "x ", " x",
-        "CON", "con.txt", "NUL.zip", "COM1.jar", "LPT9", &"a".repeat(129),
+        "",
+        ".",
+        "..",
+        "a/b",
+        "a\\b",
+        "C:x",
+        "a*b",
+        "a?b",
+        "a<b",
+        "a|b",
+        "a\"b",
+        "a\nb",
+        "x.jar.",
+        "x ",
+        " x",
+        "CON",
+        "con.txt",
+        "NUL.zip",
+        "COM1.jar",
+        "LPT9",
+        &"a".repeat(129),
     ] {
         assert!(!is_safe_filename(bad), "{bad:?}");
     }
 }
 
-fn version(id: &str, channel: Channel, published: &str, games: &[&str], loaders: &[&str]) -> ProjectVersion {
+fn version(
+    id: &str,
+    channel: Channel,
+    published: &str,
+    games: &[&str],
+    loaders: &[&str],
+) -> ProjectVersion {
     ProjectVersion {
         id: id.to_owned(),
         number: id.to_owned(),
@@ -235,16 +286,54 @@ fn version(id: &str, channel: Channel, published: &str, games: &[&str], loaders:
 #[test]
 fn the_newest_release_that_fits_the_game_and_loader_wins() {
     let versions = [
-        version("old", Channel::Release, "2026-01-01", &["1.21.1"], &["fabric"]),
-        version("new", Channel::Release, "2026-06-01", &["1.21.1"], &["fabric"]),
-        version("beta", Channel::Beta, "2026-09-01", &["1.21.1"], &["fabric"]),
-        version("other-game", Channel::Release, "2026-10-01", &["1.20.1"], &["fabric"]),
-        version("other-loader", Channel::Release, "2026-10-01", &["1.21.1"], &["forge"]),
+        version(
+            "old",
+            Channel::Release,
+            "2026-01-01",
+            &["1.21.1"],
+            &["fabric"],
+        ),
+        version(
+            "new",
+            Channel::Release,
+            "2026-06-01",
+            &["1.21.1"],
+            &["fabric"],
+        ),
+        version(
+            "beta",
+            Channel::Beta,
+            "2026-09-01",
+            &["1.21.1"],
+            &["fabric"],
+        ),
+        version(
+            "other-game",
+            Channel::Release,
+            "2026-10-01",
+            &["1.20.1"],
+            &["fabric"],
+        ),
+        version(
+            "other-loader",
+            Channel::Release,
+            "2026-10-01",
+            &["1.21.1"],
+            &["forge"],
+        ),
     ];
 
-    assert_eq!(pick_version(&versions, "1.21.1", Some("fabric")).unwrap().id, "new");
+    assert_eq!(
+        pick_version(&versions, "1.21.1", Some("fabric"))
+            .unwrap()
+            .id,
+        "new"
+    );
     // with no loader asked (a resource pack) the other-loader release counts
-    assert_eq!(pick_version(&versions, "1.21.1", None).unwrap().id, "other-loader");
+    assert_eq!(
+        pick_version(&versions, "1.21.1", None).unwrap().id,
+        "other-loader"
+    );
 }
 
 #[test]
@@ -260,7 +349,13 @@ fn a_beta_is_taken_only_when_there_is_no_release() {
 #[test]
 fn the_platforms_filter_is_not_taken_on_trust() {
     // the answer lists a version for another game although the request asked for 1.21.1
-    let versions = [version("wrong", Channel::Release, "2026-10-01", &["1.16.5"], &["fabric"])];
+    let versions = [version(
+        "wrong",
+        Channel::Release,
+        "2026-10-01",
+        &["1.16.5"],
+        &["fabric"],
+    )];
     assert!(pick_version(&versions, "1.21.1", Some("fabric")).is_none());
 }
 
@@ -279,8 +374,8 @@ fn mrpack(filename: &str, sha512: Option<&str>, primary: bool) -> VersionFile {
 fn pick_modpack_version_prefers_release_primary_and_both_hashes() {
     let mut release = version("release", Channel::Release, "2026-06-01", &[], &[]);
     release.files = vec![
-        mrpack("pack.mrpack", None, true),           // missing SHA-512
-        mrpack("extra.jar", Some(SHA512), false),    // not a .mrpack
+        mrpack("pack.mrpack", None, true),        // missing SHA-512
+        mrpack("extra.jar", Some(SHA512), false), // not a .mrpack
         mrpack("pack.mrpack", Some(SHA512), true),
     ];
     let mut beta = version("beta", Channel::Beta, "2026-09-01", &[], &[]);
@@ -296,7 +391,10 @@ fn pick_modpack_version_prefers_release_primary_and_both_hashes() {
 fn pick_modpack_version_skips_ineligible_newer_releases() {
     let newer = version("newer", Channel::Release, "2026-10-01", &[], &[]);
     let mut older = version("older", Channel::Release, "2026-01-01", &[], &[]);
-    older.files = vec![mrpack("fallback.mrpack", Some(SHA512), false), mrpack("primary.mrpack", Some(SHA512), true)];
+    older.files = vec![
+        mrpack("fallback.mrpack", Some(SHA512), false),
+        mrpack("primary.mrpack", Some(SHA512), true),
+    ];
     let versions = [newer, older];
     let (chosen, file) = pick_modpack_version(&versions).unwrap();
     assert_eq!(chosen.id, "older");

@@ -98,8 +98,14 @@ impl Fixture {
     }
 
     fn prepare(&self) -> Result<crate::LaunchPlan, CoordinatorError> {
-        self.coordinator()
-            .prepare(self.id, 4096, &self.runtimes(), &Self::env(), &Self::vars(), &[])
+        self.coordinator().prepare(
+            self.id,
+            4096,
+            &self.runtimes(),
+            &Self::env(),
+            &Self::vars(),
+            &[],
+        )
     }
 }
 
@@ -157,8 +163,14 @@ fn missing_java_or_auth_data_produces_explicit_errors() {
         Err(CoordinatorError::Java(_))
     ));
     assert!(matches!(
-        f.coordinator()
-            .prepare(f.id, 4096, &f.runtimes(), &Fixture::env(), &BTreeMap::new(), &[]),
+        f.coordinator().prepare(
+            f.id,
+            4096,
+            &f.runtimes(),
+            &Fixture::env(),
+            &BTreeMap::new(),
+            &[]
+        ),
         Err(CoordinatorError::Build(_))
     ));
 }
@@ -284,7 +296,14 @@ fn prepares_missing_natives_once_and_verifies_them_before_reuse() {
 
     let plan = f
         .coordinator()
-        .prepare_and_install(f.id, 4096, &f.runtimes(), &Fixture::env(), &Fixture::vars(), &[])
+        .prepare_and_install(
+            f.id,
+            4096,
+            &f.runtimes(),
+            &Fixture::env(),
+            &Fixture::vars(),
+            &[],
+        )
         .unwrap();
     let native_dir = f.game.join("natives").join(f.id.to_string());
     assert_eq!(fs::read(native_dir.join("native.dll")).unwrap(), b"good");

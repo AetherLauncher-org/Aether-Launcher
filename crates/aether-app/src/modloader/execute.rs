@@ -65,9 +65,16 @@ pub(super) fn install_with(
     let base = request.base;
     let name = request.name;
     let version_id = prepare_with(transport, request, cancel, reporter)?;
-    let name = if name.trim().is_empty() { &version_id } else { name.trim() };
+    let name = if name.trim().is_empty() {
+        &version_id
+    } else {
+        name.trim()
+    };
     let instance = create_ready_instance(base, name, &version_id, reporter)?;
-    Ok(ModLoaderInstallResult { instance, version_id })
+    Ok(ModLoaderInstallResult {
+        instance,
+        version_id,
+    })
 }
 
 pub(crate) fn prepare_with(

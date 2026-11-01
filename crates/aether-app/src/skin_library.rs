@@ -89,7 +89,9 @@ fn load_index(folder: &std::path::Path) -> Index {
         .unwrap_or_default();
     // an index someone edited: keep only well-formed, distinct entries, and no more than allowed
     let mut seen = BTreeSet::new();
-    index.skins.retain(|skin| is_skin_id(&skin.id) && seen.insert(skin.id.clone()));
+    index
+        .skins
+        .retain(|skin| is_skin_id(&skin.id) && seen.insert(skin.id.clone()));
     index.skins.truncate(MAX_SKINS);
     for skin in &mut index.skins {
         skin.name = clean_text(&skin.name, MAX_NAME_CHARS);
@@ -114,7 +116,11 @@ fn picture_path(folder: &std::path::Path, id: &str) -> PathBuf {
 /// A name for the list: cleaned, cut, and never empty.
 fn display_name(wanted: &str) -> String {
     let name = clean_text(wanted, MAX_NAME_CHARS);
-    if name.is_empty() { "皮肤".to_owned() } else { name }
+    if name.is_empty() {
+        "皮肤".to_owned()
+    } else {
+        name
+    }
 }
 
 // --------------------------------------------------------------------------------------
@@ -128,7 +134,9 @@ fn display_name(wanted: &str) -> String {
 /// When the data directory is unavailable.
 pub fn list(host: &dyn Host) -> Result<Vec<SkinEntry>, String> {
     let folder = folder(host)?;
-    let _guard = INDEX_LOCK.lock().map_err(|_| "the skin library is busy".to_owned())?;
+    let _guard = INDEX_LOCK
+        .lock()
+        .map_err(|_| "the skin library is busy".to_owned())?;
     let mut skins = load_index(&folder).skins;
     skins.sort_by(|a, b| b.added.cmp(&a.added).then_with(|| a.name.cmp(&b.name)));
     Ok(skins)
@@ -146,7 +154,9 @@ pub fn image(host: &dyn Host, id: &str) -> Result<String, String> {
     }
     let folder = folder(host)?;
     {
-        let _guard = INDEX_LOCK.lock().map_err(|_| "the skin library is busy".to_owned())?;
+        let _guard = INDEX_LOCK
+            .lock()
+            .map_err(|_| "the skin library is busy".to_owned())?;
         if !load_index(&folder).skins.iter().any(|skin| skin.id == id) {
             return Err("no such skin".to_owned());
         }
@@ -168,7 +178,9 @@ pub(crate) fn picture(host: &dyn Host, id: &str) -> Result<(Vec<u8>, bool), Stri
     }
     let folder = folder(host)?;
     let slim = {
-        let _guard = INDEX_LOCK.lock().map_err(|_| "the skin library is busy".to_owned())?;
+        let _guard = INDEX_LOCK
+            .lock()
+            .map_err(|_| "the skin library is busy".to_owned())?;
         load_index(&folder)
             .skins
             .iter()
@@ -195,10 +207,14 @@ pub(crate) fn add_bytes(
     slim: bool,
     source: &str,
 ) -> Result<AddResult, String> {
-    validate_skin_png(bytes).map_err(|_| "this is not a Minecraft skin (a PNG of 64×64 or 64×32 pixels, up to 64 KiB)".to_owned())?;
+    validate_skin_png(bytes).map_err(|_| {
+        "this is not a Minecraft skin (a PNG of 64×64 or 64×32 pixels, up to 64 KiB)".to_owned()
+    })?;
     let id = format!("{:x}", Sha256::digest(bytes));
     let folder = folder(host)?;
-    let _guard = INDEX_LOCK.lock().map_err(|_| "the skin library is busy".to_owned())?;
+    let _guard = INDEX_LOCK
+        .lock()
+        .map_err(|_| "the skin library is busy".to_owned())?;
     let mut index = load_index(&folder);
     if let Some(existing) = index.skins.iter().find(|skin| skin.id == id) {
         return Ok(AddResult {
@@ -207,7 +223,9 @@ pub(crate) fn add_bytes(
         });
     }
     if index.skins.len() >= MAX_SKINS {
-        return Err(format!("the library is full ({MAX_SKINS} skins), remove some first"));
+        return Err(format!(
+            "the library is full ({MAX_SKINS} skins), remove some first"
+        ));
     }
     fs::create_dir_all(&folder).map_err(|_| "cannot create the skin folder".to_owned())?;
     write_replacing(&picture_path(&folder, &id), bytes)
@@ -252,7 +270,11 @@ pub fn add_from_file(host: &dyn Host) -> Result<Option<AddResult>, String> {
 ///
 /// For a name that is not a player name, a player who does not exist or has no custom skin,
 /// a service that cannot be reached, and a full library.
-pub fn add_from_player_with(net: &dyn SkinNet, host: &dyn Host, name: &str) -> Result<AddResult, String> {
+pub fn add_from_player_with(
+    net: &dyn SkinNet,
+    host: &dyn Host,
+    name: &str,
+) -> Result<AddResult, String> {
     let skin = download_by_name(net, name.trim())?;
     add_bytes(host, &skin.bytes, &skin.name, skin.slim, "player")
 }
@@ -270,12 +292,18 @@ pub fn add_from_player(host: &dyn Host, name: &str) -> Result<AddResult, String>
 // Changing and removing
 // --------------------------------------------------------------------------------------
 
-fn change(host: &dyn Host, id: &str, apply: impl FnOnce(&mut SkinEntry)) -> Result<SkinEntry, String> {
+fn change(
+    host: &dyn Host,
+    id: &str,
+    apply: impl FnOnce(&mut SkinEntry),
+) -> Result<SkinEntry, String> {
     if !is_skin_id(id) {
         return Err("not a skin".to_owned());
     }
     let folder = folder(host)?;
-    let _guard = INDEX_LOCK.lock().map_err(|_| "the skin library is busy".to_owned())?;
+    let _guard = INDEX_LOCK
+        .lock()
+        .map_err(|_| "the skin library is busy".to_owned())?;
     let mut index = load_index(&folder);
     let entry = index
         .skins
@@ -320,7 +348,9 @@ pub fn remove(host: &dyn Host, id: &str) -> Result<(), String> {
         return Err("not a skin".to_owned());
     }
     let folder = folder(host)?;
-    let _guard = INDEX_LOCK.lock().map_err(|_| "the skin library is busy".to_owned())?;
+    let _guard = INDEX_LOCK
+        .lock()
+        .map_err(|_| "the skin library is busy".to_owned())?;
     let mut index = load_index(&folder);
     let before = index.skins.len();
     index.skins.retain(|skin| skin.id != id);

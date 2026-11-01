@@ -92,7 +92,15 @@ fn save_controlled_inner(
             });
             continue;
         }
-        match install_one(net, &project, &game_version, loader, &folder, extension, control) {
+        match install_one(
+            net,
+            &project,
+            &game_version,
+            loader,
+            &folder,
+            extension,
+            control,
+        ) {
             Ok((file, dependencies)) => {
                 report.installed.push(file);
                 control.committed();

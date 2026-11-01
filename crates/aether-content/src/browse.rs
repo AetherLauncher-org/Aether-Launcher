@@ -9,7 +9,9 @@
 
 use serde::Deserialize;
 
-use crate::modrinth::{API_BASE, ICON_HOST, MAX_BODY_BYTES, is_project_id, is_sha1, is_slug, trusted_icon_url};
+use crate::modrinth::{
+    API_BASE, ICON_HOST, MAX_BODY_BYTES, is_project_id, is_sha1, is_slug, trusted_icon_url,
+};
 use crate::{ContentError, clean_text};
 
 /// The biggest file the launcher installs from a platform, in bytes.
@@ -238,7 +240,9 @@ pub fn parse_search(body: &str) -> Result<SearchPage, ContentError> {
         .hits
         .into_iter()
         .take(MAX_PAGE as usize)
-        .filter(|hit| is_project_id(&hit.project_id) && ProjectType::parse(&hit.project_type).is_some())
+        .filter(|hit| {
+            is_project_id(&hit.project_id) && ProjectType::parse(&hit.project_type).is_some()
+        })
         .filter_map(|hit| {
             let title = clean_text(&hit.title, 100);
             if title.is_empty() {
@@ -253,7 +257,10 @@ pub fn parse_search(body: &str) -> Result<SearchPage, ContentError> {
             let loaders: Vec<String> = LOADERS
                 .iter()
                 .filter(|loader| {
-                    hit.categories.iter().chain(&hit.display_categories).any(|tag| tag == *loader)
+                    hit.categories
+                        .iter()
+                        .chain(&hit.display_categories)
+                        .any(|tag| tag == *loader)
                 })
                 .map(|loader| (*loader).to_owned())
                 .collect();
@@ -298,7 +305,10 @@ pub fn parse_search(body: &str) -> Result<SearchPage, ContentError> {
         })
         .collect();
     Ok(SearchPage {
-        total: raw.total_hits.unwrap_or(hits.len() as u64).max(hits.len() as u64),
+        total: raw
+            .total_hits
+            .unwrap_or(hits.len() as u64)
+            .max(hits.len() as u64),
         hits,
     })
 }
@@ -509,7 +519,8 @@ pub fn parse_versions(body: &str) -> Result<Vec<ProjectVersion>, ContentError> {
     if body.len() > MAX_BODY_BYTES {
         return Err(ContentError::TooLarge(MAX_BODY_BYTES));
     }
-    let raw: Vec<RawProjectVersion> = serde_json::from_str(body).map_err(|_| ContentError::Malformed)?;
+    let raw: Vec<RawProjectVersion> =
+        serde_json::from_str(body).map_err(|_| ContentError::Malformed)?;
     Ok(raw
         .into_iter()
         .take(MAX_VERSIONS)
@@ -591,15 +602,21 @@ pub fn primary_file(version: &ProjectVersion) -> Option<&VersionFile> {
 pub fn pick_modpack_version(
     versions: &[ProjectVersion],
 ) -> Option<(&ProjectVersion, &VersionFile)> {
-    versions.iter().filter_map(|version| {
-        let file = version.files.iter()
-            .filter(|file| file.filename.ends_with(".mrpack") && file.sha512.is_some())
-            .min_by_key(|file| !file.primary)?;
-        Some((version, file))
-    }).min_by(|(a, _), (b, _)| {
-        a.channel.cmp(&b.channel)
-            .then_with(|| b.published.cmp(&a.published))
-    })
+    versions
+        .iter()
+        .filter_map(|version| {
+            let file = version
+                .files
+                .iter()
+                .filter(|file| file.filename.ends_with(".mrpack") && file.sha512.is_some())
+                .min_by_key(|file| !file.primary)?;
+            Some((version, file))
+        })
+        .min_by(|(a, _), (b, _)| {
+            a.channel
+                .cmp(&b.channel)
+                .then_with(|| b.published.cmp(&a.published))
+        })
 }
 
 /// The version to install for a game (and loader): among those that really list the game
@@ -614,8 +631,15 @@ pub fn pick_version<'a>(
 ) -> Option<&'a ProjectVersion> {
     versions
         .iter()
-        .filter(|version| version.game_versions.iter().any(|game| game == game_version))
-        .filter(|version| loader.is_none_or(|wanted| version.loaders.iter().any(|have| have == wanted)))
+        .filter(|version| {
+            version
+                .game_versions
+                .iter()
+                .any(|game| game == game_version)
+        })
+        .filter(|version| {
+            loader.is_none_or(|wanted| version.loaders.iter().any(|have| have == wanted))
+        })
         .min_by(|a, b| {
             a.channel
                 .cmp(&b.channel)

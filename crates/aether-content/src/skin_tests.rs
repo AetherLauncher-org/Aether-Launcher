@@ -209,7 +209,10 @@ fn the_model_is_slim_only_when_the_profile_says_so() {
     assert!(skin_from_profile(&slim).unwrap().unwrap().slim);
     assert!(!skin_from_profile(&classic).unwrap().unwrap().slim);
     assert!(!skin_from_profile(&odd).unwrap().unwrap().slim);
-    assert_eq!(skin_from_profile(&classic).unwrap().unwrap().url, format!("https://textures.minecraft.net/texture/{HASH}"));
+    assert_eq!(
+        skin_from_profile(&classic).unwrap().unwrap().url,
+        format!("https://textures.minecraft.net/texture/{HASH}")
+    );
 }
 
 #[test]
@@ -219,7 +222,17 @@ fn only_real_player_names_make_a_lookup_address() {
         Some("https://api.minecraftservices.com/minecraft/profile/lookup/name/Notch")
     );
     assert!(name_lookup_url("a_B_9").is_some());
-    for bad in ["", "ab", "seventeen_chars_x", "a b c", "../x", "a/b", "名字名字名", "a?b=c", "a%2fb"] {
+    for bad in [
+        "",
+        "ab",
+        "seventeen_chars_x",
+        "a b c",
+        "../x",
+        "a/b",
+        "名字名字名",
+        "a?b=c",
+        "a%2fb",
+    ] {
         assert_eq!(name_lookup_url(bad), None, "{bad:?}");
     }
 }
@@ -229,7 +242,10 @@ fn a_name_lookup_answer_must_hold_an_id_and_a_name() {
     let answer = r#"{"id":"069A79F444E94726A5BEFCA90E38AAF5","name":"Notch"}"#;
     assert_eq!(
         parse_name_lookup(answer),
-        Ok(("069a79f444e94726a5befca90e38aaf5".to_owned(), "Notch".to_owned()))
+        Ok((
+            "069a79f444e94726a5befca90e38aaf5".to_owned(),
+            "Notch".to_owned()
+        ))
     );
     for bad in [
         "nope",
@@ -237,7 +253,11 @@ fn a_name_lookup_answer_must_hold_an_id_and_a_name() {
         r#"{"id":"069a79f444e94726a5befca90e38aaf5","name":"not a name!"}"#,
         r#"{"id":"069a79f444e94726a5befca90e38aaf5"}"#,
     ] {
-        assert_eq!(parse_name_lookup(bad), Err(ContentError::Malformed), "{bad}");
+        assert_eq!(
+            parse_name_lookup(bad),
+            Err(ContentError::Malformed),
+            "{bad}"
+        );
     }
     assert_eq!(
         parse_name_lookup(&" ".repeat(MAX_PROFILE_BYTES + 1)),

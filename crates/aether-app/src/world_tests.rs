@@ -44,7 +44,11 @@ impl Host for FakeHost {
         Ok(None)
     }
 
-    fn pick_file(&self, _filter_name: &str, _extensions: &[&str]) -> Result<Option<PathBuf>, String> {
+    fn pick_file(
+        &self,
+        _filter_name: &str,
+        _extensions: &[&str],
+    ) -> Result<Option<PathBuf>, String> {
         Ok(None)
     }
 
@@ -77,7 +81,12 @@ impl Drop for FakeHost {
 }
 
 fn strings(items: &[&str]) -> Tag {
-    Tag::List(items.iter().map(|item| Tag::String((*item).to_owned())).collect())
+    Tag::List(
+        items
+            .iter()
+            .map(|item| Tag::String((*item).to_owned()))
+            .collect(),
+    )
 }
 
 fn level_dat() -> Vec<u8> {
@@ -88,11 +97,17 @@ fn level_dat() -> Vec<u8> {
         ("hardcore", Tag::Byte(0)),
         ("Difficulty", Tag::Byte(2)),
         ("LastPlayed", Tag::Long(1_761_900_000_000)),
-        ("Version", compound([("Name", Tag::String("1.21.1".to_owned()))])),
+        (
+            "Version",
+            compound([("Name", Tag::String("1.21.1".to_owned()))]),
+        ),
         (
             "DataPacks",
             compound([
-                ("Enabled", strings(&["vanilla", "file/tweaks.zip", "file/folder-pack"])),
+                (
+                    "Enabled",
+                    strings(&["vanilla", "file/tweaks.zip", "file/folder-pack"]),
+                ),
                 ("Disabled", strings(&["file/off.zip"])),
             ]),
         ),
@@ -134,7 +149,11 @@ fn world(host: &FakeHost, instance: &GameInstance) {
         "saves/My World/datapacks/off.zip",
         &zip_with(&[("pack.mcmeta", MCMETA)]),
     );
-    host.write(instance, "saves/My World/datapacks/readme.txt", b"not a pack");
+    host.write(
+        instance,
+        "saves/My World/datapacks/readme.txt",
+        b"not a pack",
+    );
 }
 
 #[test]
@@ -154,16 +173,32 @@ fn the_world_page_reads_level_dat_and_lists_the_packs_with_their_state() {
     assert_eq!(details.last_played, Some(1_761_900_000));
     assert_eq!(details.unreadable, None);
 
-    let names: Vec<&str> = details.datapacks.iter().map(|pack| pack.name.as_str()).collect();
+    let names: Vec<&str> = details
+        .datapacks
+        .iter()
+        .map(|pack| pack.name.as_str())
+        .collect();
     assert_eq!(names, ["folder-pack", "off.zip", "tweaks.zip"]);
-    let by_name = |name: &str| details.datapacks.iter().find(|pack| pack.name == name).unwrap();
+    let by_name = |name: &str| {
+        details
+            .datapacks
+            .iter()
+            .find(|pack| pack.name == name)
+            .unwrap()
+    };
     assert_eq!(by_name("tweaks.zip").state, PackState::Enabled);
-    assert_eq!(by_name("tweaks.zip").description.as_deref(), Some("Better trading"));
+    assert_eq!(
+        by_name("tweaks.zip").description.as_deref(),
+        Some("Better trading")
+    );
     assert_eq!(by_name("tweaks.zip").pack_format, Some(48));
     assert_eq!(by_name("off.zip").state, PackState::Disabled);
     assert_eq!(by_name("folder-pack").state, PackState::Enabled);
     assert!(by_name("folder-pack").is_folder);
-    assert_eq!(by_name("folder-pack").description.as_deref(), Some("Two parts!"));
+    assert_eq!(
+        by_name("folder-pack").description.as_deref(),
+        Some("Two parts!")
+    );
     assert!(!details.datapacks_truncated);
 }
 
@@ -180,7 +215,11 @@ fn a_pack_that_level_dat_does_not_list_is_unknown() {
 
     let details = world_details(&host, &instance.id.to_string(), "My World").unwrap();
 
-    let new = details.datapacks.iter().find(|pack| pack.name == "new.zip").unwrap();
+    let new = details
+        .datapacks
+        .iter()
+        .find(|pack| pack.name == "new.zip")
+        .unwrap();
     assert_eq!(new.state, PackState::Unknown);
 }
 
@@ -189,14 +228,23 @@ fn a_damaged_level_dat_still_lists_the_packs_and_says_why() {
     let host = FakeHost::new();
     let instance = host.instance();
     world(&host, &instance);
-    host.write(&instance, "saves/My World/level.dat", b"\x1f\x8bnot really gzip");
+    host.write(
+        &instance,
+        "saves/My World/level.dat",
+        b"\x1f\x8bnot really gzip",
+    );
 
     let details = world_details(&host, &instance.id.to_string(), "My World").unwrap();
 
     assert!(details.unreadable.is_some());
     assert_eq!(details.level_name, None);
     assert_eq!(details.datapacks.len(), 3);
-    assert!(details.datapacks.iter().all(|pack| pack.state == PackState::Unknown));
+    assert!(
+        details
+            .datapacks
+            .iter()
+            .all(|pack| pack.state == PackState::Unknown)
+    );
 }
 
 #[test]
@@ -204,8 +252,16 @@ fn a_pack_with_no_or_broken_metadata_is_listed_without_a_description() {
     let host = FakeHost::new();
     let instance = host.instance();
     world(&host, &instance);
-    host.write(&instance, "saves/My World/datapacks/bare.zip", &zip_with(&[("data/a.json", b"{}")]));
-    host.write(&instance, "saves/My World/datapacks/junk.zip", b"this is not a zip");
+    host.write(
+        &instance,
+        "saves/My World/datapacks/bare.zip",
+        &zip_with(&[("data/a.json", b"{}")]),
+    );
+    host.write(
+        &instance,
+        "saves/My World/datapacks/junk.zip",
+        b"this is not a zip",
+    );
     host.write(
         &instance,
         "saves/My World/datapacks/big.zip",
@@ -215,8 +271,16 @@ fn a_pack_with_no_or_broken_metadata_is_listed_without_a_description() {
     let details = world_details(&host, &instance.id.to_string(), "My World").unwrap();
 
     for name in ["bare.zip", "junk.zip", "big.zip"] {
-        let pack = details.datapacks.iter().find(|pack| pack.name == name).unwrap();
-        assert_eq!((pack.description.as_deref(), pack.pack_format), (None, None), "{name}");
+        let pack = details
+            .datapacks
+            .iter()
+            .find(|pack| pack.name == name)
+            .unwrap();
+        assert_eq!(
+            (pack.description.as_deref(), pack.pack_format),
+            (None, None),
+            "{name}"
+        );
     }
 }
 
@@ -228,9 +292,21 @@ fn only_a_world_folder_of_the_instance_is_a_world() {
     host.write(&instance, "saves/not-a-folder", b"x");
     let id = instance.id.to_string();
 
-    for name in ["", "..", "../x", "My World/..", "a/b", "C:\\Windows", "missing", "not-a-folder"] {
+    for name in [
+        "",
+        "..",
+        "../x",
+        "My World/..",
+        "a/b",
+        "C:\\Windows",
+        "missing",
+        "not-a-folder",
+    ] {
         assert!(world_details(&host, &id, name).is_err(), "{name:?}");
-        assert!(remove_datapack(&host, &id, name, "tweaks.zip").is_err(), "{name:?}");
+        assert!(
+            remove_datapack(&host, &id, name, "tweaks.zip").is_err(),
+            "{name:?}"
+        );
         assert!(open_world_folder(&host, &id, name).is_err(), "{name:?}");
     }
     assert!(world_details(&host, "nonsense", "My World").is_err());
@@ -264,16 +340,30 @@ fn only_plain_names_of_existing_packs_are_removed() {
     let id = instance.id.to_string();
 
     for name in ["", "..", "../level.dat", "a/b", "missing.zip"] {
-        assert!(remove_datapack(&host, &id, "My World", name).is_err(), "{name:?}");
+        assert!(
+            remove_datapack(&host, &id, "My World", name).is_err(),
+            "{name:?}"
+        );
     }
-    assert!(instance.root.join("minecraft/saves/My World/level.dat").exists());
+    assert!(
+        instance
+            .root
+            .join("minecraft/saves/My World/level.dat")
+            .exists()
+    );
 }
 
 #[test]
 fn descriptions_are_plain_cut_text() {
-    let long = format!(r#"{{"pack":{{"pack_format":1,"description":"{}"}}}}"#, "x".repeat(2000));
+    let long = format!(
+        r#"{{"pack":{{"pack_format":1,"description":"{}"}}}}"#,
+        "x".repeat(2000)
+    );
     let (description, format) = parse_mcmeta(long.as_bytes());
-    assert_eq!(description.map(|text| text.chars().count()), Some(MAX_DESCRIPTION_CHARS));
+    assert_eq!(
+        description.map(|text| text.chars().count()),
+        Some(MAX_DESCRIPTION_CHARS)
+    );
     assert_eq!(format, Some(1));
 
     assert_eq!(parse_mcmeta(b"nope"), (None, None));

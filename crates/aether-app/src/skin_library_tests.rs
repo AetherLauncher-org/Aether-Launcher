@@ -41,7 +41,11 @@ impl Host for FakeHost {
         Ok(None)
     }
 
-    fn pick_file(&self, _filter_name: &str, _extensions: &[&str]) -> Result<Option<PathBuf>, String> {
+    fn pick_file(
+        &self,
+        _filter_name: &str,
+        _extensions: &[&str],
+    ) -> Result<Option<PathBuf>, String> {
         Ok(self.picked.lock().unwrap().take())
     }
 
@@ -111,7 +115,11 @@ struct FakeNet {
 
 impl FakeNet {
     fn knowing_notch(slim: bool, picture: Vec<u8>) -> Self {
-        let model = if slim { r#","metadata":{"model":"slim"}"# } else { "" };
+        let model = if slim {
+            r#","metadata":{"model":"slim"}"#
+        } else {
+            ""
+        };
         let hash = format!("{:x}", Sha256::digest(&picture));
         let textures = format!(
             r#"{{"textures":{{"SKIN":{{"url":"http://textures.minecraft.net/texture/{hash}"{model}}}}}}}"#
@@ -129,7 +137,10 @@ impl FakeNet {
             ),
         );
         let mut pictures = BTreeMap::new();
-        pictures.insert(format!("https://textures.minecraft.net/texture/{hash}"), picture);
+        pictures.insert(
+            format!("https://textures.minecraft.net/texture/{hash}"),
+            picture,
+        );
         Self {
             answers,
             pictures,
@@ -172,7 +183,11 @@ fn a_skin_added_from_a_picked_file_is_kept_under_its_hash_and_named_after_the_fi
     assert!(!result.entry.slim);
     assert!(is_skin_id(&result.entry.id));
     assert_eq!(list(&host).unwrap(), vec![result.entry.clone()]);
-    assert!(image(&host, &result.entry.id).unwrap().starts_with("data:image/png;base64,iVBORw0KGgo"));
+    assert!(
+        image(&host, &result.entry.id)
+            .unwrap()
+            .starts_with("data:image/png;base64,iVBORw0KGgo")
+    );
 }
 
 #[test]
@@ -271,7 +286,10 @@ fn a_mojang_picture_that_does_not_match_its_texture_hash_is_refused() {
 #[test]
 fn a_skin_can_be_renamed_and_its_model_changed() {
     let host = FakeHost::new();
-    let id = add_bytes(&host, &skin_png(1), "One", false, "file").unwrap().entry.id;
+    let id = add_bytes(&host, &skin_png(1), "One", false, "file")
+        .unwrap()
+        .entry
+        .id;
 
     let renamed = rename(&host, &id, "  A\nnew name  ").unwrap();
     let slim = set_model(&host, &id, true).unwrap();
@@ -287,8 +305,14 @@ fn a_skin_can_be_renamed_and_its_model_changed() {
 #[test]
 fn a_removed_skin_is_gone_with_its_picture() {
     let host = FakeHost::new();
-    let id = add_bytes(&host, &skin_png(1), "One", false, "file").unwrap().entry.id;
-    let kept = add_bytes(&host, &skin_png(2), "Two", false, "file").unwrap().entry.id;
+    let id = add_bytes(&host, &skin_png(1), "One", false, "file")
+        .unwrap()
+        .entry
+        .id;
+    let kept = add_bytes(&host, &skin_png(2), "Two", false, "file")
+        .unwrap()
+        .entry
+        .id;
 
     remove(&host, &id).unwrap();
 
@@ -305,21 +329,37 @@ fn only_a_skin_id_reaches_the_disk() {
     add_bytes(&host, &skin_png(1), "One", false, "file").unwrap();
     let victim = host.file("victim.png", &skin_png(9));
 
-    for bad in ["", "..", "../victim", "index", "a".repeat(63).as_str(), "A".repeat(64).as_str()] {
+    for bad in [
+        "",
+        "..",
+        "../victim",
+        "index",
+        "a".repeat(63).as_str(),
+        "A".repeat(64).as_str(),
+    ] {
         assert!(image(&host, bad).is_err(), "{bad:?}");
         assert!(remove(&host, bad).is_err(), "{bad:?}");
         assert!(rename(&host, bad, "x").is_err(), "{bad:?}");
     }
     assert!(victim.exists());
     // a well-formed id that is not in the library is not read from the disk either
-    fs::write(host.dir.join("skins").join(format!("{}.png", "b".repeat(64))), skin_png(5)).unwrap();
+    fs::write(
+        host.dir
+            .join("skins")
+            .join(format!("{}.png", "b".repeat(64))),
+        skin_png(5),
+    )
+    .unwrap();
     assert!(image(&host, &"b".repeat(64)).is_err());
 }
 
 #[test]
 fn a_picture_swapped_on_disk_is_not_served() {
     let host = FakeHost::new();
-    let id = add_bytes(&host, &skin_png(1), "One", false, "file").unwrap().entry.id;
+    let id = add_bytes(&host, &skin_png(1), "One", false, "file")
+        .unwrap()
+        .entry
+        .id;
     let path = host.dir.join("skins").join(format!("{id}.png"));
 
     fs::write(&path, b"<html>not a skin</html>").unwrap();
@@ -331,7 +371,9 @@ fn a_picture_swapped_on_disk_is_not_served() {
 #[test]
 fn an_edited_index_cannot_make_the_library_misbehave() {
     let host = FakeHost::new();
-    let good = add_bytes(&host, &skin_png(1), "One", false, "file").unwrap().entry;
+    let good = add_bytes(&host, &skin_png(1), "One", false, "file")
+        .unwrap()
+        .entry;
     let index = format!(
         r#"{{"skins":[
             {{"id":"{}","name":"One","slim":false,"source":"file","added":1}},
@@ -372,7 +414,11 @@ fn the_library_is_limited() {
             added: n as u64,
         })
         .collect();
-    fs::write(folder.join("index.json"), serde_json::to_vec(&Index { skins }).unwrap()).unwrap();
+    fs::write(
+        folder.join("index.json"),
+        serde_json::to_vec(&Index { skins }).unwrap(),
+    )
+    .unwrap();
 
     let error = add_bytes(&host, &skin_png(1), "One", false, "file").unwrap_err();
 

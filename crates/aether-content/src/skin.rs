@@ -131,9 +131,7 @@ pub const MAX_NAME: usize = 16;
 #[must_use]
 pub fn is_player_name(text: &str) -> bool {
     (MIN_NAME..=MAX_NAME).contains(&text.len())
-        && text
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        && text.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
 /// The address that turns a player name into a player id (`GET`, no token needed).

@@ -83,7 +83,11 @@ pub struct WorldDetails {
     pub unreadable: Option<String>,
 }
 
-fn refuse_while_running(host: &dyn Host, instance: &GameInstance, what: &str) -> Result<(), String> {
+fn refuse_while_running(
+    host: &dyn Host,
+    instance: &GameInstance,
+    what: &str,
+) -> Result<(), String> {
     if host.is_instance_running(instance.id)? {
         return Err(format!("stop the game before {what}"));
     }
@@ -133,10 +137,12 @@ fn strings(tag: Option<&Tag>) -> Option<Vec<String>> {
 }
 
 fn read_level(path: &Path) -> Result<Level, String> {
-    let bytes =
-        read_capped(path, MAX_LEVEL_DAT_BYTES).ok_or_else(|| "level.dat is missing or too large".to_owned())?;
+    let bytes = read_capped(path, MAX_LEVEL_DAT_BYTES)
+        .ok_or_else(|| "level.dat is missing or too large".to_owned())?;
     let (_, root) = nbt::read_maybe_gzip(&bytes).map_err(|error| format!("level.dat: {error}"))?;
-    let data = root.get("Data").ok_or_else(|| "level.dat has no world data".to_owned())?;
+    let data = root
+        .get("Data")
+        .ok_or_else(|| "level.dat has no world data".to_owned())?;
 
     let mut level = Level {
         level_name: data
@@ -149,21 +155,30 @@ fn read_level(path: &Path) -> Result<Level, String> {
             .and_then(Tag::as_str)
             .map(|name| aether_content::clean_text(name, 40)),
         data_version: data.get("DataVersion").and_then(Tag::as_i64),
-        game_mode: data.get("GameType").and_then(Tag::as_i64).and_then(|mode| match mode {
-            0 => Some("survival"),
-            1 => Some("creative"),
-            2 => Some("adventure"),
-            3 => Some("spectator"),
-            _ => None,
-        }),
-        hardcore: data.get("hardcore").and_then(Tag::as_i64).map(|flag| flag != 0),
-        difficulty: data.get("Difficulty").and_then(Tag::as_i64).and_then(|value| match value {
-            0 => Some("peaceful"),
-            1 => Some("easy"),
-            2 => Some("normal"),
-            3 => Some("hard"),
-            _ => None,
-        }),
+        game_mode: data
+            .get("GameType")
+            .and_then(Tag::as_i64)
+            .and_then(|mode| match mode {
+                0 => Some("survival"),
+                1 => Some("creative"),
+                2 => Some("adventure"),
+                3 => Some("spectator"),
+                _ => None,
+            }),
+        hardcore: data
+            .get("hardcore")
+            .and_then(Tag::as_i64)
+            .map(|flag| flag != 0),
+        difficulty: data
+            .get("Difficulty")
+            .and_then(Tag::as_i64)
+            .and_then(|value| match value {
+                0 => Some("peaceful"),
+                1 => Some("easy"),
+                2 => Some("normal"),
+                3 => Some("hard"),
+                _ => None,
+            }),
         last_played: data
             .get("LastPlayed")
             .and_then(Tag::as_i64)
@@ -254,7 +269,10 @@ fn read_mcmeta(path: &Path, is_folder: bool) -> Option<Vec<u8>> {
         return None;
     }
     let mut bytes = Vec::new();
-    entry.take(MAX_MCMETA_BYTES + 1).read_to_end(&mut bytes).ok()?;
+    entry
+        .take(MAX_MCMETA_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
     (bytes.len() as u64 <= MAX_MCMETA_BYTES).then_some(bytes)
 }
 
@@ -311,8 +329,12 @@ fn world_icon(world: &Path) -> Option<String> {
         return None;
     }
     let (width, height) = image_size(&bytes)?;
-    ((1..=MAX_ICON_SIDE).contains(&width) && (1..=MAX_ICON_SIDE).contains(&height))
-        .then(|| format!("data:image/png;base64,{}", crate::schematics::base64(&bytes)))
+    ((1..=MAX_ICON_SIDE).contains(&width) && (1..=MAX_ICON_SIDE).contains(&height)).then(|| {
+        format!(
+            "data:image/png;base64,{}",
+            crate::schematics::base64(&bytes)
+        )
+    })
 }
 
 // --------------------------------------------------------------------------------------
