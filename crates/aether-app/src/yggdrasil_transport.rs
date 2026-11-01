@@ -1,6 +1,6 @@
 //! Direct HTTPS only; resolved socket addresses are checked before connection.
 use std::time::Duration;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use aether_auth::http::{HttpRequest, HttpResponse, HttpTransport, HttpMethod, HttpError};
 use aether_auth::yggdrasil as protocol;
 use ureq::unversioned::resolver::{Resolver, DefaultResolver, ResolvedSocketAddrs};
@@ -10,8 +10,17 @@ struct PublicResolver;
 impl Resolver for PublicResolver {
  fn resolve(&self, uri: &ureq::http::Uri, config: &ureq::config::Config, timeout: NextTimeout) -> Result<ResolvedSocketAddrs, ureq::Error> {
   let addresses = DefaultResolver::default().resolve(uri, config, timeout)?;
-  if addresses.iter().any(|s| !public_ip(s.ip())) { return Err(ureq::Error::HostNotFound); }
-  Ok(addresses)
+  // A dual-stack host often answers with a mix of A and AAAA records; keep every public
+  // address and fail only when the filtered set is empty. This still re-checks the DNS
+  // answer on every request, so rebinding is not weakened.
+  let mut public = ResolvedSocketAddrs::from_fn(|_| SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0));
+  for socket in addresses.iter() {
+   if public_ip(socket.ip()) {
+    public.try_push(*socket).map_err(|_| ureq::Error::HostNotFound)?;
+   }
+  }
+  if public.is_empty() { return Err(ureq::Error::HostNotFound); }
+  Ok(public)
  }
 }
 pub(super) fn public_ip(ip: IpAddr) -> bool {
@@ -21,8 +30,20 @@ pub(super) fn public_ip(ip: IpAddr) -> bool {
    && a != 0 && a < 224 && !(a == 100 && (64..=127).contains(&b)) && !(a == 192 && b == 0) && !(a == 192 && b == 88 && c == 99)
    && !(a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100))) && !(a == 203 && b == 0 && c == 113)
   },
-  // Conservative IPv6 policy: global unicast only, exclude documentation and transition ranges.
-  IpAddr::V6(ip) => { let s = ip.segments(); (s[0] & 0xe000) == 0x2000 && s[0] != 0x2001 && s[0] != 0x2002 && !(s[0] == 0x3fff) }
+  IpAddr::V6(ip) => {
+   let s = ip.segments();
+   // 2000::/3 is the globally routable unicast space. Everything outside it is refused.
+   if (s[0] & 0xe000) != 0x2000 { return false; }
+   // Exclude the transition, benchmarking, ORCHID and documentation ranges that sit
+   // inside 2000::/3 but must not be used as ordinary public destinations.
+   !(s[0] == 0x2001 && s[1] == 0x0000)          // Teredo, RFC 4380
+    && !(s[0] == 0x2001 && s[1] == 0x0002)       // benchmarking, RFC 5180
+    && !(s[0] == 0x2001 && (s[1] & 0xfff0) == 0x0010) // ORCHIDv1, RFC 4843
+    && !(s[0] == 0x2001 && (s[1] & 0xfff0) == 0x0020) // ORCHIDv2, RFC 7343
+    && !(s[0] == 0x2001 && s[1] == 0x0db8)       // documentation, RFC 3849
+    && s[0] != 0x2002                              // 6to4, RFC 3056
+    && (s[0] & 0xfff0) != 0x3ff0                  // documentation, RFC 9637
+  }
  }
 }
 fn agent() -> ureq::Agent {
