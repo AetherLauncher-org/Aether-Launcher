@@ -25,18 +25,58 @@ pub(super) fn public_ip(ip: IpAddr) -> bool {
   IpAddr::V6(ip) => { let s = ip.segments(); (s[0] & 0xe000) == 0x2000 && s[0] != 0x2001 && s[0] != 0x2002 && !(s[0] == 0x3fff) }
  }
 }
-pub(super) struct PublicTransport;
+fn agent() -> ureq::Agent {
+ let config = ureq::config::Config::builder()
+     .http_status_as_error(false)
+     .proxy(None)
+     .max_redirects(0)
+     .max_redirects_will_error(false)
+     .user_agent(concat!("AetherLauncher/", env!("CARGO_PKG_VERSION")))
+     .timeout_global(Some(Duration::from_secs(30)))
+     .build();
+ ureq::Agent::with_parts(config, ureq::unversioned::transport::DefaultConnector::default(), PublicResolver)
+}
+/// A raw, capped `GET` of binary bytes over the public-address-only resolver. Used to
+/// download the authlib-injector JAR; the caller verifies the bytes before trusting them.
+pub(crate) fn public_get_bytes(url: &str, cap: u64) -> Result<Vec<u8>, ()> {
+    let mut response = agent().get(url).call().map_err(|_| ())?;
+    if !(200..300).contains(&response.status().as_u16()) { return Err(()); }
+    let bytes = response
+        .body_mut()
+        .with_config()
+        .limit(cap)
+        .read_to_vec()
+        .map_err(|_| ())?;
+    Ok(bytes)
+}
+pub(crate) fn public_get_artifact_bytes(url: &str, cap: u64) -> Result<Vec<u8>, ()> {
+    let agent = agent();
+    let mut next = url.to_owned();
+    for _ in 0..5 {
+        let uri: ureq::http::Uri = next.parse().map_err(|_| ())?;
+        if uri.scheme_str() != Some("https") || uri.authority().is_none_or(|a| a.as_str().contains('@')) {
+            return Err(());
+        }
+        let mut response = agent.get(&next).call().map_err(|_| ())?;
+        if matches!(response.status().as_u16(), 301 | 302 | 303 | 307 | 308) {
+            let location = response.headers().get("location").ok_or(())?.to_str().map_err(|_| ())?;
+            next = if location.starts_with('/') && !location.starts_with("//") {
+                format!("https://{}{}", uri.authority().ok_or(())?, location)
+            } else {
+                location.to_owned()
+            };
+            continue;
+        }
+        if !response.status().is_success() { return Err(()); }
+        return response.body_mut().with_config().limit(cap).read_to_vec().map_err(|_| ());
+    }
+    Err(())
+}
+
+pub(crate) struct PublicTransport;
 impl HttpTransport for PublicTransport {
     fn execute(&self, request: &HttpRequest) -> Result<HttpResponse, HttpError> {
-        let config = ureq::config::Config::builder()
-            .http_status_as_error(false)
-            .proxy(None)
-            .max_redirects(0)
-            .max_redirects_will_error(false)
-            .user_agent(concat!("AetherLauncher/", env!("CARGO_PKG_VERSION")))
-            .timeout_global(Some(Duration::from_secs(30)))
-            .build();
-        let agent = ureq::Agent::with_parts(config, ureq::unversioned::transport::DefaultConnector::default(), PublicResolver);
+        let agent = agent();
         let failed = |_| HttpError::transport(&request.url);
 
         let mut response = match request.method {

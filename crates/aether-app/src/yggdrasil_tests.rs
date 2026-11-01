@@ -32,14 +32,16 @@ struct Transport {
     requests: RefCell<Vec<HttpRequest>>,
     fail: bool,
     wrong_profile: bool,
+    validate_status: u16,
 }
 impl Transport {
-    fn new() -> Self { Self { requests: RefCell::new(Vec::new()), fail: false, wrong_profile: false } }
+    fn new() -> Self { Self { requests: RefCell::new(Vec::new()), fail: false, wrong_profile: false, validate_status: 204 } }
 }
 impl HttpTransport for Transport {
     fn execute(&self, request: &HttpRequest) -> Result<HttpResponse, HttpError> {
         self.requests.borrow_mut().push(request.clone());
         if self.fail { return Err(HttpError::transport(&request.url)); }
+        if request.url.ends_with("/authserver/validate") { return Ok(HttpResponse::new(self.validate_status, "")); }
         if request.url.ends_with("/authserver/invalidate") { return Ok(HttpResponse::new(204, "")); }
         if request.url.ends_with("/authserver/authenticate") || request.url.ends_with("/authserver/refresh") {
             let body: serde_json::Value = serde_json::from_str(request.body().unwrap()).unwrap();
@@ -130,6 +132,56 @@ fn yggdrasil_refresh_checks_identity_and_remove_works_offline() {
     remove_with(&store, &transport, id).unwrap();
     assert!(store.values.borrow().is_empty());
 }
+fn launch_fixture() -> (Store, Transport, AccountId) {
+    let (mut pending, transport, challenge) = pending();
+    let store = Store::default();
+    let account = finish_with(&mut pending, &store, &transport, &challenge.id, PROFILE, Instant::now()).unwrap();
+    transport.requests.borrow_mut().clear();
+    (store, transport, AccountId::parse(&account.id).unwrap())
+}
+
+#[test]
+fn yggdrasil_launch_validates_without_rotating() {
+    let (store, transport, id) = launch_fixture();
+    store.fail_save.set(true);
+    let credentials = credentials_for_launch(&store, &transport, id).unwrap();
+    assert_eq!(credentials.uuid, PROFILE);
+    assert_eq!(credentials.server_root, protocol::LITTLE_SKIN);
+    assert_eq!(transport.requests.borrow().len(), 1);
+    assert!(transport.requests.borrow()[0].url.ends_with("/validate"));
+}
+
+#[test]
+fn yggdrasil_launch_refreshes_and_requires_vault_save() {
+    let (store, mut transport, id) = launch_fixture();
+    transport.validate_status = 403;
+    let credentials = credentials_for_launch(&store, &transport, id).unwrap();
+    assert_eq!(credentials.name, "Renamed");
+    assert_eq!(credentials.access_token, "access-secret-rotated");
+    let requests = transport.requests.borrow();
+    let body: serde_json::Value = serde_json::from_str(requests[1].body().unwrap()).unwrap();
+    assert_eq!(body["selectedProfile"]["id"], PROFILE);
+    assert!(!format!("{:?}", requests[1]).contains("access-secret-rotated"));
+    drop(requests);
+    store.fail_save.set(true);
+    assert_eq!(credentials_for_launch(&store, &transport, id).err().as_deref(), Some(STORAGE));
+    store.fail_save.set(false);
+    transport.wrong_profile = true;
+    assert_eq!(credentials_for_launch(&store, &transport, id).err().as_deref(), Some("yggdrasil-invalid-profile"));
+}
+
+#[test]
+fn yggdrasil_launch_does_not_refresh_network_or_service_failures() {
+    let (store, mut transport, id) = launch_fixture();
+    transport.validate_status = 500;
+    assert!(credentials_for_launch(&store, &transport, id).is_err());
+    assert_eq!(transport.requests.borrow().len(), 1);
+    transport.requests.borrow_mut().clear();
+    transport.fail = true;
+    assert!(credentials_for_launch(&store, &transport, id).is_err());
+    assert_eq!(transport.requests.borrow().len(), 1);
+}
+
 #[test]
 fn yggdrasil_invalid_input_never_contacts_server() {
     let transport = Transport::new();

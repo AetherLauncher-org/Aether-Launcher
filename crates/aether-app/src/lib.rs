@@ -13,6 +13,7 @@
 //! `docs/design/native-ui.md` for why this layer exists.
 
 mod cachefile;
+pub mod authlib;
 pub mod catalog;
 pub mod content_install;
 pub mod host;
