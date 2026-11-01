@@ -77,14 +77,14 @@ describe("AccountsPage", () => {
     expect(headings).toEqual(["微软账户", "第三方账户", "离线账户"]);
   });
 
-  it("shows the third-party button but does not let it do anything yet", () => {
+  it("opens the third-party login dialog from the header button", async () => {
     renderAccounts();
 
     const button = screen.getByRole("button", { name: "第三方登录" });
+    expect(button).not.toHaveAttribute("aria-disabled", "true");
 
-    expect(button).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(button);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
   it("files a new offline account under the offline group and nowhere else", async () => {

@@ -34,6 +34,7 @@ import type { SearchResult } from "../ipc/content";
 import type { SkinEntry } from "../ipc/skinLibrary";
 import type { SystemMemory } from "../ipc/system";
 import type { ConversionResult, SchematicFormat } from "../ipc/schematics";
+import type { YggdrasilAccount, YggdrasilLogin } from "../ipc/yggdrasil";
 import { mockConversionTargets, mockSchematicView } from "./mockSchematics";
 
 type Args = Record<string, unknown> | undefined;
@@ -266,6 +267,47 @@ function beginLogin(): DeviceCodeInfo {
 function beginBrowserLogin(): BrowserLoginInfo {
   startLogin();
   return { expiresInSecs: 600 };
+}
+
+// ---- 第三方账户（Yggdrasil） ----------------------------------------------------------------
+
+const yggdrasilKey = "aether.mock.yggdrasil";
+
+function yggdrasilAccounts(): YggdrasilAccount[] {
+  return readJson<YggdrasilAccount[]>(yggdrasilKey, []);
+}
+
+const yggdrasilMockProfiles = [
+  { id: "0123456789abcdef0123456789abcdef", name: "LittleSkinPlayer" },
+  { id: "1123456789abcdef0123456789abcdef", name: "AltCharacter" },
+];
+
+function yggdrasilBegin(): YggdrasilLogin {
+  return { id: uuid(), profiles: yggdrasilMockProfiles };
+}
+
+function yggdrasilFinish(id: string, profileId: string): YggdrasilAccount {
+  const profile = yggdrasilMockProfiles.find((item) => item.id === profileId);
+  if (profile === undefined) {
+    throw "yggdrasil-invalid-profile";
+  }
+  const account: YggdrasilAccount = {
+    id,
+    server: "https://littleskin.cn/api/yggdrasil",
+    profile,
+  };
+  writeJson(yggdrasilKey, [
+    ...yggdrasilAccounts().filter((existing) => existing.id !== id),
+    account,
+  ]);
+  return account;
+}
+
+function yggdrasilRemove(id: string): void {
+  writeJson(
+    yggdrasilKey,
+    yggdrasilAccounts().filter((account) => account.id !== id),
+  );
 }
 
 // ---- 实例管理 ------------------------------------------------------------------------------
@@ -684,6 +726,23 @@ async function handle(command: string, args: Args): Promise<unknown> {
         accountsKey,
         accounts().filter((account) => account.id !== args?.id),
       );
+      return null;
+    case "begin_yggdrasil_login": {
+      // The password is received but immediately discarded: it never reaches state,
+      // storage or any log, mirroring the desktop backend.
+      void (args?.password as string | undefined);
+      return yggdrasilBegin();
+    }
+    case "finish_yggdrasil_login":
+      return yggdrasilFinish(String(args?.id), String(args?.profileId));
+    case "cancel_yggdrasil_login":
+      return null;
+    case "list_yggdrasil_accounts":
+      return yggdrasilAccounts();
+    case "refresh_yggdrasil_account":
+      return null;
+    case "remove_yggdrasil_account":
+      yggdrasilRemove(String(args?.id));
       return null;
     case "instance_details":
       return instanceDetails(String(args?.id));

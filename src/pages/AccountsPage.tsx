@@ -26,6 +26,7 @@ import { AddOfflineAccountDialog } from "../components/AddOfflineAccountDialog";
 import { MicrosoftLoginDialog } from "../components/MicrosoftLoginDialog";
 import { PageHeader } from "../components/PageHeader";
 import { SkinLibrary } from "../components/SkinLibrary";
+import { YggdrasilAccounts } from "../components/YggdrasilAccounts";
 import {
   describeCommandError,
   isMicrosoftLoginAvailable,
@@ -58,7 +59,7 @@ const groups: readonly {
   {
     id: "thirdparty",
     title: "第三方账户",
-    empty: "还没有第三方账户。LittleSkin、Ely.by 这类外置登录服务器的登录还在做，暂时不能用。",
+    empty: "还没有第三方账户。添加 LittleSkin、Ely.by 等外置登录服务器的账户。",
   },
   {
     id: "offline",
@@ -86,6 +87,7 @@ export function AccountsPage({ page }: AccountsPageProps) {
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [loginAvailable, setLoginAvailable] = useState<boolean | null>(null);
+  const [thirdPartyOpen, setThirdPartyOpen] = useState(false);
 
   useEffect(() => {
     let current = true;
@@ -125,8 +127,8 @@ export function AccountsPage({ page }: AccountsPageProps) {
       >
         登录微软账户
       </Button>
-      <Tooltip content="还没做：LittleSkin、Ely.by 等外置登录服务器" relationship="description">
-        <Button appearance="secondary" icon={<Globe20Regular />} disabledFocusable>
+      <Tooltip content="LittleSkin、Ely.by 等外置登录服务器" relationship="description">
+        <Button appearance="secondary" icon={<Globe20Regular />} onClick={() => setThirdPartyOpen(true)}>
           第三方登录
         </Button>
       </Tooltip>
@@ -166,6 +168,9 @@ export function AccountsPage({ page }: AccountsPageProps) {
       ) : null}
 
       {groups.map((group) => {
+        if (group.id === "thirdparty") {
+          return <YggdrasilAccounts key={group.id} adding={thirdPartyOpen} onClose={() => setThirdPartyOpen(false)} />;
+        }
         const accounts = book.accounts.filter((account) => groupOf(account) === group.id);
         return (
           <section

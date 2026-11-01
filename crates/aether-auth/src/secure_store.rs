@@ -82,7 +82,10 @@ impl CredentialStore for KeyringCredentialStore {
         let Some(mut credential) = self.metadata.load(account)? else {
             return Ok(None);
         };
-        if credential.kind == AccountKind::Microsoft {
+        if matches!(
+            credential.kind,
+            AccountKind::Microsoft | AccountKind::Yggdrasil { .. }
+        ) {
             credential.refresh = self
                 .vault
                 .get(account)?
@@ -95,7 +98,10 @@ impl CredentialStore for KeyringCredentialStore {
     }
 
     fn save(&self, credential: &StoredCredential) -> Result<(), StoreError> {
-        if credential.kind == AccountKind::Microsoft {
+        if matches!(
+            credential.kind,
+            AccountKind::Microsoft | AccountKind::Yggdrasil { .. }
+        ) {
             match credential.refresh.as_ref() {
                 Some(refresh) => self.vault.set(credential.account_id, refresh.expose())?,
                 None => self.vault.delete(credential.account_id)?,
@@ -110,7 +116,12 @@ impl CredentialStore for KeyringCredentialStore {
         // not require an unlocked OS vault. Never delete metadata if revoking a
         // known Microsoft credential fails, so removal can be retried safely.
         let previous = self.metadata.load(account)?;
-        if previous.is_some_and(|credential| credential.kind == AccountKind::Microsoft) {
+        if previous.is_some_and(|credential| {
+            matches!(
+                credential.kind,
+                AccountKind::Microsoft | AccountKind::Yggdrasil { .. }
+            )
+        }) {
             self.vault.delete(account)?;
         }
         self.metadata.remove(account)
